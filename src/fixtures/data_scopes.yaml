@@ -1,0 +1,22 @@
+---
+- id: 1
+  name: 全部数据
+  code: all
+  rule: '{"kind":"all"}'
+  description: 可访问全部租户和全部用户数据
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 2
+  name: 当前租户数据
+  code: tenant
+  rule: '{"kind":"tenant","column":"tenant_id"}'
+  description: 只能访问当前用户所在租户的数据
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 3
+  name: 本人数据
+  code: self
+  rule: '{"kind":"self","column":"id"}'
+  description: 只能访问当前登录用户自己的数据
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

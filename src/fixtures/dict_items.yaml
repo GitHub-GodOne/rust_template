@@ -1,0 +1,100 @@
+---
+- id: 1
+  dict_type_id: 1
+  label: 图片
+  value: image
+  color: blue
+  extra:
+  enabled: true
+  is_default: true
+  sort_order: 10
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 2
+  dict_type_id: 1
+  label: 文档
+  value: document
+  color: cyan
+  extra:
+  enabled: true
+  is_default: false
+  sort_order: 20
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 3
+  dict_type_id: 1
+  label: 导入模板
+  value: import_template
+  color: purple
+  extra:
+  enabled: true
+  is_default: false
+  sort_order: 30
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 4
+  dict_type_id: 1
+  label: 导出文件
+  value: export_file
+  color: orange
+  extra:
+  enabled: true
+  is_default: false
+  sort_order: 40
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 5
+  dict_type_id: 2
+  label: 信息
+  value: info
+  color: blue
+  extra:
+  enabled: true
+  is_default: true
+  sort_order: 10
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 6
+  dict_type_id: 2
+  label: 警告
+  value: warn
+  color: orange
+  extra:
+  enabled: true
+  is_default: false
+  sort_order: 20
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 7
+  dict_type_id: 2
+  label: 错误
+  value: error
+  color: red
+  extra:
+  enabled: true
+  is_default: false
+  sort_order: 30
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 8
+  dict_type_id: 3
+  label: 私有
+  value: private
+  color: default
+  extra:
+  enabled: true
+  is_default: true
+  sort_order: 10
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 9
+  dict_type_id: 3
+  label: 公开
+  value: public
+  color: green
+  extra:
+  enabled: true
+  is_default: false
+  sort_order: 20
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

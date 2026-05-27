@@ -1,0 +1,9 @@
+---
+source: tests/requests/auth.rs
+assertion_line: 330
+expression: "(response.status_code(), response.text())"
+---
+(
+    200,
+    "{\"success\":true,\"code\":\"OK\",\"message\":\"ok\",\"data\":{\"pid\":\"PID\",\"name\":\"loco\",\"email\":\"test@loco.com\",\"roles\":[],\"permissions\":[],\"menus\":[],\"tenant\":null,\"data_scopes\":[],\"effective_data_scope\":\"none\"}}",
+)
