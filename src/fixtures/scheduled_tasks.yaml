@@ -1,0 +1,29 @@
+---
+- id: 1
+  name: 日志清理
+  code: cleanup_logs
+  task_type: cleanup_logs
+  cron_expr: 0 3 * * *
+  payload: '{"retention_days":90}'
+  enabled: false
+  status: idle
+  last_run_at:
+  next_run_at:
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 2
+  name: 数据库备份
+  code: database_backup
+  task_type: database_backup
+  cron_expr: 30 3 * * *
+  payload: '{}'
+  enabled: false
+  status: idle
+  last_run_at:
+  next_run_at:
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

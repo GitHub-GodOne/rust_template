@@ -253,6 +253,18 @@ body {
 	font-size: 12px;
 }
 
+.admin-code-block {
+	max-width: 100%;
+	margin: 0;
+	padding: 10px 12px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: #f8fafc;
+	border: 1px solid #eef2f7;
+	border-radius: 8px;
+}
+
 @media (max-width: 768px) {
 	.admin-header {
 		height: 56px;

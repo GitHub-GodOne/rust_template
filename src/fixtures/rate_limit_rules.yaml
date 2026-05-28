@@ -1,0 +1,12 @@
+---
+- id: 1
+  name: 登录接口保护
+  scope: ip
+  path_pattern: /api/auth/login
+  method: POST
+  limit_count: 5
+  window_seconds: 60
+  enabled: true
+  description: 同一 IP 每分钟最多尝试登录 5 次
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

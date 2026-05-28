@@ -4,7 +4,7 @@
 use loco_rs::prelude::*;
 use serde_json::json;
 
-use crate::models::users;
+use crate::models::{email_templates, users};
 
 static welcome: Dir<'_> = include_dir!("src/mailers/auth/welcome");
 static forgot: Dir<'_> = include_dir!("src/mailers/auth/forgot");
@@ -20,22 +20,12 @@ impl AuthMailer {
     ///
     /// When email sending is failed
     pub async fn send_welcome(ctx: &AppContext, user: &users::Model) -> Result<()> {
-        Self::mail_template(
-            ctx,
-            &welcome,
-            mailer::Args {
-                to: user.email.clone(),
-                locals: json!({
-                  "name": user.name,
-                  "verifyToken": user.email_verification_token,
-                  "domain": ctx.config.server.full_url()
-                }),
-                ..Default::default()
-            },
-        )
-        .await?;
-
-        Ok(())
+        let locals = json!({
+          "name": user.name,
+          "verifyToken": user.email_verification_token,
+          "domain": ctx.config.server.full_url()
+        });
+        Self::send_template(ctx, "auth_welcome", &welcome, user.email.clone(), locals).await
     }
 
     /// Sending forgot password email
@@ -44,22 +34,19 @@ impl AuthMailer {
     ///
     /// When email sending is failed
     pub async fn forgot_password(ctx: &AppContext, user: &users::Model) -> Result<()> {
-        Self::mail_template(
+        let locals = json!({
+          "name": user.name,
+          "resetToken": user.reset_token,
+          "domain": ctx.config.server.full_url()
+        });
+        Self::send_template(
             ctx,
+            "auth_forgot_password",
             &forgot,
-            mailer::Args {
-                to: user.email.clone(),
-                locals: json!({
-                  "name": user.name,
-                  "resetToken": user.reset_token,
-                  "domain": ctx.config.server.full_url()
-                }),
-                ..Default::default()
-            },
+            user.email.clone(),
+            locals,
         )
-        .await?;
-
-        Ok(())
+        .await
     }
 
     /// Sends a magic link authentication email to the user.
@@ -68,23 +55,43 @@ impl AuthMailer {
     ///
     /// When email sending is failed
     pub async fn send_magic_link(ctx: &AppContext, user: &users::Model) -> Result<()> {
-        Self::mail_template(
+        let locals = json!({
+          "name": user.name,
+          "token": user.magic_link_token.clone().ok_or_else(|| Error::string(
+                    "the user model not contains magic link token",
+            ))?,
+          "host": ctx.config.server.full_url()
+        });
+        Self::send_template(
             ctx,
+            "auth_magic_link",
             &magic_link,
-            mailer::Args {
-                to: user.email.clone(),
-                locals: json!({
-                  "name": user.name,
-                  "token": user.magic_link_token.clone().ok_or_else(|| Error::string(
-                            "the user model not contains magic link token",
-                    ))?,
-                  "host": ctx.config.server.full_url()
-                }),
-                ..Default::default()
-            },
+            user.email.clone(),
+            locals,
         )
-        .await?;
+        .await
+    }
 
-        Ok(())
+    async fn send_template(
+        ctx: &AppContext,
+        code: &str,
+        fallback: &Dir<'_>,
+        to: String,
+        locals: serde_json::Value,
+    ) -> Result<()> {
+        if let Some(rendered) = email_templates::render_enabled(&ctx.db, code, &locals).await? {
+            Self::mail(ctx, &rendered.into_email(to)).await
+        } else {
+            Self::mail_template(
+                ctx,
+                fallback,
+                mailer::Args {
+                    to,
+                    locals,
+                    ..Default::default()
+                },
+            )
+            .await
+        }
     }
 }

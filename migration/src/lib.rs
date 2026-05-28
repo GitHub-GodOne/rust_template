@@ -6,6 +6,8 @@ mod m20260527_000001_refresh_tokens;
 mod m20260527_000002_rbac;
 mod m20260527_000003_admin_extensions;
 mod m20260527_000004_tenants;
+mod m20260527_000005_operations_infra;
+mod m20260527_000006_email_templates;
 
 pub struct Migrator;
 
@@ -18,6 +20,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260527_000002_rbac::Migration),
             Box::new(m20260527_000003_admin_extensions::Migration),
             Box::new(m20260527_000004_tenants::Migration),
+            Box::new(m20260527_000005_operations_infra::Migration),
+            Box::new(m20260527_000006_email_templates::Migration),
             // inject-above (do not remove this comment)
         ]
     }

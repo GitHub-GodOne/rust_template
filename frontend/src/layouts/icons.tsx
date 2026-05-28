@@ -3,9 +3,14 @@ import {
   CloudUploadOutlined,
   ControlOutlined,
   DashboardOutlined,
+  DatabaseOutlined,
   FileSearchOutlined,
+  MailOutlined,
   MenuOutlined,
+  MonitorOutlined,
+  NotificationOutlined,
   SafetyCertificateOutlined,
+  ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
   UserOutlined,
@@ -22,6 +27,11 @@ const icons = {
   "cloud-upload": <CloudUploadOutlined />,
   control: <ControlOutlined />,
   apartment: <ApartmentOutlined />,
+  notification: <NotificationOutlined />,
+  schedule: <ScheduleOutlined />,
+  database: <DatabaseOutlined />,
+  monitor: <MonitorOutlined />,
+  mail: <MailOutlined />,
 };
 
 export function renderMenuIcon(name: string) {

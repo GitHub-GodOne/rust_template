@@ -7,12 +7,18 @@ use crate::{
     models::{rbac, users},
 };
 
+pub mod backups;
 pub mod data_scopes;
 pub mod dicts;
+pub mod email_templates;
 pub mod logs;
 pub mod menus;
+pub mod monitoring;
+pub mod notifications;
 pub mod permissions;
+pub mod rate_limits;
 pub mod roles;
+pub mod scheduled_tasks;
 pub mod settings;
 pub mod tenants;
 pub mod uploads;
@@ -28,8 +34,15 @@ pub async fn authorize(
     Ok(user)
 }
 
+#[must_use]
 pub fn routes() -> Routes {
-    Routes::new()
+    let routes = core_routes(Routes::new());
+    let routes = operations_routes(routes);
+    extension_routes(routes)
+}
+
+fn core_routes(routes: Routes) -> Routes {
+    routes
         .add(
             "/api/admin/users",
             get(users_admin::list).post(users_admin::create),
@@ -87,6 +100,68 @@ pub fn routes() -> Routes {
                 .delete(tenants::delete),
         )
         .add("/api/admin/data-scopes", get(data_scopes::list))
+}
+
+fn operations_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/notifications",
+            get(notifications::list).post(notifications::create),
+        )
+        .add(
+            "/api/admin/notifications/{id}",
+            get(notifications::get).delete(notifications::delete),
+        )
+        .add(
+            "/api/admin/notifications/{id}/read",
+            put(notifications::mark_read),
+        )
+        .add(
+            "/api/admin/scheduled-tasks",
+            get(scheduled_tasks::list).post(scheduled_tasks::create),
+        )
+        .add(
+            "/api/admin/scheduled-tasks/{id}",
+            get(scheduled_tasks::get)
+                .put(scheduled_tasks::update)
+                .delete(scheduled_tasks::delete),
+        )
+        .add(
+            "/api/admin/scheduled-tasks/{id}/run",
+            post(scheduled_tasks::run),
+        )
+        .add(
+            "/api/admin/scheduled-task-runs",
+            get(scheduled_tasks::list_runs),
+        )
+        .add(
+            "/api/admin/backups",
+            get(backups::list).post(backups::create),
+        )
+        .add(
+            "/api/admin/backups/{id}",
+            get(backups::get).delete(backups::delete),
+        )
+        .add("/api/admin/backups/{id}/deliver", post(backups::deliver))
+        .add(
+            "/api/admin/rate-limits",
+            get(rate_limits::list).post(rate_limits::create),
+        )
+        .add(
+            "/api/admin/rate-limits/{id}",
+            get(rate_limits::get)
+                .put(rate_limits::update)
+                .delete(rate_limits::delete),
+        )
+        .add(
+            "/api/admin/rate-limit-events",
+            get(rate_limits::list_events),
+        )
+        .add("/api/admin/monitoring/overview", get(monitoring::overview))
+}
+
+fn extension_routes(routes: Routes) -> Routes {
+    routes
         .add("/api/admin/logs", get(logs::list))
         .add("/api/admin/logs/{id}", get(logs::get).delete(logs::delete))
         .add(
@@ -98,6 +173,24 @@ pub fn routes() -> Routes {
             get(settings::get)
                 .put(settings::update)
                 .delete(settings::delete),
+        )
+        .add(
+            "/api/admin/email-templates",
+            get(email_templates::list).post(email_templates::create),
+        )
+        .add(
+            "/api/admin/email-templates/{id}",
+            get(email_templates::get)
+                .put(email_templates::update)
+                .delete(email_templates::delete),
+        )
+        .add(
+            "/api/admin/email-templates/{id}/preview",
+            post(email_templates::preview),
+        )
+        .add(
+            "/api/admin/email-templates/{id}/test-send",
+            post(email_templates::test_send),
         )
         .add(
             "/api/admin/dict-types",

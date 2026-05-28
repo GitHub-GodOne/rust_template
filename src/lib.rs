@@ -4,6 +4,7 @@ pub mod data;
 pub mod errors;
 pub mod initializers;
 pub mod mailers;
+pub mod middleware;
 pub mod models;
 pub mod openapi;
 pub mod responses;

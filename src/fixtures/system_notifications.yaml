@@ -1,0 +1,13 @@
+---
+- id: 1
+  title: 欢迎使用运维中心
+  content: 系统已启用通知、定时任务、备份和监控基础能力。
+  level: info
+  category: system
+  target_type: all
+  target_user_id:
+  tenant_id:
+  read_at:
+  created_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

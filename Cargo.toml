@@ -39,6 +39,7 @@ axum-extra = { version = "0.10", features = ["form"] }
 sha2 = { version = "0.10" }
 hex = { version = "0.4" }
 utoipa = { version = "5", features = ["chrono", "uuid"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 
 [[bin]]
 name = "gpt_images-cli"

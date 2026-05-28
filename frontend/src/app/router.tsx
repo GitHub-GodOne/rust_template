@@ -6,10 +6,15 @@ import { current } from "../api/auth";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
+import { BackupsPage } from "../pages/system/backups/BackupsPage";
+import { EmailTemplatesPage } from "../pages/system/email-templates/EmailTemplatesPage";
 import { LogsPage } from "../pages/system/logs/LogsPage";
 import { MenusPage } from "../pages/system/menus/MenusPage";
+import { MonitoringPage } from "../pages/system/monitoring/MonitoringPage";
+import { NotificationsPage } from "../pages/system/notifications/NotificationsPage";
 import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
+import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
 import { SettingsPage } from "../pages/system/settings/SettingsPage";
 import { TenantsPage } from "../pages/system/tenants/TenantsPage";
 import { UploadsPage } from "../pages/system/uploads/UploadsPage";
@@ -179,6 +184,46 @@ export function AppRouter() {
           element={
             <RequirePermission permission="system:setting:list">
               <SettingsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/notifications"
+          element={
+            <RequirePermission permission="system:notification:list">
+              <NotificationsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/scheduled-tasks"
+          element={
+            <RequirePermission permission="system:scheduled_task:list">
+              <ScheduledTasksPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/backups"
+          element={
+            <RequirePermission permission="system:backup:list">
+              <BackupsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/monitoring"
+          element={
+            <RequirePermission permission="system:monitor:view">
+              <MonitoringPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/email-templates"
+          element={
+            <RequirePermission permission="system:email_template:list">
+              <EmailTemplatesPage />
             </RequirePermission>
           }
         />

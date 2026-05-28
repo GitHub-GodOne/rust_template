@@ -1,0 +1,87 @@
+---
+- id: 1
+  code: auth_welcome
+  name: 欢迎与邮箱验证
+  template_type: auth
+  subject: "Welcome {{name}}"
+  html_body: |-
+    ;<html>
+
+    <body>
+      Dear {{name}},
+      Welcome to Loco! You can now log in to your account.
+      Before you get started, please verify your account by clicking the link below:
+      <a href="{{domain}}/api/auth/verify/{{verifyToken}}">
+        Verify Your Account
+      </a>
+      <p>Best regards,<br>The Loco Team</p>
+    </body>
+
+    </html>
+  text_body: |-
+    Welcome {{name}}, you can now log in.
+      Verify your account with the link below:
+
+      {{domain}}/api/auth/verify/{{verifyToken}}
+  variables: '[{"name":"name","description":"用户名称"},{"name":"verifyToken","description":"邮箱验证令牌"},{"name":"domain","description":"站点域名"}]'
+  enabled: true
+  is_builtin: true
+  description: 注册和重发验证邮件使用的欢迎模板
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 2
+  code: auth_forgot_password
+  name: 忘记密码
+  template_type: auth
+  subject: Your reset password link
+  html_body: |-
+    ;<html>
+
+    <body>
+      Hey {{name}},
+      Forgot your password? No worries! You can reset it by clicking the link below:
+      <a href="http://{{domain}}/reset#{{resetToken}}">Reset Your Password</a>
+      If you didn't request a password reset, please ignore this email.
+      Best regards,<br>The Loco Team</br>
+    </body>
+
+    </html>
+  text_body: |-
+    Reset your password with this link:
+
+    http://localhost/reset#{{resetToken}}
+  variables: '[{"name":"name","description":"用户名称"},{"name":"resetToken","description":"密码重置令牌"},{"name":"domain","description":"站点域名"}]'
+  enabled: true
+  is_builtin: true
+  description: 忘记密码邮件模板
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 3
+  code: auth_magic_link
+  name: Magic Link 登录
+  template_type: auth
+  subject: Magic link example
+  html_body: |-
+    ;<html>
+    <body>
+    <p>Magic link example:</p>
+    <a href="{{host}}/api/auth/magic-link/{{token}}">
+    Verify Your Account
+    </a>
+    </body>
+    </html>
+  text_body: |-
+    Magic link with this link:
+    {{host}}/api/auth/magic-link/{{token}}
+  variables: '[{"name":"name","description":"用户名称"},{"name":"token","description":"Magic Link 登录令牌"},{"name":"host","description":"站点域名"}]'
+  enabled: true
+  is_builtin: true
+  description: Magic Link 登录邮件模板
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

@@ -1,5 +1,7 @@
 pub mod _entities;
 pub mod admin_logs;
+pub mod database_backups;
+pub mod email_templates;
 pub mod menus;
 pub mod permissions;
 pub mod rbac;

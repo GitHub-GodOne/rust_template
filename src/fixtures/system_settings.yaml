@@ -63,3 +63,115 @@
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 5
+  key: backup.delivery_targets
+  name: 备份推送目标
+  group_key: backup
+  value: "[]"
+  value_type: json
+  default_value: "[]"
+  description: 数据库备份完成后的通知目标列表
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 50
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 6
+  key: backup.retention_days
+  name: 备份保留天数
+  group_key: backup
+  value: "30"
+  value_type: number
+  default_value: "30"
+  description: 本地数据库备份建议保留天数
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 60
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 7
+  key: backup.telegram_bot_token
+  name: Telegram Bot Token
+  group_key: backup
+  value: ""
+  value_type: secret
+  default_value: ""
+  description: 用于发送备份通知的 Telegram Bot Token
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 70
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 8
+  key: backup.telegram_chat_id
+  name: Telegram Chat ID
+  group_key: backup
+  value: ""
+  value_type: string
+  default_value: ""
+  description: Telegram 备份通知接收会话 ID
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 80
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 9
+  key: backup.wecom_webhook_url
+  name: 企业微信 Webhook
+  group_key: backup
+  value: ""
+  value_type: secret
+  default_value: ""
+  description: 企业微信机器人备份通知地址
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 90
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 10
+  key: backup.dingtalk_webhook_url
+  name: 钉钉 Webhook
+  group_key: backup
+  value: ""
+  value_type: secret
+  default_value: ""
+  description: 钉钉机器人备份通知地址
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 100
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 11
+  key: backup.custom_webhook_url
+  name: 自定义备份 Webhook
+  group_key: backup
+  value: ""
+  value_type: secret
+  default_value: ""
+  description: 自定义备份通知或上传地址
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 110
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

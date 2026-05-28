@@ -4,7 +4,7 @@ use loco_rs::{
     bgworker::{BackgroundWorker, Queue},
     boot::{create_app, BootResult, StartMode},
     config::Config,
-    controller::AppRoutes,
+    controller::{middleware as loco_middleware, AppRoutes},
     db::{self, truncate_table},
     environment::Environment,
     task::Tasks,
@@ -17,9 +17,11 @@ use std::path::Path;
 use crate::{
     controllers,
     models::_entities::{
-        data_scopes, dict_items, dict_types, menus, operation_logs, permissions, refresh_tokens,
-        role_data_scopes, role_menus, role_permissions, roles, system_settings, tenants,
-        upload_files, user_roles, users,
+        data_scopes, database_backups, dict_items, dict_types, email_templates, menus,
+        operation_logs, permissions, rate_limit_events, rate_limit_rules, refresh_tokens,
+        role_data_scopes, role_menus, role_permissions, roles, scheduled_task_runs,
+        scheduled_tasks, system_notifications, system_settings, tenants, upload_files, user_roles,
+        users,
     },
     tasks,
     workers::downloader::DownloadWorker,
@@ -59,7 +61,17 @@ impl Hooks for App {
             .add_route(controllers::auth::routes())
             .add_route(controllers::admin::routes())
             .add_route(controllers::docs::routes())
+            .add_route(controllers::frontend::routes())
     }
+
+    fn middlewares(ctx: &AppContext) -> Vec<Box<dyn loco_middleware::MiddlewareLayer>> {
+        let mut stack = loco_middleware::default_middleware_stack(ctx);
+        stack.push(Box::new(
+            crate::middleware::rate_limit::RateLimitMiddleware::new(ctx),
+        ));
+        stack
+    }
+
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;
         Ok(())
@@ -67,13 +79,21 @@ impl Hooks for App {
 
     #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
+        tasks.register(crate::tasks::operations::RunDueScheduledTasks);
         // tasks-inject (do not remove)
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, rate_limit_events::Entity).await?;
+        truncate_table(&ctx.db, rate_limit_rules::Entity).await?;
+        truncate_table(&ctx.db, database_backups::Entity).await?;
+        truncate_table(&ctx.db, scheduled_task_runs::Entity).await?;
+        truncate_table(&ctx.db, scheduled_tasks::Entity).await?;
+        truncate_table(&ctx.db, system_notifications::Entity).await?;
         truncate_table(&ctx.db, upload_files::Entity).await?;
         truncate_table(&ctx.db, dict_items::Entity).await?;
         truncate_table(&ctx.db, dict_types::Entity).await?;
         truncate_table(&ctx.db, system_settings::Entity).await?;
+        truncate_table(&ctx.db, email_templates::Entity).await?;
         truncate_table(&ctx.db, operation_logs::Entity).await?;
         truncate_table(&ctx.db, role_data_scopes::Entity).await?;
         truncate_table(&ctx.db, role_menus::Entity).await?;
@@ -105,6 +125,26 @@ impl Hooks for App {
         db::seed::<system_settings::ActiveModel>(
             &ctx.db,
             &base.join("system_settings.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<email_templates::ActiveModel>(
+            &ctx.db,
+            &base.join("email_templates.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<system_notifications::ActiveModel>(
+            &ctx.db,
+            &base.join("system_notifications.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<scheduled_tasks::ActiveModel>(
+            &ctx.db,
+            &base.join("scheduled_tasks.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<rate_limit_rules::ActiveModel>(
+            &ctx.db,
+            &base.join("rate_limit_rules.yaml").display().to_string(),
         )
         .await?;
         db::seed::<dict_types::ActiveModel>(
