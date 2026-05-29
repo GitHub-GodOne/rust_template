@@ -1,7 +1,13 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use gpt_images::{app::App, responses::ApiResponse, views::auth::LoginResponse};
+use gpt_images::{
+    app::App,
+    models::_entities::{database_backups, payment_channels, upload_files},
+    responses::ApiResponse,
+    views::auth::LoginResponse,
+};
 use loco_rs::{testing::prelude::*, TestServer};
+use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serial_test::serial;
 
 use super::prepare_data;
@@ -56,6 +62,13 @@ async fn admin_extensions_require_auth() {
             "/api/admin/rate-limits",
             "/api/admin/rate-limit-events",
             "/api/admin/monitoring/overview",
+            "/api/admin/work-orders",
+            "/api/admin/payment-channels",
+            "/api/admin/payment-orders",
+            "/api/admin/payment-callbacks",
+            "/api/admin/payment-refunds",
+            "/api/admin/content-categories",
+            "/api/admin/content-articles",
         ] {
             let response = request.get(path).await;
             assert_eq!(response.status_code(), 401, "{path}");
@@ -109,7 +122,10 @@ async fn super_admin_can_access_admin_users() {
         let body = current_response.text();
         assert!(body.contains("super_admin"));
         assert!(body.contains("system:user:list"));
+        assert!(body.contains("system:backup:restore"));
+        assert!(body.contains("system:content_article:publish"));
         assert!(body.contains("/admin/system/users"));
+        assert!(body.contains("/admin/system/content"));
         assert!(body.contains("\"effective_data_scope\":\"all\""));
         assert!(body.contains("\"tenant\":{"));
     })
@@ -376,6 +392,150 @@ async fn super_admin_can_manage_email_templates() {
 
 #[tokio::test]
 #[serial]
+async fn super_admin_can_manage_content() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let invalid_category_slug = request
+            .post("/api/admin/content-categories")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "无效栏目",
+                "slug": "Invalid Slug",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(invalid_category_slug.status_code(), 400);
+
+        let create_category = request
+            .post("/api/admin/content-categories")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试栏目",
+                "slug": "request-test-category",
+                "description": "请求测试内容栏目",
+                "sort_order": 1,
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(create_category.status_code(), 200);
+        let category_body: serde_json::Value = serde_json::from_str(&create_category.text()).unwrap();
+        let category_id = category_body["data"]["id"].as_i64().unwrap();
+
+        let invalid_article_category = request
+            .post("/api/admin/content-articles")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "category_id": 999_999,
+                "title": "无效栏目文章",
+                "slug": "invalid-category-article",
+                "content": "正文",
+                "status": "draft"
+            }))
+            .await;
+        assert_eq!(invalid_article_category.status_code(), 400);
+
+        let invalid_article_status = request
+            .post("/api/admin/content-articles")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "category_id": category_id,
+                "title": "无效状态文章",
+                "slug": "invalid-status-article",
+                "content": "正文",
+                "status": "reviewing"
+            }))
+            .await;
+        assert_eq!(invalid_article_status.status_code(), 400);
+
+        let create_article = request
+            .post("/api/admin/content-articles")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "category_id": category_id,
+                "title": "请求测试文章",
+                "slug": "request-test-article",
+                "summary": "内容模块请求测试",
+                "content": "这是一篇请求测试文章正文",
+                "cover_image_url": "https://example.test/cover.png",
+                "status": "draft",
+                "is_featured": true,
+                "seo_title": "请求测试文章 SEO",
+                "seo_description": "请求测试文章 SEO 描述"
+            }))
+            .await;
+        assert_eq!(create_article.status_code(), 200);
+        let article_body: serde_json::Value = serde_json::from_str(&create_article.text()).unwrap();
+        let article_id = article_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(article_body["data"]["status"], "draft");
+
+        let list_articles = request
+            .get(&format!(
+                "/api/admin/content-articles?keyword=请求测试&category_id={category_id}&status=draft&is_featured=true"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(list_articles.status_code(), 200);
+        assert!(list_articles.text().contains("request-test-article"));
+
+        let update_article = request
+            .put(&format!("/api/admin/content-articles/{article_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "category_id": category_id,
+                "title": "请求测试文章已更新",
+                "slug": "request-test-article",
+                "summary": "内容模块请求测试已更新",
+                "content": "更新后的请求测试文章正文",
+                "status": "draft",
+                "is_featured": false
+            }))
+            .await;
+        assert_eq!(update_article.status_code(), 200);
+        assert!(update_article.text().contains("请求测试文章已更新"));
+
+        let publish_article = request
+            .post(&format!("/api/admin/content-articles/{article_id}/publish"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(publish_article.status_code(), 200);
+        let published_body: serde_json::Value = serde_json::from_str(&publish_article.text()).unwrap();
+        assert_eq!(published_body["data"]["status"], "published");
+        assert!(published_body["data"]["published_at"].is_string());
+
+        let archive_article = request
+            .post(&format!("/api/admin/content-articles/{article_id}/archive"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(archive_article.status_code(), 200);
+        assert!(archive_article.text().contains("archived"));
+
+        let delete_category_with_article = request
+            .delete(&format!("/api/admin/content-categories/{category_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_category_with_article.status_code(), 400);
+
+        let delete_article = request
+            .delete(&format!("/api/admin/content-articles/{article_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_article.status_code(), 200);
+
+        let delete_category = request
+            .delete(&format!("/api/admin/content-categories/{category_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(delete_category.status_code(), 200);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn super_admin_can_access_operations_infrastructure() {
     request::<App, _, _>(|request, ctx| async move {
         seed::<App>(&ctx).await.unwrap();
@@ -391,6 +551,13 @@ async fn super_admin_can_access_operations_infrastructure() {
             "/api/admin/rate-limits",
             "/api/admin/rate-limit-events",
             "/api/admin/monitoring/overview",
+            "/api/admin/work-orders",
+            "/api/admin/payment-channels",
+            "/api/admin/payment-orders",
+            "/api/admin/payment-callbacks",
+            "/api/admin/payment-refunds",
+            "/api/admin/content-categories",
+            "/api/admin/content-articles",
         ] {
             let response = request
                 .get(path)
@@ -398,6 +565,211 @@ async fn super_admin_can_access_operations_infrastructure() {
                 .await;
             assert_eq!(response.status_code(), 200, "{path}");
         }
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn super_admin_can_manage_work_orders() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let invalid_create = request
+            .post("/api/admin/work-orders")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "title": "",
+                "description": ""
+            }))
+            .await;
+        assert_eq!(invalid_create.status_code(), 400);
+
+        let invalid_metadata = request
+            .post("/api/admin/work-orders")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "title": "无效扩展数据工单",
+                "description": "测试无效 JSON",
+                "metadata": "{"
+            }))
+            .await;
+        assert_eq!(invalid_metadata.status_code(), 400);
+
+        let create_response = request
+            .post("/api/admin/work-orders")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "title": "请求测试工单",
+                "description": "工单内容",
+                "category": "technical",
+                "priority": "normal",
+                "assignee_id": 1,
+                "metadata": "{\"source\":\"request-test\"}"
+            }))
+            .await;
+        assert_eq!(create_response.status_code(), 200);
+        let created: serde_json::Value = serde_json::from_str(&create_response.text()).unwrap();
+        let work_order_id = created["data"]["id"].as_i64().unwrap();
+        assert!(created["data"]["order_no"]
+            .as_str()
+            .unwrap()
+            .starts_with("WO"));
+        assert_eq!(created["data"]["status"], "assigned");
+        assert_eq!(created["data"]["priority"], "normal");
+
+        let list_response = request
+            .get("/api/admin/work-orders?keyword=请求测试")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(list_response.status_code(), 200);
+        assert!(list_response.text().contains("请求测试工单"));
+
+        let update_response = request
+            .put(&format!("/api/admin/work-orders/{work_order_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "title": "请求测试工单已更新",
+                "description": "更新后的工单内容",
+                "category": "account",
+                "priority": "high",
+                "assignee_id": 1,
+                "metadata": "{\"source\":\"request-test\"}"
+            }))
+            .await;
+        assert_eq!(update_response.status_code(), 200);
+        assert!(update_response.text().contains("请求测试工单已更新"));
+
+        let comment_response = request
+            .post(&format!("/api/admin/work-orders/{work_order_id}/comments"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "body": "第一条处理备注" }))
+            .await;
+        assert_eq!(comment_response.status_code(), 200);
+
+        let comments_response = request
+            .get(&format!("/api/admin/work-orders/{work_order_id}/comments"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(comments_response.status_code(), 200);
+        assert!(comments_response.text().contains("第一条处理备注"));
+
+        let assign_response = request
+            .post(&format!("/api/admin/work-orders/{work_order_id}/assign"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "assignee_id": 1,
+                "note": "重新分配给管理员"
+            }))
+            .await;
+        assert_eq!(assign_response.status_code(), 200);
+
+        let transition_in_progress = request
+            .post(&format!(
+                "/api/admin/work-orders/{work_order_id}/transition"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "status": "in_progress",
+                "comment": "开始处理"
+            }))
+            .await;
+        assert_eq!(transition_in_progress.status_code(), 200);
+
+        let transition_resolved = request
+            .post(&format!(
+                "/api/admin/work-orders/{work_order_id}/transition"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "status": "resolved" }))
+            .await;
+        assert_eq!(transition_resolved.status_code(), 200);
+
+        let transition_closed = request
+            .post(&format!(
+                "/api/admin/work-orders/{work_order_id}/transition"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "status": "closed" }))
+            .await;
+        assert_eq!(transition_closed.status_code(), 200);
+
+        let terminal_transition = request
+            .post(&format!(
+                "/api/admin/work-orders/{work_order_id}/transition"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "status": "in_progress" }))
+            .await;
+        assert_eq!(terminal_transition.status_code(), 400);
+
+        let upload = upload_files::ActiveModel {
+            storage: Set("local".to_string()),
+            object_key: Set("request-tests/ticket.txt".to_string()),
+            url: Set("/uploads/request-tests/ticket.txt".to_string()),
+            original_name: Set("ticket.txt".to_string()),
+            filename: Set("ticket.txt".to_string()),
+            extension: Set(Some("txt".to_string())),
+            mime_type: Set(Some("text/plain".to_string())),
+            size_bytes: Set(12),
+            sha256: Set("ticket-sha256".to_string()),
+            category: Set(Some("ticket".to_string())),
+            tags: Set(None),
+            visibility: Set("private".to_string()),
+            status: Set("active".to_string()),
+            uploader_id: Set(Some(1)),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+        let upload_id = i64::from(upload.id);
+
+        let attach_response = request
+            .post(&format!(
+                "/api/admin/work-orders/{work_order_id}/attachments"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "upload_file_id": upload_id,
+                "description": "问题截图"
+            }))
+            .await;
+        assert_eq!(attach_response.status_code(), 200);
+        let attachment: serde_json::Value = serde_json::from_str(&attach_response.text()).unwrap();
+        let attachment_id = attachment["data"]["id"].as_i64().unwrap();
+
+        let detail_response = request
+            .get(&format!("/api/admin/work-orders/{work_order_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(detail_response.status_code(), 200);
+        let detail_body = detail_response.text();
+        assert!(detail_body.contains("第一条处理备注"));
+        assert!(detail_body.contains("ticket.txt"));
+
+        let delete_attachment_response = request
+            .delete(&format!(
+                "/api/admin/work-orders/{work_order_id}/attachments/{attachment_id}"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_attachment_response.status_code(), 200);
+
+        let delete_response = request
+            .delete(&format!("/api/admin/work-orders/{work_order_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_response.status_code(), 200);
+
+        let get_deleted = request
+            .get(&format!("/api/admin/work-orders/{work_order_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(get_deleted.status_code(), 400);
     })
     .await;
 }
@@ -554,6 +926,54 @@ async fn super_admin_can_manage_operations_records() {
             .unwrap()
             .contains("no delivery targets configured"));
 
+        let unauth_restore = request
+            .post(&format!("/api/admin/backups/{backup_id}/restore"))
+            .json(&serde_json::json!({ "confirm_phrase": "RESTORE DATABASE" }))
+            .await;
+        assert_eq!(unauth_restore.status_code(), 401);
+
+        let invalid_restore_confirmation = request
+            .post(&format!("/api/admin/backups/{backup_id}/restore"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "confirm_phrase": "wrong" }))
+            .await;
+        assert_eq!(invalid_restore_confirmation.status_code(), 400);
+
+        let failed_backup = database_backups::ActiveModel {
+            filename: Set("failed-request-test.dump".to_string()),
+            storage_path: Set("storage/backups/request-test/missing.dump".to_string()),
+            size_bytes: Set(0),
+            sha256: Set(None),
+            status: Set("failed".to_string()),
+            trigger_type: Set("manual".to_string()),
+            started_at: Set(chrono::Local::now().into()),
+            finished_at: Set(Some(chrono::Local::now().into())),
+            duration_ms: Set(Some(1)),
+            error_message: Set(Some("request test failed backup".to_string())),
+            created_by: Set(Some(1)),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+
+        let rejected_restore = request
+            .post(&format!("/api/admin/backups/{}/restore", failed_backup.id))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "confirm_phrase": "RESTORE DATABASE" }))
+            .await;
+        assert_eq!(rejected_restore.status_code(), 400);
+        assert!(rejected_restore.text().contains("only successful backups"));
+
+        let restore_records = request
+            .get(&format!("/api/admin/backups/{backup_id}/restores"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(restore_records.status_code(), 200);
+        let restore_records_body: serde_json::Value =
+            serde_json::from_str(&restore_records.text()).unwrap();
+        assert_eq!(restore_records_body["data"].as_array().unwrap().len(), 0);
+
         let update_delivery_targets = request
             .put("/api/admin/settings/5")
             .add_header(auth_key.clone(), auth_value.clone())
@@ -600,6 +1020,243 @@ async fn super_admin_can_manage_operations_records() {
             .add_header(auth_key, auth_value)
             .await;
         assert_eq!(delete_task.status_code(), 200);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn super_admin_can_manage_payments() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let invalid_provider = request
+            .post("/api/admin/payment-channels")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "无效通道",
+                "provider": "unknown",
+                "channel_code": "request_test_invalid",
+                "currency": "CNY",
+                "config": "{}"
+            }))
+            .await;
+        assert_eq!(invalid_provider.status_code(), 400);
+
+        let invalid_config = request
+            .post("/api/admin/payment-channels")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "无效配置",
+                "provider": "yipay",
+                "channel_code": "request_test_invalid_json",
+                "currency": "CNY",
+                "config": "not-json"
+            }))
+            .await;
+        assert_eq!(invalid_config.status_code(), 400);
+
+        let create_channel = request
+            .post("/api/admin/payment-channels")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试易支付",
+                "provider": "yipay",
+                "channel_code": "request_test_yipay",
+                "currency": "CNY",
+                "config": "{\"gateway\":\"https://pay.example.test\"}",
+                "secret_config": "{\"key\":\"original-secret\"}",
+                "enabled": true,
+                "sort_order": 1,
+                "description": "请求测试"
+            }))
+            .await;
+        assert_eq!(create_channel.status_code(), 200);
+        let channel_body: serde_json::Value = serde_json::from_str(&create_channel.text()).unwrap();
+        let channel_id = channel_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(channel_body["data"]["secret_config"], "******");
+
+        let update_channel = request
+            .put(&format!("/api/admin/payment-channels/{channel_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试易支付已更新",
+                "provider": "yipay",
+                "channel_code": "request_test_yipay",
+                "currency": "CNY",
+                "config": "{\"gateway\":\"https://pay2.example.test\"}",
+                "secret_config": "******",
+                "enabled": true,
+                "sort_order": 2,
+                "description": "请求测试更新"
+            }))
+            .await;
+        assert_eq!(update_channel.status_code(), 200);
+        let stored_channel = payment_channels::Entity::find_by_id(channel_id as i32)
+            .one(&ctx.db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored_channel.secret_config.as_deref(),
+            Some("{\"key\":\"original-secret\"}")
+        );
+
+        let channels = request
+            .get("/api/admin/payment-channels")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(channels.status_code(), 200);
+        assert!(channels.text().contains("request_test_yipay"));
+
+        let invalid_order = request
+            .post("/api/admin/payment-orders")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "subject": "",
+                "amount": "0",
+                "provider": "yipay"
+            }))
+            .await;
+        assert_eq!(invalid_order.status_code(), 400);
+
+        let create_order = request
+            .post("/api/admin/payment-orders")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "channel_id": channel_id,
+                "merchant_order_no": "MERCHANT-REQUEST-001",
+                "subject": "请求测试订单",
+                "body": "请求测试支付订单",
+                "amount": "12.30",
+                "metadata": "{\"source\":\"request-test\"}"
+            }))
+            .await;
+        assert_eq!(create_order.status_code(), 200);
+        let order_body: serde_json::Value = serde_json::from_str(&create_order.text()).unwrap();
+        let order_id = order_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(order_body["data"]["status"], "pending");
+        assert_eq!(order_body["data"]["provider"], "yipay");
+        assert!(order_body["data"]["order_no"]
+            .as_str()
+            .unwrap()
+            .starts_with("PAY"));
+
+        let orders = request
+            .get("/api/admin/payment-orders?keyword=MERCHANT-REQUEST-001")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(orders.status_code(), 200);
+        assert!(orders.text().contains("请求测试订单"));
+
+        let mark_paid = request
+            .post(&format!("/api/admin/payment-orders/{order_id}/mark-paid"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "trade_no": "TRADE-REQUEST-001",
+                "payer_id": "payer-1",
+                "payload": "{\"manual\":true}"
+            }))
+            .await;
+        assert_eq!(mark_paid.status_code(), 200);
+        assert!(mark_paid.text().contains("paid"));
+
+        let cancel_paid = request
+            .post(&format!("/api/admin/payment-orders/{order_id}/cancel"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(cancel_paid.status_code(), 400);
+
+        let create_refund = request
+            .post(&format!("/api/admin/payment-orders/{order_id}/refunds"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "amount": "5.00",
+                "reason": "请求测试退款"
+            }))
+            .await;
+        assert_eq!(create_refund.status_code(), 200);
+        let refund_body: serde_json::Value = serde_json::from_str(&create_refund.text()).unwrap();
+        let refund_id = refund_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(refund_body["data"]["status"], "pending");
+
+        let approve_refund = request
+            .post(&format!("/api/admin/payment-refunds/{refund_id}/approve"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(approve_refund.status_code(), 200);
+        assert!(approve_refund.text().contains("approved"));
+
+        let create_rejected_refund = request
+            .post(&format!("/api/admin/payment-orders/{order_id}/refunds"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "amount": "1.00",
+                "reason": "请求测试拒绝退款"
+            }))
+            .await;
+        assert_eq!(create_rejected_refund.status_code(), 200);
+        let rejected_refund_body: serde_json::Value =
+            serde_json::from_str(&create_rejected_refund.text()).unwrap();
+        let rejected_refund_id = rejected_refund_body["data"]["id"].as_i64().unwrap();
+
+        let reject_refund = request
+            .post(&format!(
+                "/api/admin/payment-refunds/{rejected_refund_id}/reject"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(reject_refund.status_code(), 200);
+        assert!(reject_refund.text().contains("rejected"));
+
+        let succeed_refund = request
+            .post(&format!(
+                "/api/admin/payment-refunds/{refund_id}/mark-succeeded"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(succeed_refund.status_code(), 200);
+        assert!(succeed_refund.text().contains("succeeded"));
+
+        let callbacks = request
+            .get("/api/admin/payment-callbacks")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(callbacks.status_code(), 200);
+        let callbacks_body: serde_json::Value = serde_json::from_str(&callbacks.text()).unwrap();
+        assert!(callbacks.text().contains("manual_record"));
+        let callback_id = callbacks_body["data"]["items"][0]["id"].as_i64().unwrap();
+
+        let callback_detail = request
+            .get(&format!("/api/admin/payment-callbacks/{callback_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(callback_detail.status_code(), 200);
+        assert!(callback_detail.text().contains("TRADE-REQUEST-001"));
+
+        let refunds = request
+            .get("/api/admin/payment-refunds")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(refunds.status_code(), 200);
+        assert!(refunds.text().contains("请求测试退款"));
+
+        let detail = request
+            .get(&format!("/api/admin/payment-orders/{order_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(detail.status_code(), 200);
+        assert!(detail.text().contains("TRADE-REQUEST-001"));
+        assert!(detail.text().contains("请求测试退款"));
+
+        let delete_channel = request
+            .delete(&format!("/api/admin/payment-channels/{channel_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(delete_channel.status_code(), 400);
     })
     .await;
 }

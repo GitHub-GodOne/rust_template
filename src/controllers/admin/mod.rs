@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub mod backups;
+pub mod content;
 pub mod data_scopes;
 pub mod dicts;
 pub mod email_templates;
@@ -15,6 +16,7 @@ pub mod logs;
 pub mod menus;
 pub mod monitoring;
 pub mod notifications;
+pub mod payments;
 pub mod permissions;
 pub mod rate_limits;
 pub mod roles;
@@ -23,6 +25,7 @@ pub mod settings;
 pub mod tenants;
 pub mod uploads;
 pub mod users_admin;
+pub mod work_orders;
 
 pub async fn authorize(
     ctx: &AppContext,
@@ -38,6 +41,7 @@ pub async fn authorize(
 pub fn routes() -> Routes {
     let routes = core_routes(Routes::new());
     let routes = operations_routes(routes);
+    let routes = content_routes(routes);
     extension_routes(routes)
 }
 
@@ -103,6 +107,12 @@ fn core_routes(routes: Routes) -> Routes {
 }
 
 fn operations_routes(routes: Routes) -> Routes {
+    let routes = operations_infrastructure_routes(routes);
+    let routes = work_order_routes(routes);
+    payment_routes(routes)
+}
+
+fn operations_infrastructure_routes(routes: Routes) -> Routes {
     routes
         .add(
             "/api/admin/notifications",
@@ -144,6 +154,11 @@ fn operations_routes(routes: Routes) -> Routes {
         )
         .add("/api/admin/backups/{id}/deliver", post(backups::deliver))
         .add(
+            "/api/admin/backups/{id}/restores",
+            get(backups::list_restores),
+        )
+        .add("/api/admin/backups/{id}/restore", post(backups::restore))
+        .add(
             "/api/admin/rate-limits",
             get(rate_limits::list).post(rate_limits::create),
         )
@@ -158,6 +173,124 @@ fn operations_routes(routes: Routes) -> Routes {
             get(rate_limits::list_events),
         )
         .add("/api/admin/monitoring/overview", get(monitoring::overview))
+}
+
+fn work_order_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/work-orders",
+            get(work_orders::list).post(work_orders::create),
+        )
+        .add(
+            "/api/admin/work-orders/{id}",
+            get(work_orders::get)
+                .put(work_orders::update)
+                .delete(work_orders::delete),
+        )
+        .add(
+            "/api/admin/work-orders/{id}/transition",
+            post(work_orders::transition),
+        )
+        .add(
+            "/api/admin/work-orders/{id}/comments",
+            get(work_orders::list_comments).post(work_orders::create_comment),
+        )
+        .add(
+            "/api/admin/work-orders/{id}/assign",
+            post(work_orders::assign),
+        )
+        .add(
+            "/api/admin/work-orders/{id}/attachments",
+            get(work_orders::list_attachments).post(work_orders::create_attachment),
+        )
+        .add(
+            "/api/admin/work-orders/{id}/attachments/{attachment_id}",
+            delete(work_orders::delete_attachment),
+        )
+}
+
+fn payment_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/payment-channels",
+            get(payments::list_channels).post(payments::create_channel),
+        )
+        .add(
+            "/api/admin/payment-channels/{id}",
+            get(payments::get_channel)
+                .put(payments::update_channel)
+                .delete(payments::delete_channel),
+        )
+        .add(
+            "/api/admin/payment-orders",
+            get(payments::list_orders).post(payments::create_order),
+        )
+        .add("/api/admin/payment-orders/{id}", get(payments::get_order))
+        .add(
+            "/api/admin/payment-orders/{id}/mark-paid",
+            post(payments::mark_order_paid),
+        )
+        .add(
+            "/api/admin/payment-orders/{id}/cancel",
+            post(payments::cancel_order),
+        )
+        .add(
+            "/api/admin/payment-orders/{id}/refunds",
+            post(payments::create_refund),
+        )
+        .add(
+            "/api/admin/payment-callbacks",
+            get(payments::list_callbacks),
+        )
+        .add(
+            "/api/admin/payment-callbacks/{id}",
+            get(payments::get_callback),
+        )
+        .add("/api/admin/payment-refunds", get(payments::list_refunds))
+        .add(
+            "/api/admin/payment-refunds/{id}/approve",
+            post(payments::approve_refund),
+        )
+        .add(
+            "/api/admin/payment-refunds/{id}/reject",
+            post(payments::reject_refund),
+        )
+        .add(
+            "/api/admin/payment-refunds/{id}/mark-succeeded",
+            post(payments::mark_refund_succeeded),
+        )
+}
+
+fn content_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/content-categories",
+            get(content::list_categories).post(content::create_category),
+        )
+        .add(
+            "/api/admin/content-categories/{id}",
+            get(content::get_category)
+                .put(content::update_category)
+                .delete(content::delete_category),
+        )
+        .add(
+            "/api/admin/content-articles",
+            get(content::list_articles).post(content::create_article),
+        )
+        .add(
+            "/api/admin/content-articles/{id}",
+            get(content::get_article)
+                .put(content::update_article)
+                .delete(content::delete_article),
+        )
+        .add(
+            "/api/admin/content-articles/{id}/publish",
+            post(content::publish_article),
+        )
+        .add(
+            "/api/admin/content-articles/{id}/archive",
+            post(content::archive_article),
+        )
 }
 
 fn extension_routes(routes: Routes) -> Routes {

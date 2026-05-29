@@ -164,3 +164,36 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 16
+  parent_id: 2
+  title: 工单管理
+  path: /admin/system/work-orders
+  icon: profile
+  permission_code: system:work_order:list
+  sort_order: 160
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 17
+  parent_id: 2
+  title: 支付管理
+  path: /admin/system/payments
+  icon: credit-card
+  permission_code: system:payment_order:list
+  sort_order: 170
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 18
+  parent_id: 2
+  title: 内容管理
+  path: /admin/system/content
+  icon: read
+  permission_code: system:content_article:list
+  sort_order: 180
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

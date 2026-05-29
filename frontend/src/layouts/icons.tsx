@@ -2,6 +2,7 @@ import {
   ApartmentOutlined,
   CloudUploadOutlined,
   ControlOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   DatabaseOutlined,
   FileSearchOutlined,
@@ -9,6 +10,8 @@ import {
   MenuOutlined,
   MonitorOutlined,
   NotificationOutlined,
+  ProfileOutlined,
+  ReadOutlined,
   SafetyCertificateOutlined,
   ScheduleOutlined,
   SettingOutlined,
@@ -26,12 +29,15 @@ const icons = {
   "file-search": <FileSearchOutlined />,
   "cloud-upload": <CloudUploadOutlined />,
   control: <ControlOutlined />,
+  "credit-card": <CreditCardOutlined />,
   apartment: <ApartmentOutlined />,
   notification: <NotificationOutlined />,
   schedule: <ScheduleOutlined />,
   database: <DatabaseOutlined />,
   monitor: <MonitorOutlined />,
   mail: <MailOutlined />,
+  profile: <ProfileOutlined />,
+  read: <ReadOutlined />,
 };
 
 export function renderMenuIcon(name: string) {

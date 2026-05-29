@@ -17,11 +17,13 @@ use std::path::Path;
 use crate::{
     controllers,
     models::_entities::{
-        data_scopes, database_backups, dict_items, dict_types, email_templates, menus,
-        operation_logs, permissions, rate_limit_events, rate_limit_rules, refresh_tokens,
-        role_data_scopes, role_menus, role_permissions, roles, scheduled_task_runs,
-        scheduled_tasks, system_notifications, system_settings, tenants, upload_files, user_roles,
-        users,
+        content_articles, content_categories, data_scopes, database_backups, database_restores,
+        dict_items, dict_types, email_templates, menus, operation_logs, payment_callbacks,
+        payment_channels, payment_orders, payment_refunds, permissions, rate_limit_events,
+        rate_limit_rules, refresh_tokens, role_data_scopes, role_menus, role_permissions, roles,
+        scheduled_task_runs, scheduled_tasks, system_notifications, system_settings, tenants,
+        upload_files, user_roles, users, work_order_assignments, work_order_attachments,
+        work_order_comments, work_orders,
     },
     tasks,
     workers::downloader::DownloadWorker,
@@ -79,12 +81,24 @@ impl Hooks for App {
 
     #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
+        tasks.register(crate::tasks::admin::RecoverAdmin);
         tasks.register(crate::tasks::operations::RunDueScheduledTasks);
         // tasks-inject (do not remove)
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, content_articles::Entity).await?;
+        truncate_table(&ctx.db, content_categories::Entity).await?;
+        truncate_table(&ctx.db, payment_callbacks::Entity).await?;
+        truncate_table(&ctx.db, payment_refunds::Entity).await?;
+        truncate_table(&ctx.db, payment_orders::Entity).await?;
+        truncate_table(&ctx.db, payment_channels::Entity).await?;
+        truncate_table(&ctx.db, work_order_attachments::Entity).await?;
+        truncate_table(&ctx.db, work_order_assignments::Entity).await?;
+        truncate_table(&ctx.db, work_order_comments::Entity).await?;
+        truncate_table(&ctx.db, work_orders::Entity).await?;
         truncate_table(&ctx.db, rate_limit_events::Entity).await?;
         truncate_table(&ctx.db, rate_limit_rules::Entity).await?;
+        truncate_table(&ctx.db, database_restores::Entity).await?;
         truncate_table(&ctx.db, database_backups::Entity).await?;
         truncate_table(&ctx.db, scheduled_task_runs::Entity).await?;
         truncate_table(&ctx.db, scheduled_tasks::Entity).await?;

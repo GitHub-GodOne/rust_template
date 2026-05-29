@@ -2,7 +2,7 @@ import { Drawer, Layout, Menu } from "antd";
 import type { MenuProps } from "antd";
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { AdminMenuItem } from "../app/menu";
+import { type AdminMenuItem, defaultAdminMenus } from "../app/menu";
 import { useAuthStore } from "../stores/auth";
 import { renderMenuIcon } from "./icons";
 
@@ -14,14 +14,18 @@ function buildMenuItems(
 ): MenuProps["items"] {
   return menus
     .filter((item) => hasPermission(item.permission))
-    .map((item) => ({
-      key: item.path ?? item.key,
-      icon: renderMenuIcon(item.icon ?? "menu"),
-      label: item.label,
-      children: item.children
+    .map((item) => {
+      const children = item.children?.length
         ? buildMenuItems(item.children, hasPermission)
-        : undefined,
-    }));
+        : undefined;
+
+      return {
+        key: item.path ?? item.key,
+        icon: renderMenuIcon(item.icon ?? "menu"),
+        label: item.label,
+        children,
+      };
+    });
 }
 
 function findOpenKeys(pathname: string, menus: AdminMenuItem[]) {
@@ -36,6 +40,36 @@ function findOpenKeys(pathname: string, menus: AdminMenuItem[]) {
   return keys;
 }
 
+function menuIdentity(item: AdminMenuItem) {
+  return item.path ?? item.title ?? item.label ?? item.key;
+}
+
+function mergeMenus(primary: AdminMenuItem[], fallback: AdminMenuItem[]) {
+  const merged = [...primary];
+
+  for (const fallbackItem of fallback) {
+    const fallbackIdentity = menuIdentity(fallbackItem);
+    const index = merged.findIndex(
+      (item) => menuIdentity(item) === fallbackIdentity,
+    );
+    if (index === -1) {
+      merged.push(fallbackItem);
+      continue;
+    }
+
+    merged[index] = {
+      ...fallbackItem,
+      ...merged[index],
+      children: mergeMenus(
+        merged[index].children ?? [],
+        fallbackItem.children ?? [],
+      ),
+    };
+  }
+
+  return merged;
+}
+
 function SidebarContent({
   collapsed,
   onNavigate,
@@ -47,9 +81,13 @@ function SidebarContent({
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const navigate = useNavigate();
   const location = useLocation();
+  const visibleMenus = useMemo(
+    () => mergeMenus(menus, defaultAdminMenus),
+    [menus],
+  );
   const items = useMemo(
-    () => buildMenuItems(menus, hasPermission),
-    [menus, hasPermission],
+    () => buildMenuItems(visibleMenus, hasPermission),
+    [visibleMenus, hasPermission],
   );
 
   return (
@@ -67,7 +105,7 @@ function SidebarContent({
         theme="dark"
         mode="inline"
         selectedKeys={[location.pathname]}
-        defaultOpenKeys={findOpenKeys(location.pathname, menus)}
+        defaultOpenKeys={findOpenKeys(location.pathname, visibleMenus)}
         items={items}
         onClick={({ key }) => {
           if (key.startsWith("/")) {

@@ -3,9 +3,20 @@ import {
   DatabaseOutlined,
   DeleteOutlined,
   PlusOutlined,
+  RollbackOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Descriptions, Drawer, Popconfirm, Space, Tag, message } from "antd";
+import {
+  Alert,
+  Descriptions,
+  Drawer,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Tag,
+  message,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
 import {
@@ -13,12 +24,16 @@ import {
   createBackup,
   deleteBackup,
   deliverBackup,
+  fetchBackupRestores,
   fetchBackups,
+  restoreBackup,
 } from "../../../api/admin/backups";
 import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+
+const RESTORE_CONFIRM_PHRASE = "RESTORE DATABASE";
 
 const statusColor: Record<string, string> = {
   success: "green",
@@ -41,11 +56,18 @@ function formatDeliveryStatus(value?: string | null) {
 export function BackupsPage() {
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<BackupRecord | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<BackupRecord | null>(null);
+  const [confirmPhrase, setConfirmPhrase] = useState("");
   const queryClient = useQueryClient();
 
   const backupsQuery = useQuery({
     queryKey: ["admin-backups", page],
     queryFn: () => fetchBackups({ page, page_size: 10 }),
+  });
+  const restoresQuery = useQuery({
+    queryKey: ["admin-backup-restores", detail?.id],
+    queryFn: () => fetchBackupRestores(detail?.id ?? 0),
+    enabled: Boolean(detail),
   });
   const createMutation = useMutation({
     mutationFn: createBackup,
@@ -59,6 +81,22 @@ export function BackupsPage() {
     onSuccess: () => {
       message.success("备份推送状态已更新");
       queryClient.invalidateQueries({ queryKey: ["admin-backups"] });
+    },
+  });
+  const restoreMutation = useMutation({
+    mutationFn: ({
+      id,
+      confirm_phrase,
+    }: {
+      id: number;
+      confirm_phrase: string;
+    }) => restoreBackup(id, { confirm_phrase }),
+    onSuccess: () => {
+      message.success("数据库还原已执行");
+      setRestoreTarget(null);
+      setConfirmPhrase("");
+      queryClient.invalidateQueries({ queryKey: ["admin-backups"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-backup-restores"] });
     },
   });
   const deleteMutation = useMutation({
@@ -116,6 +154,19 @@ export function BackupsPage() {
           >
             推送
           </PermissionButton>
+          <PermissionButton
+            size="small"
+            danger
+            disabled={record.status !== "success"}
+            icon={<RollbackOutlined />}
+            permission="system:backup:restore"
+            onClick={() => {
+              setRestoreTarget(record);
+              setConfirmPhrase("");
+            }}
+          >
+            还原
+          </PermissionButton>
           <Popconfirm
             title="确认删除备份记录？"
             onConfirm={() => deleteMutation.mutate(record.id)}
@@ -172,30 +223,115 @@ export function BackupsPage() {
         width={680}
       >
         {detail && (
-          <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="文件名">
-              {detail.filename}
-            </Descriptions.Item>
-            <Descriptions.Item label="路径">
-              {detail.storage_path}
-            </Descriptions.Item>
-            <Descriptions.Item label="SHA-256">
-              {detail.sha256 ?? "-"}
-            </Descriptions.Item>
-            <Descriptions.Item label="推送目标">
-              {detail.delivery_targets ?? "-"}
-            </Descriptions.Item>
-            <Descriptions.Item label="推送状态">
-              <pre className="admin-code-block">
-                {formatDeliveryStatus(detail.delivery_status)}
-              </pre>
-            </Descriptions.Item>
-            <Descriptions.Item label="错误">
-              {detail.error_message ?? "-"}
-            </Descriptions.Item>
-          </Descriptions>
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label="文件名">
+                {detail.filename}
+              </Descriptions.Item>
+              <Descriptions.Item label="路径">
+                {detail.storage_path}
+              </Descriptions.Item>
+              <Descriptions.Item label="SHA-256">
+                {detail.sha256 ?? "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="推送目标">
+                {detail.delivery_targets ?? "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="推送状态">
+                <pre className="admin-code-block">
+                  {formatDeliveryStatus(detail.delivery_status)}
+                </pre>
+              </Descriptions.Item>
+              <Descriptions.Item label="错误">
+                {detail.error_message ?? "-"}
+              </Descriptions.Item>
+            </Descriptions>
+            <Descriptions title="还原记录" column={1} bordered size="small">
+              {restoresQuery.isLoading ? (
+                <Descriptions.Item label="记录">加载中</Descriptions.Item>
+              ) : (restoresQuery.data ?? []).length === 0 ? (
+                <Descriptions.Item label="记录">-</Descriptions.Item>
+              ) : (
+                (restoresQuery.data ?? []).map((restore) => (
+                  <Descriptions.Item
+                    key={restore.id}
+                    label={`#${restore.id} ${restore.status}`}
+                  >
+                    <Space
+                      direction="vertical"
+                      size={4}
+                      style={{ width: "100%" }}
+                    >
+                      <span>
+                        安全备份：{restore.pre_restore_backup_id ?? "-"}
+                      </span>
+                      <span>操作者：{restore.restored_by ?? "-"}</span>
+                      <span>开始：{restore.started_at}</span>
+                      <span>结束：{restore.finished_at ?? "-"}</span>
+                      <span>耗时：{restore.duration_ms ?? "-"} ms</span>
+                      {restore.output && (
+                        <pre className="admin-code-block">{restore.output}</pre>
+                      )}
+                      {restore.error_message && (
+                        <pre className="admin-code-block">
+                          {restore.error_message}
+                        </pre>
+                      )}
+                    </Space>
+                  </Descriptions.Item>
+                ))
+              )}
+            </Descriptions>
+          </Space>
         )}
       </Drawer>
+      <Modal
+        title="确认还原数据库"
+        open={Boolean(restoreTarget)}
+        okText="确认还原"
+        okButtonProps={{
+          danger: true,
+          disabled: confirmPhrase.trim() !== RESTORE_CONFIRM_PHRASE,
+        }}
+        confirmLoading={restoreMutation.isPending}
+        onCancel={() => {
+          setRestoreTarget(null);
+          setConfirmPhrase("");
+        }}
+        onOk={() => {
+          if (!restoreTarget) {
+            return;
+          }
+          restoreMutation.mutate({
+            id: restoreTarget.id,
+            confirm_phrase: confirmPhrase,
+          });
+        }}
+      >
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Alert
+            type="warning"
+            showIcon
+            message="该操作会先自动创建安全备份，然后用所选备份覆盖当前数据库。"
+          />
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="备份 ID">
+              {restoreTarget?.id ?? "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="文件名">
+              {restoreTarget?.filename ?? "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="SHA-256">
+              {restoreTarget?.sha256 ?? "-"}
+            </Descriptions.Item>
+          </Descriptions>
+          <Input
+            value={confirmPhrase}
+            placeholder={RESTORE_CONFIRM_PHRASE}
+            onChange={(event) => setConfirmPhrase(event.target.value)}
+          />
+        </Space>
+      </Modal>
     </CrudPage>
   );
 }

@@ -26,7 +26,7 @@ export type AdminMenuItem = {
 export const defaultAdminMenus: AdminMenuItem[] = [
   {
     key: "dashboard",
-    label: "控制台",
+    label: "仪表盘",
     path: "/admin/dashboard",
     icon: "dashboard",
     permission: "dashboard:view",
@@ -126,6 +126,27 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         path: "/admin/system/email-templates",
         icon: "mail",
         permission: "system:email_template:list",
+      },
+      {
+        key: "system-work-orders",
+        label: "工单管理",
+        path: "/admin/system/work-orders",
+        icon: "profile",
+        permission: "system:work_order:list",
+      },
+      {
+        key: "system-payments",
+        label: "支付管理",
+        path: "/admin/system/payments",
+        icon: "credit-card",
+        permission: "system:payment_order:list",
+      },
+      {
+        key: "system-content",
+        label: "内容管理",
+        path: "/admin/system/content",
+        icon: "read",
+        permission: "system:content_article:list",
       },
     ],
   },

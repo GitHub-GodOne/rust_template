@@ -1,7 +1,12 @@
 #![allow(clippy::missing_errors_doc)]
 
 use std::{
-    collections::BTreeMap, fs, path::PathBuf, process::Command, time::Duration, time::Instant,
+    collections::BTreeMap,
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    time::{Duration, Instant},
 };
 
 use chrono::{offset::Local, Datelike};
@@ -14,7 +19,9 @@ use sha2::{Digest, Sha256};
 use crate::errors::{ApiError, ApiResult};
 
 pub use super::_entities::database_backups::{self, ActiveModel, Entity, Model};
-use super::_entities::system_settings;
+use super::_entities::{database_restores, system_settings};
+
+pub const RESTORE_CONFIRM_PHRASE: &str = "RESTORE DATABASE";
 
 const STORAGE_ROOT: &str = "storage/backups";
 const DELIVERY_TIMEOUT_SECONDS: u64 = 10;
@@ -115,6 +122,67 @@ pub async fn create_postgres_backup(
     .await?;
 
     Ok(model)
+}
+
+pub struct RestoreOptions {
+    pub confirm_phrase: String,
+}
+
+pub async fn restore_postgres_backup(
+    db: &DatabaseConnection,
+    backup: Model,
+    restored_by: Option<i32>,
+    options: RestoreOptions,
+) -> ApiResult<database_restores::Model> {
+    validate_restore_confirmation(&options.confirm_phrase)?;
+    validate_restorable_backup(&backup)?;
+    verify_backup_file(&backup)?;
+
+    let pre_restore_backup = create_postgres_backup(db, restored_by, BackupTrigger::Manual).await?;
+    if pre_restore_backup.status != "success" {
+        return Err(ApiError::bad_request(
+            "pre-restore safety backup did not complete successfully",
+        ));
+    }
+
+    let started_at = Local::now();
+    let timer = Instant::now();
+    let running = database_restores::ActiveModel {
+        backup_id: Set(backup.id),
+        status: Set("running".to_string()),
+        confirm_phrase: Set(RESTORE_CONFIRM_PHRASE.to_string()),
+        pre_restore_backup_id: Set(Some(pre_restore_backup.id)),
+        started_at: Set(started_at.into()),
+        restored_by: Set(restored_by),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+
+    let result = run_pg_restore(&backup.storage_path);
+    let finished_at = Local::now();
+    let duration_ms = i32::try_from(timer.elapsed().as_millis()).unwrap_or(i32::MAX);
+    let (status, output, error_message) = match result {
+        Ok(output) => ("success", Some(output), None),
+        Err(error) => ("failed", None, Some(error)),
+    };
+
+    persist_restore_result(
+        db,
+        running,
+        RestorePersistResult {
+            backup_id: backup.id,
+            status,
+            pre_restore_backup_id: Some(pre_restore_backup.id),
+            started_at,
+            finished_at,
+            duration_ms,
+            output,
+            error_message,
+            restored_by,
+        },
+    )
+    .await
 }
 
 pub async fn deliver_backup(db: &DatabaseConnection, backup: Model) -> ApiResult<Model> {
@@ -322,6 +390,115 @@ fn backup_metadata(backup: &Model) -> serde_json::Value {
     })
 }
 
+struct RestorePersistResult {
+    backup_id: i32,
+    status: &'static str,
+    pre_restore_backup_id: Option<i32>,
+    started_at: chrono::DateTime<Local>,
+    finished_at: chrono::DateTime<Local>,
+    duration_ms: i32,
+    output: Option<String>,
+    error_message: Option<String>,
+    restored_by: Option<i32>,
+}
+
+async fn persist_restore_result(
+    db: &DatabaseConnection,
+    running: database_restores::Model,
+    result: RestorePersistResult,
+) -> ApiResult<database_restores::Model> {
+    let mut active = running.into_active_model();
+    active.status = Set(result.status.to_string());
+    active.finished_at = Set(Some(result.finished_at.into()));
+    active.duration_ms = Set(Some(result.duration_ms));
+    active.output = Set(result.output.clone());
+    active.error_message = Set(result.error_message.clone());
+
+    match active.update(db).await {
+        Ok(restore) => Ok(restore),
+        Err(_) => Ok(database_restores::ActiveModel {
+            backup_id: Set(result.backup_id),
+            status: Set(result.status.to_string()),
+            confirm_phrase: Set(RESTORE_CONFIRM_PHRASE.to_string()),
+            pre_restore_backup_id: Set(result.pre_restore_backup_id),
+            started_at: Set(result.started_at.into()),
+            finished_at: Set(Some(result.finished_at.into())),
+            duration_ms: Set(Some(result.duration_ms)),
+            output: Set(result.output),
+            error_message: Set(result.error_message),
+            restored_by: Set(result.restored_by),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?),
+    }
+}
+
+fn validate_restorable_backup(backup: &Model) -> ApiResult<()> {
+    if backup.status != "success" {
+        return Err(ApiError::bad_request(
+            "only successful backups can be restored",
+        ));
+    }
+    if backup.sha256.is_none() {
+        return Err(ApiError::bad_request("backup checksum is missing"));
+    }
+    Ok(())
+}
+
+pub fn validate_restore_confirmation(confirm_phrase: &str) -> ApiResult<()> {
+    if confirm_phrase.trim() == RESTORE_CONFIRM_PHRASE {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(
+            "restore confirmation phrase is invalid",
+        ))
+    }
+}
+
+fn verify_backup_file(backup: &Model) -> ApiResult<()> {
+    let path = PathBuf::from(&backup.storage_path);
+    if !path.is_file() {
+        return Err(ApiError::bad_request("backup file is missing"));
+    }
+
+    let bytes = fs::read(&path).map_err(|_| ApiError::internal("failed to read backup file"))?;
+    let digest = hex::encode(Sha256::digest(&bytes));
+    if backup.sha256.as_deref() == Some(digest.as_str()) {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request("backup checksum does not match"))
+    }
+}
+
+fn run_pg_restore(storage_path: &str) -> Result<String, String> {
+    let database_url =
+        std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is not configured".to_string())?;
+    let output = Command::new("pg_restore")
+        .args(pg_restore_args(&database_url, Path::new(storage_path)))
+        .output()
+        .map_err(|err| err.to_string())?;
+
+    if output.status.success() {
+        Ok(trim_message(&String::from_utf8_lossy(&output.stdout)))
+    } else {
+        Err(trim_message(&String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
+#[must_use]
+pub fn pg_restore_args(database_url: &str, storage_path: &Path) -> Vec<OsString> {
+    vec![
+        "--clean".into(),
+        "--if-exists".into(),
+        "--no-owner".into(),
+        "--no-privileges".into(),
+        "--dbname".into(),
+        database_url.into(),
+        storage_path.as_os_str().to_os_string(),
+    ]
+}
+
 fn parse_targets(value: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(value)
         .unwrap_or_else(|_| {
@@ -348,4 +525,39 @@ fn json_string<T: serde::Serialize>(value: &T) -> String {
 
 fn trim_message(message: &str) -> String {
     message.chars().take(1000).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsString, path::Path};
+
+    use super::{pg_restore_args, validate_restore_confirmation, RESTORE_CONFIRM_PHRASE};
+
+    #[test]
+    fn validates_restore_confirmation_phrase() {
+        assert!(validate_restore_confirmation(RESTORE_CONFIRM_PHRASE).is_ok());
+        assert!(validate_restore_confirmation(" RESTORE DATABASE ").is_ok());
+        assert!(validate_restore_confirmation("restore database").is_err());
+    }
+
+    #[test]
+    fn builds_pg_restore_args_without_shell_interpolation() {
+        let args = pg_restore_args(
+            "postgres://user:pass@localhost/db?sslmode=disable",
+            Path::new("storage/backups/2026/05/db.dump"),
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("--clean"),
+                OsString::from("--if-exists"),
+                OsString::from("--no-owner"),
+                OsString::from("--no-privileges"),
+                OsString::from("--dbname"),
+                OsString::from("postgres://user:pass@localhost/db?sslmode=disable"),
+                OsString::from("storage/backups/2026/05/db.dump"),
+            ]
+        );
+    }
 }

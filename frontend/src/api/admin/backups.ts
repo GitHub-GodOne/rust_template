@@ -21,6 +21,22 @@ export type BackupRecord = {
   updated_at: string;
 };
 
+export type RestoreRecord = {
+  id: number;
+  backup_id: number;
+  status: string;
+  confirm_phrase: string;
+  pre_restore_backup_id?: number | null;
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  output?: string | null;
+  error_message?: string | null;
+  restored_by?: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function fetchBackups(params?: {
   page?: number;
   page_size?: number;
@@ -43,6 +59,24 @@ export async function createBackup() {
 export async function deliverBackup(id: number) {
   const response = await apiClient.post<ApiResponse<BackupRecord>>(
     `/admin/backups/${id}/deliver`,
+  );
+  return unwrap(response.data);
+}
+
+export async function fetchBackupRestores(id: number) {
+  const response = await apiClient.get<ApiResponse<RestoreRecord[]>>(
+    `/admin/backups/${id}/restores`,
+  );
+  return unwrap(response.data);
+}
+
+export async function restoreBackup(
+  id: number,
+  payload: { confirm_phrase: string },
+) {
+  const response = await apiClient.post<ApiResponse<RestoreRecord>>(
+    `/admin/backups/${id}/restore`,
+    payload,
   );
   return unwrap(response.data);
 }

@@ -7,11 +7,13 @@ import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { BackupsPage } from "../pages/system/backups/BackupsPage";
+import { ContentPage } from "../pages/system/content/ContentPage";
 import { EmailTemplatesPage } from "../pages/system/email-templates/EmailTemplatesPage";
 import { LogsPage } from "../pages/system/logs/LogsPage";
 import { MenusPage } from "../pages/system/menus/MenusPage";
 import { MonitoringPage } from "../pages/system/monitoring/MonitoringPage";
 import { NotificationsPage } from "../pages/system/notifications/NotificationsPage";
+import { PaymentsPage } from "../pages/system/payments/PaymentsPage";
 import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
 import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
@@ -19,6 +21,7 @@ import { SettingsPage } from "../pages/system/settings/SettingsPage";
 import { TenantsPage } from "../pages/system/tenants/TenantsPage";
 import { UploadsPage } from "../pages/system/uploads/UploadsPage";
 import { UsersPage } from "../pages/system/users/UsersPage";
+import { WorkOrdersPage } from "../pages/system/work-orders/WorkOrdersPage";
 import { useAuthStore } from "../stores/auth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -224,6 +227,30 @@ export function AppRouter() {
           element={
             <RequirePermission permission="system:email_template:list">
               <EmailTemplatesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/work-orders"
+          element={
+            <RequirePermission permission="system:work_order:list">
+              <WorkOrdersPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/payments"
+          element={
+            <RequirePermission permission="system:payment_order:list">
+              <PaymentsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/content"
+          element={
+            <RequirePermission permission="system:content_article:list">
+              <ContentPage />
             </RequirePermission>
           }
         />
