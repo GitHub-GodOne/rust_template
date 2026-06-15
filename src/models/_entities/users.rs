@@ -25,6 +25,7 @@ pub struct Model {
     pub magic_link_token: Option<String>,
     pub magic_link_expiration: Option<DateTimeWithTimeZone>,
     pub tenant_id: Option<i32>,
+    pub current_department_id: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

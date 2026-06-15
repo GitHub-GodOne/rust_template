@@ -4,7 +4,7 @@ use crate::{
     errors::{ApiError, ApiResult},
     mailers::auth::AuthMailer,
     models::{
-        _entities::{tenants, users},
+        _entities::{departments, tenants, user_departments, users},
         admin_logs, rbac, refresh_tokens,
         users::{LoginParams, RegisterParams},
     },
@@ -13,7 +13,7 @@ use crate::{
 };
 use loco_rs::prelude::*;
 use regex::Regex;
-use sea_orm::EntityTrait;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -49,6 +49,11 @@ pub struct ResendVerificationParams {
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct RefreshParams {
     pub refresh_token: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CurrentDepartmentParams {
+    pub department_id: Option<i32>,
 }
 
 fn jwt_for_user(ctx: &AppContext, user: &users::Model) -> ApiResult<String> {
@@ -336,6 +341,13 @@ pub async fn current(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResul
     } else {
         None
     };
+    let user_departments = load_current_departments(&ctx, &user).await?;
+    let current_department = user.current_department_id.and_then(|department_id| {
+        user_departments
+            .iter()
+            .find(|department| department.id == department_id)
+            .cloned()
+    });
 
     Ok(responses::ok(CurrentResponse::new(
         &user,
@@ -343,9 +355,97 @@ pub async fn current(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResul
         rbac::permission_codes(permissions),
         menus,
         tenant.map(Into::into),
+        user_departments.into_iter().map(Into::into).collect(),
+        current_department.map(Into::into),
         data_scopes.into_iter().map(Into::into).collect(),
         effective_data_scope.code().to_string(),
     )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/current-department",
+    tag = "auth",
+    security(("bearer_auth" = [])),
+    request_body = CurrentDepartmentParams,
+    responses((status = 200, body = ApiResponse<EmptyData>))
+)]
+#[debug_handler]
+pub async fn switch_current_department(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<CurrentDepartmentParams>,
+) -> ApiResult<Response> {
+    let user = users::Model::find_by_pid(&ctx.db, &auth.claims.pid).await?;
+    if let Some(department_id) = params.department_id {
+        validate_current_department(&ctx, &user, department_id).await?;
+    }
+
+    let mut active = user.into_active_model();
+    active.current_department_id = Set(params.department_id);
+    active.update(&ctx.db).await?;
+
+    Ok(responses::empty())
+}
+
+async fn load_current_departments(
+    ctx: &AppContext,
+    user: &users::Model,
+) -> ApiResult<Vec<departments::Model>> {
+    let links = user_departments::Entity::find()
+        .filter(user_departments::Column::UserId.eq(user.id))
+        .all(&ctx.db)
+        .await?;
+    let ids = links
+        .into_iter()
+        .map(|link| link.department_id)
+        .collect::<Vec<_>>();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    Ok(departments::Entity::find()
+        .filter(departments::Column::Id.is_in(ids))
+        .filter(departments::Column::Enabled.eq(true))
+        .order_by_asc(departments::Column::SortOrder)
+        .order_by_asc(departments::Column::Id)
+        .all(&ctx.db)
+        .await?)
+}
+
+async fn validate_current_department(
+    ctx: &AppContext,
+    user: &users::Model,
+    department_id: i32,
+) -> ApiResult<()> {
+    let department = departments::Entity::find_by_id(department_id)
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("department not found"))?;
+    if user.tenant_id != Some(department.tenant_id) {
+        return Err(ApiError::forbidden(
+            "cannot switch to another tenant department",
+        ));
+    }
+    if !department.enabled {
+        return Err(ApiError::bad_request("department is disabled"));
+    }
+    let tenant = tenants::Entity::find_by_id(department.tenant_id)
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("tenant not found"))?;
+    if !tenant.departments_enabled {
+        return Err(ApiError::forbidden("department management is disabled"));
+    }
+    let link = user_departments::Entity::find()
+        .filter(user_departments::Column::UserId.eq(user.id))
+        .filter(user_departments::Column::DepartmentId.eq(department_id))
+        .one(&ctx.db)
+        .await?;
+    if link.is_none() {
+        return Err(ApiError::forbidden("department is not assigned to user"));
+    }
+    Ok(())
 }
 
 /// Magic link authentication provides a secure and passwordless way to log in to the application.
@@ -443,6 +543,7 @@ pub fn routes() -> Routes {
         .add("/forgot", post(forgot))
         .add("/reset", post(reset))
         .add("/current", get(current))
+        .add("/current-department", post(switch_current_department))
         .add("/magic-link", post(magic_link))
         .add("/magic-link/{token}", get(magic_link_verify))
         .add("/resend-verification-mail", post(resend_verification_email))

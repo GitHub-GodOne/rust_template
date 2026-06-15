@@ -5,6 +5,7 @@
   description: 系统默认平台租户
   enabled: true
   is_system: true
+  departments_enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 2
@@ -13,5 +14,6 @@
   description: 用于验证租户数据隔离的演示租户
   enabled: true
   is_system: false
+  departments_enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"

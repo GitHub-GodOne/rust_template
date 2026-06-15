@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "rsbuild dev --open",
+    "dev": "rsbuild dev",
+    "dev:open": "rsbuild dev --open",
     "build": "rsbuild build",
     "lint": "biome check src/",
     "preview": "rsbuild preview"
@@ -12,6 +13,8 @@
   "dependencies": {
     "@ant-design/icons": "^5",
     "@tanstack/react-query": "^5",
+    "@xterm/addon-fit": "^0.10",
+    "@xterm/xterm": "^5",
     "antd": "^5",
     "axios": "^1",
     "react": "^18",

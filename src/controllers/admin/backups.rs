@@ -156,7 +156,13 @@ pub async fn get(
 #[debug_handler]
 pub async fn create(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:backup:create").await?;
-    let backup = create_postgres_backup(&ctx.db, Some(actor.id), BackupTrigger::Manual).await?;
+    let backup = create_postgres_backup(
+        &ctx.db,
+        &ctx.config.database.uri,
+        Some(actor.id),
+        BackupTrigger::Manual,
+    )
+    .await?;
     let backup = deliver_backup(&ctx.db, backup).await?;
     Ok(responses::ok(BackupRecord::from(backup)))
 }
@@ -233,6 +239,7 @@ pub async fn restore(
         Some(actor.id),
         RestoreOptions {
             confirm_phrase: params.confirm_phrase,
+            database_url: ctx.config.database.uri.clone(),
         },
     )
     .await?;

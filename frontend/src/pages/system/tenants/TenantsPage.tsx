@@ -68,6 +68,12 @@ export function TenantsPage() {
       render: (enabled) => <StatusTag active={enabled} />,
     },
     {
+      title: "部门管理",
+      dataIndex: "departments_enabled",
+      width: 110,
+      render: (enabled) => <StatusTag active={enabled} />,
+    },
+    {
       title: "系统租户",
       dataIndex: "is_system",
       width: 110,
@@ -91,6 +97,7 @@ export function TenantsPage() {
                 code: record.code,
                 description: record.description,
                 enabled: record.enabled,
+                departments_enabled: record.departments_enabled,
               });
               setFormOpen(true);
             }}
@@ -144,7 +151,10 @@ export function TenantsPage() {
                 onClick: () => {
                   setEditing(null);
                   form.resetFields();
-                  form.setFieldsValue({ enabled: true });
+                  form.setFieldsValue({
+                    enabled: true,
+                    departments_enabled: false,
+                  });
                   setFormOpen(true);
                 },
               },
@@ -185,6 +195,13 @@ export function TenantsPage() {
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="departments_enabled"
+            label="启用部门管理"
+            valuePropName="checked"
+          >
             <Switch />
           </Form.Item>
         </Form>

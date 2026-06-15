@@ -25,6 +25,7 @@ pub struct TenantRecord {
     pub description: Option<String>,
     pub enabled: bool,
     pub is_system: bool,
+    pub departments_enabled: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -35,6 +36,7 @@ pub struct SaveTenantParams {
     pub code: String,
     pub description: Option<String>,
     pub enabled: Option<bool>,
+    pub departments_enabled: Option<bool>,
 }
 
 #[utoipa::path(
@@ -128,6 +130,7 @@ pub async fn create(
         description: Set(params.description),
         enabled: Set(params.enabled.unwrap_or(true)),
         is_system: Set(false),
+        departments_enabled: Set(params.departments_enabled.unwrap_or(false)),
         ..Default::default()
     }
     .insert(&ctx.db)
@@ -167,6 +170,7 @@ pub async fn update(
     active.code = Set(params.code);
     active.description = Set(params.description);
     active.enabled = Set(params.enabled.unwrap_or(true));
+    active.departments_enabled = Set(params.departments_enabled.unwrap_or(false));
     let tenant = active.update(&ctx.db).await?;
 
     Ok(responses::ok(TenantRecord::from(tenant)))
@@ -240,6 +244,7 @@ impl From<tenants::Model> for TenantRecord {
             description: tenant.description,
             enabled: tenant.enabled,
             is_system: tenant.is_system,
+            departments_enabled: tenant.departments_enabled,
             created_at: tenant.created_at.to_rfc3339(),
             updated_at: tenant.updated_at.to_rfc3339(),
         }

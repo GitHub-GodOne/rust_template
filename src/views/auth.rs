@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::_entities::{data_scopes, tenants, users};
+use crate::models::_entities::{data_scopes, departments, tenants, users};
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct LoginResponse {
@@ -79,6 +79,7 @@ pub struct CurrentMenuItem {
     pub permission: Option<String>,
     pub permission_code: Option<String>,
     pub actions: CurrentMenuActions,
+    #[schema(no_recursion)]
     pub children: Vec<CurrentMenuItem>,
 }
 
@@ -92,6 +93,15 @@ pub struct CurrentRole {
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct CurrentTenant {
     pub id: i32,
+    pub name: String,
+    pub code: String,
+    pub departments_enabled: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CurrentDepartment {
+    pub id: i32,
+    pub tenant_id: i32,
     pub name: String,
     pub code: String,
 }
@@ -112,18 +122,23 @@ pub struct CurrentResponse {
     pub permissions: Vec<String>,
     pub menus: Vec<CurrentMenuItem>,
     pub tenant: Option<CurrentTenant>,
+    pub departments: Vec<CurrentDepartment>,
+    pub current_department: Option<CurrentDepartment>,
     pub data_scopes: Vec<CurrentDataScope>,
     pub effective_data_scope: String,
 }
 
 impl CurrentResponse {
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         user: &users::Model,
         roles: Vec<CurrentRole>,
         permissions: Vec<String>,
         menus: Vec<CurrentMenuItem>,
         tenant: Option<CurrentTenant>,
+        departments: Vec<CurrentDepartment>,
+        current_department: Option<CurrentDepartment>,
         data_scopes: Vec<CurrentDataScope>,
         effective_data_scope: String,
     ) -> Self {
@@ -135,6 +150,8 @@ impl CurrentResponse {
             permissions,
             menus,
             tenant,
+            departments,
+            current_department,
             data_scopes,
             effective_data_scope,
         }
@@ -147,6 +164,18 @@ impl From<tenants::Model> for CurrentTenant {
             id: tenant.id,
             name: tenant.name,
             code: tenant.code,
+            departments_enabled: tenant.departments_enabled,
+        }
+    }
+}
+
+impl From<departments::Model> for CurrentDepartment {
+    fn from(department: departments::Model) -> Self {
+        Self {
+            id: department.id,
+            tenant_id: department.tenant_id,
+            name: department.name,
+            code: department.code,
         }
     }
 }

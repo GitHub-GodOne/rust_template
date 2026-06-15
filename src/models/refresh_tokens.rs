@@ -6,10 +6,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use sha2::{Digest, Sha256};
 
 pub use super::_entities::refresh_tokens::{self, ActiveModel, Entity, Model};
-use super::_entities::users;
-
-pub const REFRESH_TOKEN_DAYS: i64 = 30;
-pub const REFRESH_TOKEN_LENGTH: usize = 64;
+use super::{_entities::users, system_settings};
 
 #[derive(Debug, Clone)]
 pub struct IssuedRefreshToken {
@@ -31,9 +28,18 @@ impl Model {
         db: &DatabaseConnection,
         user: &users::Model,
     ) -> ModelResult<IssuedRefreshToken> {
-        let token = hash::random_string(REFRESH_TOKEN_LENGTH);
+        let token_length = usize::try_from(
+            system_settings::number_i64(db, "auth.refresh_token_length", 64)
+                .await?
+                .clamp(32, 256),
+        )
+        .unwrap_or(64);
+        let expires_days = system_settings::number_i64(db, "auth.refresh_token_days", 30)
+            .await?
+            .clamp(1, 365);
+        let token = hash::random_string(token_length);
         let token_hash = Self::hash_token(&token);
-        let expires_at = Local::now() + Duration::days(REFRESH_TOKEN_DAYS);
+        let expires_at = Local::now() + Duration::days(expires_days);
 
         let model = refresh_tokens::ActiveModel {
             user_id: Set(user.id),

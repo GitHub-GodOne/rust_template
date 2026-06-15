@@ -1,0 +1,33 @@
+---
+- id: 1
+  tenant_id: 1
+  name: 本地默认存储
+  code: local-default
+  provider: local
+  enabled: true
+  is_default: true
+  endpoint:
+  region:
+  access_key_id:
+  secret_access_key:
+  public_base_url:
+  path_style: false
+  description: 服务端本地文件存储
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 2
+  tenant_id: 2
+  name: 演示本地存储
+  code: demo-local
+  provider: local
+  enabled: true
+  is_default: true
+  endpoint:
+  region:
+  access_key_id:
+  secret_access_key:
+  public_base_url:
+  path_style: false
+  description: 演示租户本地文件存储
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

@@ -23,5 +23,6 @@ Ok(
         tenant_id: Some(
             1,
         ),
+        current_department_id: None,
     },
 )

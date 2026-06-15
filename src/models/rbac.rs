@@ -9,7 +9,7 @@ use crate::{
     errors::{ApiError, ApiResult},
     models::_entities::{
         data_scopes, menus, permissions, role_data_scopes, role_menus, role_permissions, roles,
-        user_roles, users,
+        user_departments, user_roles, users,
     },
     views::auth::{CurrentMenuActions, CurrentMenuItem, CurrentRole},
 };
@@ -21,6 +21,10 @@ pub enum EffectiveDataScope {
     All,
     Tenant {
         tenant_id: i32,
+    },
+    Department {
+        tenant_id: i32,
+        department_id: i32,
     },
     SelfOnly {
         user_id: i32,
@@ -35,6 +39,7 @@ impl EffectiveDataScope {
         match self {
             Self::All => "all",
             Self::Tenant { .. } => "tenant",
+            Self::Department { .. } => "department",
             Self::SelfOnly { .. } => "self",
             Self::None => "none",
         }
@@ -242,6 +247,11 @@ pub async fn resolve_data_scope(
                 Ok(EffectiveDataScope::Tenant { tenant_id })
             });
     }
+    if scopes.iter().any(|scope| scope.code == "department") {
+        if let Some(scope) = resolve_department_scope(db, user).await? {
+            return Ok(scope);
+        }
+    }
     if scopes.iter().any(|scope| scope.code == "self") {
         return Ok(EffectiveDataScope::SelfOnly {
             user_id: user.id,
@@ -250,6 +260,29 @@ pub async fn resolve_data_scope(
     }
 
     Ok(EffectiveDataScope::None)
+}
+
+async fn resolve_department_scope(
+    db: &DatabaseConnection,
+    user: &users::Model,
+) -> ModelResult<Option<EffectiveDataScope>> {
+    let Some(tenant_id) = user.tenant_id else {
+        return Ok(None);
+    };
+    let Some(department_id) = user.current_department_id else {
+        return Ok(None);
+    };
+
+    let link = user_departments::Entity::find()
+        .filter(user_departments::Column::UserId.eq(user.id))
+        .filter(user_departments::Column::DepartmentId.eq(department_id))
+        .one(db)
+        .await?;
+
+    Ok(link.map(|_| EffectiveDataScope::Department {
+        tenant_id,
+        department_id,
+    }))
 }
 
 #[must_use]

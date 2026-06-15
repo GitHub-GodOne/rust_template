@@ -12,6 +12,9 @@ mod m20260527_000007_work_orders;
 mod m20260527_000008_payments;
 mod m20260527_000009_database_restores;
 mod m20260527_000010_content_management;
+mod m20260527_000011_departments;
+mod m20260527_000012_resource_storage;
+mod m20260527_000013_upload_tasks;
 
 pub struct Migrator;
 
@@ -30,6 +33,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260527_000008_payments::Migration),
             Box::new(m20260527_000009_database_restores::Migration),
             Box::new(m20260527_000010_content_management::Migration),
+            Box::new(m20260527_000011_departments::Migration),
+            Box::new(m20260527_000012_resource_storage::Migration),
+            Box::new(m20260527_000013_upload_tasks::Migration),
             // inject-above (do not remove this comment)
         ]
     }

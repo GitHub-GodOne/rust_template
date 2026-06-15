@@ -35,9 +35,9 @@
   key: upload.allowed_extensions
   name: 上传扩展名白名单
   group_key: upload
-  value: jpg,jpeg,png,gif,webp,pdf,txt,csv,xlsx,zip
+  value: jpg,jpeg,png,gif,webp,svg,bmp,pdf,txt,csv,xls,xlsx,doc,docx,ppt,pptx,zip,rar,7z,tar,gz,mp4,m4v,webm,ogg,mov,avi,mkv,mp3,wav,m4a,aac,flac
   value_type: string
-  default_value: jpg,jpeg,png,gif,webp,pdf,txt,csv,xlsx,zip
+  default_value: jpg,jpeg,png,gif,webp,svg,bmp,pdf,txt,csv,xls,xlsx,doc,docx,ppt,pptx,zip,rar,7z,tar,gz,mp4,m4v,webm,ogg,mov,avi,mkv,mp3,wav,m4a,aac,flac
   description: 允许上传的文件扩展名，使用逗号分隔
   is_public: false
   is_builtin: true
@@ -171,6 +171,134 @@
   is_builtin: true
   is_encrypted: true
   sort_order: 110
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 12
+  key: backup.storage_root
+  name: 备份本地目录
+  group_key: backup
+  value: storage/backups
+  value_type: string
+  default_value: storage/backups
+  description: 数据库备份默认保存目录
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 120
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 13
+  key: backup.delivery_timeout_seconds
+  name: 备份推送超时秒数
+  group_key: backup
+  value: "10"
+  value_type: number
+  default_value: "10"
+  description: Telegram、企业微信、钉钉、自定义 Webhook 推送请求超时秒数
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 130
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 14
+  key: auth.refresh_token_days
+  name: 刷新令牌有效天数
+  group_key: auth
+  value: "30"
+  value_type: number
+  default_value: "30"
+  description: 登录刷新令牌的有效期天数，系统会限制在 1 到 365 天
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 140
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 15
+  key: auth.refresh_token_length
+  name: 刷新令牌长度
+  group_key: auth
+  value: "64"
+  value_type: number
+  default_value: "64"
+  description: 刷新令牌随机字符串长度，系统会限制在 32 到 256 位
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 150
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 16
+  key: auth.magic_link_expiration_minutes
+  name: 魔法链接有效分钟数
+  group_key: auth
+  value: "5"
+  value_type: number
+  default_value: "5"
+  description: 免密登录魔法链接有效期分钟数，系统会限制在 1 到 120 分钟
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 160
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 17
+  key: auth.magic_link_length
+  name: 魔法链接令牌长度
+  group_key: auth
+  value: "32"
+  value_type: number
+  default_value: "32"
+  description: 魔法链接随机令牌长度，系统会限制在 16 到 128 位
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 170
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 18
+  key: file_manager.roots
+  name: 文件管理根目录
+  group_key: file_manager
+  value: '[{"key":"public-assets","name":"公共资源","url_path":"/assets","local_root":"storage/file-manager/assets","enabled":true}]'
+  value_type: json
+  default_value: '[{"key":"public-assets","name":"公共资源","url_path":"/assets","local_root":"storage/file-manager/assets","enabled":true}]'
+  description: 后台文件管理允许访问的本地 URL 映射目录列表
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 180
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 19
+  key: ssh_manager.targets
+  name: SSH 连接目标
+  group_key: ssh_manager
+  value: "[]"
+  value_type: json
+  default_value: "[]"
+  description: 后台 SSH 管理可连接的远程主机列表，本机 Shell 内置可用
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 190
   created_by:
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"

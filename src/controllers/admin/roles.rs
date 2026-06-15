@@ -506,7 +506,8 @@ fn apply_role_scope(
 ) -> sea_orm::Select<roles::Entity> {
     match scope {
         EffectiveDataScope::All => query,
-        EffectiveDataScope::Tenant { tenant_id } => {
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. } => {
             query.filter(roles::Column::TenantId.eq(*tenant_id))
         }
         EffectiveDataScope::SelfOnly { .. } | EffectiveDataScope::None => {
@@ -522,7 +523,12 @@ async fn assert_role_visible(
 ) -> ApiResult<()> {
     match rbac::resolve_data_scope(&ctx.db, actor).await? {
         EffectiveDataScope::All => Ok(()),
-        EffectiveDataScope::Tenant { tenant_id } if role.tenant_id == Some(tenant_id) => Ok(()),
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. }
+            if role.tenant_id == Some(tenant_id) =>
+        {
+            Ok(())
+        }
         _ => Err(ApiError::forbidden("data scope denied")),
     }
 }

@@ -6,9 +6,7 @@ use serde_json::Map;
 use uuid::Uuid;
 
 pub use super::_entities::users::{self, ActiveModel, Entity, Model};
-
-pub const MAGIC_LINK_LENGTH: i8 = 32;
-pub const MAGIC_LINK_EXPIRATION_MIN: i8 = 5;
+use super::system_settings;
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct LoginParams {
@@ -346,8 +344,18 @@ impl ActiveModel {
     /// # Errors
     /// - Returns an error if database update fails
     pub async fn create_magic_link(mut self, db: &DatabaseConnection) -> ModelResult<Model> {
-        let random_str = hash::random_string(MAGIC_LINK_LENGTH as usize);
-        let expired = Local::now() + Duration::minutes(MAGIC_LINK_EXPIRATION_MIN.into());
+        let token_length = usize::try_from(
+            system_settings::number_i64(db, "auth.magic_link_length", 32)
+                .await?
+                .clamp(16, 128),
+        )
+        .unwrap_or(32);
+        let expiration_minutes =
+            system_settings::number_i64(db, "auth.magic_link_expiration_minutes", 5)
+                .await?
+                .clamp(1, 120);
+        let random_str = hash::random_string(token_length);
+        let expired = Local::now() + Duration::minutes(expiration_minutes);
 
         self.magic_link_token = ActiveValue::set(Some(random_str));
         self.magic_link_expiration = ActiveValue::set(Some(expired.into()));

@@ -1,6 +1,7 @@
 import type { AdminMenuItem } from "../app/menu";
 import {
   type AuthDataScope,
+  type AuthDepartment,
   type AuthRole,
   type AuthTenant,
   useAuthStore,
@@ -35,6 +36,8 @@ export type CurrentResponse = {
   permissions: string[];
   menus: AdminMenuItem[];
   tenant?: AuthTenant | null;
+  departments: AuthDepartment[];
+  current_department?: AuthDepartment | null;
   data_scopes: AuthDataScope[];
   effective_data_scope: string;
 };
@@ -59,6 +62,12 @@ export async function current() {
   const response =
     await apiClient.get<ApiResponse<CurrentResponse>>("/auth/current");
   return unwrap(response.data);
+}
+
+export async function switchCurrentDepartment(departmentId: number | null) {
+  await apiClient.post("/auth/current-department", {
+    department_id: departmentId,
+  });
 }
 
 export async function logout() {

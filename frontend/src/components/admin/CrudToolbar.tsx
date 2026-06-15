@@ -47,6 +47,7 @@ export function CrudToolbar({
         {actions.map((action) => (
           <PermissionButton
             key={action.key}
+            size="small"
             permission={action.permission}
             danger={action.danger}
             type={action.primary ? "primary" : "default"}

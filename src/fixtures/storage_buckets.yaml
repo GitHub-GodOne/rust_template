@@ -1,0 +1,25 @@
+---
+- id: 1
+  storage_profile_id: 1
+  tenant_id: 1
+  name: 平台默认桶
+  bucket: platform-assets
+  base_prefix:
+  local_root: storage/uploads/platform-assets
+  public_prefix:
+  enabled: true
+  is_default: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 2
+  storage_profile_id: 2
+  tenant_id: 2
+  name: 演示默认桶
+  bucket: demo-assets
+  base_prefix:
+  local_root: storage/uploads/demo-assets
+  public_prefix:
+  enabled: true
+  is_default: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

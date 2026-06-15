@@ -26,6 +26,7 @@ pub struct MenuRecord {
     pub sort_order: i32,
     pub visible: bool,
     pub enabled: bool,
+    #[schema(no_recursion)]
     pub children: Vec<MenuRecord>,
 }
 

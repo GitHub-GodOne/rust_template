@@ -24,4 +24,5 @@ Model {
     magic_link_token: None,
     magic_link_expiration: None,
     tenant_id: None,
+    current_department_id: None,
 }

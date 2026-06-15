@@ -1,7 +1,10 @@
 use chrono::{offset::Local, Duration};
 use gpt_images::{
     app::App,
-    models::users::{self, Model, RegisterParams},
+    models::{
+        system_settings,
+        users::{self, Model, RegisterParams},
+    },
 };
 use insta::assert_debug_snapshot;
 use loco_rs::testing::prelude::*;
@@ -332,10 +335,17 @@ async fn magic_link() {
         "Magic link token should be set after creation"
     );
 
+    let expected_token_length = usize::try_from(
+        system_settings::number_i64(&boot.app_context.db, "auth.magic_link_length", 32)
+            .await
+            .unwrap()
+            .clamp(16, 128),
+    )
+    .unwrap();
     let magic_link_token = updated_user.magic_link_token.unwrap();
     assert_eq!(
         magic_link_token.len(),
-        users::MAGIC_LINK_LENGTH as usize,
+        expected_token_length,
         "Magic link token length does not match expected length"
     );
 
@@ -344,8 +354,16 @@ async fn magic_link() {
         "Magic link expiration should be set after creation"
     );
 
+    let expiration_minutes = system_settings::number_i64(
+        &boot.app_context.db,
+        "auth.magic_link_expiration_minutes",
+        5,
+    )
+    .await
+    .unwrap()
+    .clamp(1, 120);
     let now = Local::now();
-    let should_expired_at = now + Duration::minutes(users::MAGIC_LINK_EXPIRATION_MIN.into());
+    let should_expired_at = now + Duration::minutes(expiration_minutes);
     let actual_expiration = updated_user.magic_link_expiration.unwrap();
 
     assert!(

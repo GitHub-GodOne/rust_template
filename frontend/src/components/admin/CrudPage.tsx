@@ -1,4 +1,4 @@
-import { Alert, Card } from "antd";
+import { Alert, Card, Space, Typography } from "antd";
 import type { ReactNode } from "react";
 import { CrudToolbar } from "./CrudToolbar";
 import { PageHeader } from "./PageHeader";
@@ -29,8 +29,18 @@ export function CrudPage({
         icon={icon}
       />
       <Card
-        className="admin-card"
-        title={title}
+        className="admin-card crud-card"
+        title={
+          <Space size={10} className="crud-card-title">
+            {icon ? <span className="crud-card-icon">{icon}</span> : null}
+            <span>{title}</span>
+            {subtitle ? (
+              <Typography.Text type="secondary" className="crud-card-subtitle">
+                {subtitle}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        }
         extra={toolbar ?? <CrudToolbar />}
       >
         {notice && (

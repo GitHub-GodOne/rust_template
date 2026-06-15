@@ -16,15 +16,15 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::errors::{ApiError, ApiResult};
+use crate::{
+    errors::{ApiError, ApiResult},
+    models::system_settings as settings,
+};
 
 pub use super::_entities::database_backups::{self, ActiveModel, Entity, Model};
 use super::_entities::{database_restores, system_settings};
 
 pub const RESTORE_CONFIRM_PHRASE: &str = "RESTORE DATABASE";
-
-const STORAGE_ROOT: &str = "storage/backups";
-const DELIVERY_TIMEOUT_SECONDS: u64 = 10;
 
 #[derive(Debug, Clone, Copy)]
 pub enum BackupTrigger {
@@ -44,6 +44,7 @@ impl BackupTrigger {
 
 pub async fn create_postgres_backup(
     db: &DatabaseConnection,
+    database_url: &str,
     created_by: Option<i32>,
     trigger: BackupTrigger,
 ) -> ApiResult<Model> {
@@ -51,37 +52,34 @@ pub async fn create_postgres_backup(
     let timer = Instant::now();
     let filename = format!("db_{}.dump", started_at.format("%Y%m%d%H%M%S"));
     let object_key = format!(
-        "{}/{:02}/{}",
+        "{}/{:02}/{:02}/{}",
         started_at.year(),
         started_at.month(),
+        started_at.day(),
         filename
     );
-    let storage_path = PathBuf::from(STORAGE_ROOT).join(&object_key);
+    let storage_root = settings::string_value(db, "backup.storage_root", "storage/backups").await?;
+    let storage_path = PathBuf::from(storage_root).join(&object_key);
 
     if let Some(parent) = storage_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|_| ApiError::internal("failed to prepare backup storage"))?;
     }
 
-    let result = std::env::var("DATABASE_URL").ok().map_or_else(
-        || Err("DATABASE_URL is not configured".to_string()),
-        |database_url| {
-            Command::new("pg_dump")
-                .arg("--format=custom")
-                .arg("--file")
-                .arg(&storage_path)
-                .arg(database_url)
-                .output()
-                .map_err(|err| err.to_string())
-                .and_then(|output| {
-                    if output.status.success() {
-                        Ok(())
-                    } else {
-                        Err(String::from_utf8_lossy(&output.stderr).to_string())
-                    }
-                })
-        },
-    );
+    let result = Command::new("pg_dump")
+        .arg("--format=custom")
+        .arg("--file")
+        .arg(&storage_path)
+        .arg(database_url)
+        .output()
+        .map_err(|err| err.to_string())
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        });
 
     let (status, size_bytes, sha256, error_message) = match result {
         Ok(()) => {
@@ -126,6 +124,7 @@ pub async fn create_postgres_backup(
 
 pub struct RestoreOptions {
     pub confirm_phrase: String,
+    pub database_url: String,
 }
 
 pub async fn restore_postgres_backup(
@@ -138,7 +137,13 @@ pub async fn restore_postgres_backup(
     validate_restorable_backup(&backup)?;
     verify_backup_file(&backup)?;
 
-    let pre_restore_backup = create_postgres_backup(db, restored_by, BackupTrigger::Manual).await?;
+    let pre_restore_backup = create_postgres_backup(
+        db,
+        &options.database_url,
+        restored_by,
+        BackupTrigger::Manual,
+    )
+    .await?;
     if pre_restore_backup.status != "success" {
         return Err(ApiError::bad_request(
             "pre-restore safety backup did not complete successfully",
@@ -159,7 +164,7 @@ pub async fn restore_postgres_backup(
     .insert(db)
     .await?;
 
-    let result = run_pg_restore(&backup.storage_path);
+    let result = run_pg_restore(&options.database_url, &backup.storage_path);
     let finished_at = Local::now();
     let duration_ms = i32::try_from(timer.elapsed().as_millis()).unwrap_or(i32::MAX);
     let (status, output, error_message) = match result {
@@ -188,8 +193,10 @@ pub async fn restore_postgres_backup(
 pub async fn deliver_backup(db: &DatabaseConnection, backup: Model) -> ApiResult<Model> {
     let settings = BackupDeliverySettings::load(db).await?;
     let targets = settings.targets();
+    let delivery_timeout_seconds =
+        u64::try_from(settings.delivery_timeout_seconds.clamp(1, 300)).unwrap_or(10);
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(DELIVERY_TIMEOUT_SECONDS))
+        .timeout(Duration::from_secs(delivery_timeout_seconds))
         .build()
         .map_err(|_| ApiError::internal("failed to initialize delivery client"))?;
 
@@ -228,6 +235,7 @@ struct BackupDeliverySettings {
     wecom_webhook_url: String,
     dingtalk_webhook_url: String,
     custom_webhook_url: String,
+    delivery_timeout_seconds: i64,
 }
 
 impl BackupDeliverySettings {
@@ -248,6 +256,9 @@ impl BackupDeliverySettings {
             wecom_webhook_url: setting_value(&values, "backup.wecom_webhook_url"),
             dingtalk_webhook_url: setting_value(&values, "backup.dingtalk_webhook_url"),
             custom_webhook_url: setting_value(&values, "backup.custom_webhook_url"),
+            delivery_timeout_seconds: setting_value(&values, "backup.delivery_timeout_seconds")
+                .parse()
+                .unwrap_or(10),
         })
     }
 
@@ -471,11 +482,9 @@ fn verify_backup_file(backup: &Model) -> ApiResult<()> {
     }
 }
 
-fn run_pg_restore(storage_path: &str) -> Result<String, String> {
-    let database_url =
-        std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is not configured".to_string())?;
+fn run_pg_restore(database_url: &str, storage_path: &str) -> Result<String, String> {
     let output = Command::new("pg_restore")
-        .args(pg_restore_args(&database_url, Path::new(storage_path)))
+        .args(pg_restore_args(database_url, Path::new(storage_path)))
         .output()
         .map_err(|err| err.to_string())?;
 

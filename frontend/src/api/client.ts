@@ -63,6 +63,9 @@ apiClient.interceptors.response.use(
       useAuthStore.getState().signOut();
     }
 
-    return Promise.reject(error);
+    const message =
+      error.response?.data?.message ??
+      (error.code === "ECONNABORTED" ? "请求超时" : error.message);
+    return Promise.reject(new Error(message || "请求失败"));
   },
 );

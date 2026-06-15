@@ -8,6 +8,7 @@ pub mod middleware;
 pub mod models;
 pub mod openapi;
 pub mod responses;
+pub mod services;
 pub mod tasks;
 pub mod views;
 pub mod workers;

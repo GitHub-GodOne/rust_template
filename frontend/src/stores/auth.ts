@@ -18,6 +18,14 @@ export type AuthTenant = {
   id: number;
   name: string;
   code: string;
+  departments_enabled?: boolean;
+};
+
+export type AuthDepartment = {
+  id: number;
+  tenant_id: number;
+  name: string;
+  code: string;
 };
 
 export type AuthDataScope = {
@@ -34,6 +42,8 @@ type AuthState = {
   permissions: PermissionCode[];
   menus: AdminMenuItem[];
   tenant: AuthTenant | null;
+  departments: AuthDepartment[];
+  currentDepartment: AuthDepartment | null;
   dataScopes: AuthDataScope[];
   effectiveDataScope: string;
   signIn: (payload: {
@@ -48,6 +58,8 @@ type AuthState = {
     permissions: PermissionCode[];
     menus: AdminMenuItem[];
     tenant: AuthTenant | null;
+    departments: AuthDepartment[];
+    currentDepartment: AuthDepartment | null;
     dataScopes: AuthDataScope[];
     effectiveDataScope: string;
   }) => void;
@@ -81,6 +93,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   permissions: [],
   menus: [],
   tenant: null,
+  departments: [],
+  currentDepartment: null,
   dataScopes: [],
   effectiveDataScope: "none",
   signIn: ({ token, refreshToken, user }) => {
@@ -100,6 +114,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     permissions,
     menus,
     tenant,
+    departments,
+    currentDepartment,
     dataScopes,
     effectiveDataScope,
   }) => {
@@ -110,6 +126,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       permissions,
       menus,
       tenant,
+      departments,
+      currentDepartment,
       dataScopes,
       effectiveDataScope,
     });
@@ -126,6 +144,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       permissions: [],
       menus: [],
       tenant: null,
+      departments: [],
+      currentDepartment: null,
       dataScopes: [],
       effectiveDataScope: "none",
     });

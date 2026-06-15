@@ -7,4 +7,5 @@ pub mod permissions;
 pub mod rbac;
 pub mod refresh_tokens;
 pub mod roles;
+pub mod system_settings;
 pub mod users;

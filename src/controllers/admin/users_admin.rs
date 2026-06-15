@@ -11,7 +11,7 @@ use crate::{
     controllers::admin::authorize,
     errors::{ApiError, ApiResult},
     models::{
-        _entities::{roles, user_roles, users},
+        _entities::{departments, roles, user_departments, user_roles, users},
         rbac::{self, EffectiveDataScope, SUPER_ADMIN_ROLE},
         users::RegisterParams,
     },
@@ -25,6 +25,7 @@ pub struct UserRecord {
     pub name: String,
     pub email: String,
     pub tenant_id: Option<i32>,
+    pub current_department_id: Option<i32>,
     pub is_verified: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -53,8 +54,23 @@ pub struct AssignedRoleRecord {
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct AssignedDepartmentRecord {
+    pub id: i32,
+    pub tenant_id: i32,
+    pub name: String,
+    pub code: String,
+    pub is_primary: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct SaveUserRolesParams {
     pub role_ids: Vec<i32>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct SaveUserDepartmentsParams {
+    pub department_ids: Vec<i32>,
+    pub current_department_id: Option<i32>,
 }
 
 #[utoipa::path(
@@ -301,6 +317,85 @@ pub async fn save_roles(
     Ok(responses::empty())
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{id}/departments",
+    tag = "admin-users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    responses((status = 200, body = ApiResponse<Vec<AssignedDepartmentRecord>>))
+)]
+#[debug_handler]
+pub async fn departments(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:user:list").await?;
+    let user = find_user(&ctx, id).await?;
+    assert_user_visible(&ctx, &actor, &user).await?;
+
+    Ok(responses::ok(load_assigned_departments(&ctx, id).await?))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/users/{id}/departments",
+    tag = "admin-users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    request_body = SaveUserDepartmentsParams,
+    responses((status = 200, body = ApiResponse<EmptyData>))
+)]
+#[debug_handler]
+pub async fn save_departments(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+    Json(params): Json<SaveUserDepartmentsParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:user:assign_departments").await?;
+    let user = find_user(&ctx, id).await?;
+    assert_user_visible(&ctx, &actor, &user).await?;
+
+    let mut department_ids = params.department_ids;
+    department_ids.sort_unstable();
+    department_ids.dedup();
+    assert_departments_assignable(
+        &ctx,
+        &actor,
+        &user,
+        &department_ids,
+        params.current_department_id,
+    )
+    .await?;
+
+    user_departments::Entity::delete_many()
+        .filter(user_departments::Column::UserId.eq(id))
+        .exec(&ctx.db)
+        .await?;
+
+    if !department_ids.is_empty() {
+        let rows = department_ids
+            .iter()
+            .map(|department_id| user_departments::ActiveModel {
+                user_id: Set(id),
+                department_id: Set(*department_id),
+                is_primary: Set(Some(*department_id) == params.current_department_id),
+                ..Default::default()
+            });
+        user_departments::Entity::insert_many(rows)
+            .exec(&ctx.db)
+            .await?;
+    }
+
+    let mut active = user.into_active_model();
+    active.current_department_id = Set(params.current_department_id);
+    active.update(&ctx.db).await?;
+
+    Ok(responses::empty())
+}
+
 async fn find_user(ctx: &AppContext, id: i32) -> ApiResult<users::Model> {
     users::Entity::find_by_id(id)
         .one(&ctx.db)
@@ -314,7 +409,8 @@ fn apply_user_scope(
 ) -> sea_orm::Select<users::Entity> {
     match scope {
         EffectiveDataScope::All => query,
-        EffectiveDataScope::Tenant { tenant_id } => {
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. } => {
             query.filter(users::Column::TenantId.eq(*tenant_id))
         }
         EffectiveDataScope::SelfOnly { user_id, .. } => {
@@ -331,7 +427,12 @@ async fn assert_user_visible(
 ) -> ApiResult<()> {
     match rbac::resolve_data_scope(&ctx.db, actor).await? {
         EffectiveDataScope::All => Ok(()),
-        EffectiveDataScope::Tenant { tenant_id } if user.tenant_id == Some(tenant_id) => Ok(()),
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. }
+            if user.tenant_id == Some(tenant_id) =>
+        {
+            Ok(())
+        }
         EffectiveDataScope::SelfOnly { user_id, .. } if user.id == user_id => Ok(()),
         _ => Err(ApiError::forbidden("data scope denied")),
     }
@@ -344,7 +445,8 @@ async fn resolve_user_tenant(
 ) -> ApiResult<Option<i32>> {
     match rbac::resolve_data_scope(&ctx.db, actor).await? {
         EffectiveDataScope::All => Ok(requested_tenant_id),
-        EffectiveDataScope::Tenant { tenant_id } => {
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. } => {
             if requested_tenant_id.is_some_and(|id| id != tenant_id) {
                 return Err(ApiError::forbidden("cannot assign user to another tenant"));
             }
@@ -376,7 +478,8 @@ async fn assert_roles_assignable(
             }
             Ok(())
         }
-        EffectiveDataScope::Tenant { tenant_id } => {
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. } => {
             if target_tenant_id != Some(tenant_id) {
                 return Err(ApiError::forbidden("cannot assign roles across tenants"));
             }
@@ -394,6 +497,107 @@ async fn assert_roles_assignable(
     }
 }
 
+async fn load_assigned_departments(
+    ctx: &AppContext,
+    user_id: i32,
+) -> ApiResult<Vec<AssignedDepartmentRecord>> {
+    let links = user_departments::Entity::find()
+        .filter(user_departments::Column::UserId.eq(user_id))
+        .all(&ctx.db)
+        .await?;
+    let department_ids = links
+        .iter()
+        .map(|link| link.department_id)
+        .collect::<Vec<_>>();
+    if department_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let departments = departments::Entity::find()
+        .filter(departments::Column::Id.is_in(department_ids))
+        .order_by_asc(departments::Column::SortOrder)
+        .order_by_asc(departments::Column::Id)
+        .all(&ctx.db)
+        .await?;
+
+    Ok(departments
+        .into_iter()
+        .map(|department| {
+            let is_primary = links
+                .iter()
+                .any(|link| link.department_id == department.id && link.is_primary);
+            AssignedDepartmentRecord {
+                id: department.id,
+                tenant_id: department.tenant_id,
+                name: department.name,
+                code: department.code,
+                is_primary,
+            }
+        })
+        .collect())
+}
+
+async fn assert_departments_assignable(
+    ctx: &AppContext,
+    actor: &users::Model,
+    target_user: &users::Model,
+    department_ids: &[i32],
+    current_department_id: Option<i32>,
+) -> ApiResult<()> {
+    if let Some(current_department_id) = current_department_id {
+        if !department_ids.contains(&current_department_id) {
+            return Err(ApiError::bad_request(
+                "current department must be assigned to user",
+            ));
+        }
+    }
+
+    let departments = departments::Entity::find()
+        .filter(departments::Column::Id.is_in(department_ids.to_vec()))
+        .all(&ctx.db)
+        .await?;
+    if departments.len() != department_ids.len() {
+        return Err(ApiError::bad_request("invalid department ids"));
+    }
+    if departments.iter().any(|department| !department.enabled) {
+        return Err(ApiError::bad_request("department is disabled"));
+    }
+
+    match rbac::resolve_data_scope(&ctx.db, actor).await? {
+        EffectiveDataScope::All => {
+            if let Some(tenant_id) = target_user.tenant_id {
+                if departments
+                    .iter()
+                    .any(|department| department.tenant_id != tenant_id)
+                {
+                    return Err(ApiError::bad_request(
+                        "department must belong to user's tenant",
+                    ));
+                }
+            }
+            Ok(())
+        }
+        EffectiveDataScope::Tenant { tenant_id }
+        | EffectiveDataScope::Department { tenant_id, .. } => {
+            if target_user.tenant_id != Some(tenant_id) {
+                return Err(ApiError::forbidden(
+                    "cannot assign departments across tenants",
+                ));
+            }
+            if departments
+                .iter()
+                .any(|department| department.tenant_id != tenant_id)
+            {
+                return Err(ApiError::forbidden(
+                    "cannot assign department outside current tenant",
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(ApiError::forbidden("data scope denied")),
+    }
+}
+
 impl From<users::Model> for UserRecord {
     fn from(user: users::Model) -> Self {
         Self {
@@ -402,6 +606,7 @@ impl From<users::Model> for UserRecord {
             name: user.name,
             email: user.email,
             tenant_id: user.tenant_id,
+            current_department_id: user.current_department_id,
             is_verified: user.email_verified_at.is_some(),
             created_at: user.created_at.to_rfc3339(),
             updated_at: user.updated_at.to_rfc3339(),

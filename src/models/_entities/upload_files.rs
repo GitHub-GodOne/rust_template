@@ -11,6 +11,11 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub storage: String,
+    pub storage_profile_id: Option<i32>,
+    pub storage_bucket_id: Option<i32>,
+    pub bucket: Option<String>,
+    pub prefix: Option<String>,
+    pub etag: Option<String>,
     #[sea_orm(unique)]
     pub object_key: String,
     pub url: String,
@@ -30,6 +35,22 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
+        belongs_to = "super::storage_buckets::Entity",
+        from = "Column::StorageBucketId",
+        to = "super::storage_buckets::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
+    )]
+    StorageBuckets,
+    #[sea_orm(
+        belongs_to = "super::storage_profiles::Entity",
+        from = "Column::StorageProfileId",
+        to = "super::storage_profiles::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
+    )]
+    StorageProfiles,
+    #[sea_orm(
         belongs_to = "super::users::Entity",
         from = "Column::UploaderId",
         to = "super::users::Column::Id",
@@ -37,6 +58,18 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     Users,
+}
+
+impl Related<super::storage_buckets::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::StorageBuckets.def()
+    }
+}
+
+impl Related<super::storage_profiles::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::StorageProfiles.def()
+    }
 }
 
 impl Related<super::users::Entity> for Entity {

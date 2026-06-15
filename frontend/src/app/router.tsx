@@ -8,7 +8,10 @@ import { LoginPage } from "../pages/auth/LoginPage";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { BackupsPage } from "../pages/system/backups/BackupsPage";
 import { ContentPage } from "../pages/system/content/ContentPage";
+import { DepartmentsPage } from "../pages/system/departments/DepartmentsPage";
+import { DocsPage } from "../pages/system/docs/DocsPage";
 import { EmailTemplatesPage } from "../pages/system/email-templates/EmailTemplatesPage";
+import { FilesPage } from "../pages/system/files/FilesPage";
 import { LogsPage } from "../pages/system/logs/LogsPage";
 import { MenusPage } from "../pages/system/menus/MenusPage";
 import { MonitoringPage } from "../pages/system/monitoring/MonitoringPage";
@@ -18,7 +21,10 @@ import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
 import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
 import { SettingsPage } from "../pages/system/settings/SettingsPage";
+import { SshPage } from "../pages/system/ssh/SshPage";
+import { StorageProfilesPage } from "../pages/system/storage/StorageProfilesPage";
 import { TenantsPage } from "../pages/system/tenants/TenantsPage";
+import { UploadTasksPage } from "../pages/system/upload-tasks/UploadTasksPage";
 import { UploadsPage } from "../pages/system/uploads/UploadsPage";
 import { UsersPage } from "../pages/system/users/UsersPage";
 import { WorkOrdersPage } from "../pages/system/work-orders/WorkOrdersPage";
@@ -54,6 +60,8 @@ function RequireAuth({ children }: { children: ReactNode }) {
           permissions: session.permissions,
           menus: session.menus,
           tenant: session.tenant ?? null,
+          departments: session.departments,
+          currentDepartment: session.current_department ?? null,
           dataScopes: session.data_scopes,
           effectiveDataScope: session.effective_data_scope,
         });
@@ -151,6 +159,14 @@ export function AppRouter() {
           }
         />
         <Route
+          path="system/departments"
+          element={
+            <RequirePermission permission="system:department:list">
+              <DepartmentsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
           path="system/menus"
           element={
             <RequirePermission permission="system:menu:list">
@@ -179,6 +195,30 @@ export function AppRouter() {
           element={
             <RequirePermission permission="system:upload:list">
               <UploadsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/upload-tasks"
+          element={
+            <RequirePermission permission="system:upload:list">
+              <UploadTasksPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/files"
+          element={
+            <RequirePermission permission="system:file:list">
+              <FilesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/storage"
+          element={
+            <RequirePermission permission="system:storage:list">
+              <StorageProfilesPage />
             </RequirePermission>
           }
         />
@@ -215,10 +255,26 @@ export function AppRouter() {
           }
         />
         <Route
+          path="system/docs"
+          element={
+            <RequirePermission permission="system:docs:view">
+              <DocsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
           path="system/monitoring"
           element={
             <RequirePermission permission="system:monitor:view">
               <MonitoringPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/ssh"
+          element={
+            <RequirePermission permission="system:ssh:list">
+              <SshPage />
             </RequirePermission>
           }
         />

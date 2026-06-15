@@ -15,6 +15,16 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      "/api-docs": {
+        target: "http://127.0.0.1:5150",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/swagger-ui": {
+        target: "http://127.0.0.1:5150",
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 });

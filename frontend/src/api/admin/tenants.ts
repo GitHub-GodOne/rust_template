@@ -9,6 +9,7 @@ export type TenantRecord = {
   description?: string | null;
   enabled: boolean;
   is_system: boolean;
+  departments_enabled: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -18,6 +19,7 @@ export type SaveTenantParams = {
   code: string;
   description?: string | null;
   enabled?: boolean;
+  departments_enabled?: boolean;
 };
 
 export async function fetchTenants(params?: {

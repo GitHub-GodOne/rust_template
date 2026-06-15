@@ -16,6 +16,7 @@ pub struct Model {
     pub description: Option<String>,
     pub enabled: bool,
     pub is_system: bool,
+    pub departments_enabled: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

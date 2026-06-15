@@ -18,12 +18,13 @@ use crate::{
     controllers,
     models::_entities::{
         content_articles, content_categories, data_scopes, database_backups, database_restores,
-        dict_items, dict_types, email_templates, menus, operation_logs, payment_callbacks,
-        payment_channels, payment_orders, payment_refunds, permissions, rate_limit_events,
-        rate_limit_rules, refresh_tokens, role_data_scopes, role_menus, role_permissions, roles,
-        scheduled_task_runs, scheduled_tasks, system_notifications, system_settings, tenants,
-        upload_files, user_roles, users, work_order_assignments, work_order_attachments,
-        work_order_comments, work_orders,
+        departments, dict_items, dict_types, email_templates, menus, operation_logs,
+        payment_callbacks, payment_channels, payment_orders, payment_refunds, permissions,
+        rate_limit_events, rate_limit_rules, refresh_tokens, role_data_scopes, role_menus,
+        role_permissions, roles, scheduled_task_runs, scheduled_tasks, storage_buckets,
+        storage_profiles, system_notifications, system_settings, tenants, upload_files,
+        upload_tasks, user_departments, user_roles, users, work_order_assignments,
+        work_order_attachments, work_order_comments, work_orders,
     },
     tasks,
     workers::downloader::DownloadWorker,
@@ -103,7 +104,10 @@ impl Hooks for App {
         truncate_table(&ctx.db, scheduled_task_runs::Entity).await?;
         truncate_table(&ctx.db, scheduled_tasks::Entity).await?;
         truncate_table(&ctx.db, system_notifications::Entity).await?;
+        truncate_table(&ctx.db, upload_tasks::Entity).await?;
         truncate_table(&ctx.db, upload_files::Entity).await?;
+        truncate_table(&ctx.db, storage_buckets::Entity).await?;
+        truncate_table(&ctx.db, storage_profiles::Entity).await?;
         truncate_table(&ctx.db, dict_items::Entity).await?;
         truncate_table(&ctx.db, dict_types::Entity).await?;
         truncate_table(&ctx.db, system_settings::Entity).await?;
@@ -112,6 +116,7 @@ impl Hooks for App {
         truncate_table(&ctx.db, role_data_scopes::Entity).await?;
         truncate_table(&ctx.db, role_menus::Entity).await?;
         truncate_table(&ctx.db, role_permissions::Entity).await?;
+        truncate_table(&ctx.db, user_departments::Entity).await?;
         truncate_table(&ctx.db, user_roles::Entity).await?;
         truncate_table(&ctx.db, data_scopes::Entity).await?;
         truncate_table(&ctx.db, menus::Entity).await?;
@@ -119,6 +124,7 @@ impl Hooks for App {
         truncate_table(&ctx.db, roles::Entity).await?;
         truncate_table(&ctx.db, refresh_tokens::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;
+        truncate_table(&ctx.db, departments::Entity).await?;
         truncate_table(&ctx.db, tenants::Entity).await?;
         Ok(())
     }
@@ -161,6 +167,16 @@ impl Hooks for App {
             &base.join("rate_limit_rules.yaml").display().to_string(),
         )
         .await?;
+        db::seed::<storage_profiles::ActiveModel>(
+            &ctx.db,
+            &base.join("storage_profiles.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<storage_buckets::ActiveModel>(
+            &ctx.db,
+            &base.join("storage_buckets.yaml").display().to_string(),
+        )
+        .await?;
         db::seed::<dict_types::ActiveModel>(
             &ctx.db,
             &base.join("dict_types.yaml").display().to_string(),
@@ -174,6 +190,11 @@ impl Hooks for App {
         db::seed::<data_scopes::ActiveModel>(
             &ctx.db,
             &base.join("data_scopes.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<departments::ActiveModel>(
+            &ctx.db,
+            &base.join("departments.yaml").display().to_string(),
         )
         .await?;
         db::seed::<user_roles::ActiveModel>(
@@ -194,6 +215,11 @@ impl Hooks for App {
         db::seed::<role_data_scopes::ActiveModel>(
             &ctx.db,
             &base.join("role_data_scopes.yaml").display().to_string(),
+        )
+        .await?;
+        db::seed::<user_departments::ActiveModel>(
+            &ctx.db,
+            &base.join("user_departments.yaml").display().to_string(),
         )
         .await?;
         Ok(())

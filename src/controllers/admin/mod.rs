@@ -1,5 +1,6 @@
 #![allow(clippy::missing_errors_doc)]
 
+use axum::extract::DefaultBodyLimit;
 use loco_rs::prelude::*;
 
 use crate::{
@@ -10,8 +11,10 @@ use crate::{
 pub mod backups;
 pub mod content;
 pub mod data_scopes;
+pub mod departments;
 pub mod dicts;
 pub mod email_templates;
+pub mod file_manager;
 pub mod logs;
 pub mod menus;
 pub mod monitoring;
@@ -22,6 +25,8 @@ pub mod rate_limits;
 pub mod roles;
 pub mod scheduled_tasks;
 pub mod settings;
+pub mod ssh;
+pub mod storage_profiles;
 pub mod tenants;
 pub mod uploads;
 pub mod users_admin;
@@ -60,6 +65,10 @@ fn core_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/users/{id}/roles",
             get(users_admin::roles).put(users_admin::save_roles),
+        )
+        .add(
+            "/api/admin/users/{id}/departments",
+            get(users_admin::departments).put(users_admin::save_departments),
         )
         .add("/api/admin/roles", get(roles::list).post(roles::create))
         .add(
@@ -102,6 +111,16 @@ fn core_routes(routes: Routes) -> Routes {
             get(tenants::get)
                 .put(tenants::update)
                 .delete(tenants::delete),
+        )
+        .add(
+            "/api/admin/departments",
+            get(departments::list).post(departments::create),
+        )
+        .add(
+            "/api/admin/departments/{id}",
+            get(departments::get)
+                .put(departments::update)
+                .delete(departments::delete),
         )
         .add("/api/admin/data-scopes", get(data_scopes::list))
 }
@@ -173,6 +192,11 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
             get(rate_limits::list_events),
         )
         .add("/api/admin/monitoring/overview", get(monitoring::overview))
+        .add("/api/admin/monitoring/server", get(monitoring::server))
+        .add(
+            "/api/admin/monitoring/processes",
+            get(monitoring::processes),
+        )
 }
 
 fn work_order_routes(routes: Routes) -> Routes {
@@ -294,7 +318,7 @@ fn content_routes(routes: Routes) -> Routes {
 }
 
 fn extension_routes(routes: Routes) -> Routes {
-    routes
+    let routes = routes
         .add("/api/admin/logs", get(logs::list))
         .add("/api/admin/logs/{id}", get(logs::get).delete(logs::delete))
         .add(
@@ -342,8 +366,76 @@ fn extension_routes(routes: Routes) -> Routes {
             put(dicts::update_item).delete(dicts::delete_item),
         )
         .add(
+            "/api/admin/storage-profiles",
+            get(storage_profiles::list).post(storage_profiles::create),
+        )
+        .add(
+            "/api/admin/storage-profiles/{id}",
+            get(storage_profiles::get)
+                .put(storage_profiles::update)
+                .delete(storage_profiles::delete),
+        )
+        .add(
+            "/api/admin/storage-profiles/{id}/buckets",
+            get(storage_profiles::list_buckets).post(storage_profiles::create_bucket),
+        )
+        .add(
+            "/api/admin/storage-profiles/{id}/test",
+            post(storage_profiles::test),
+        )
+        .add(
+            "/api/admin/storage-buckets/{id}",
+            put(storage_profiles::update_bucket).delete(storage_profiles::delete_bucket),
+        );
+    let routes = file_manager_routes(routes);
+    let routes = ssh_routes(routes);
+    upload_routes(routes)
+}
+
+fn file_manager_routes(routes: Routes) -> Routes {
+    routes
+        .add("/api/admin/files/roots", get(file_manager::roots))
+        .add("/api/admin/files/browser", get(file_manager::browser))
+        .add(
+            "/api/admin/files/folders",
+            post(file_manager::create_folder),
+        )
+        .add(
+            "/api/admin/files/upload",
+            post(file_manager::upload).layer(DefaultBodyLimit::disable()),
+        )
+        .add("/api/admin/files/rename", put(file_manager::rename))
+        .add("/api/admin/files", delete(file_manager::delete))
+        .add("/api/admin/files/preview", get(file_manager::preview))
+        .add("/api/admin/files/download", get(file_manager::download))
+}
+
+fn ssh_routes(routes: Routes) -> Routes {
+    routes
+        .add("/api/admin/ssh/targets", get(ssh::targets))
+        .add("/api/admin/ssh/tickets", post(ssh::create_ticket))
+        .add("/api/admin/ssh/sessions/{ticket}/ws", get(ssh::terminal_ws))
+}
+
+fn upload_routes(routes: Routes) -> Routes {
+    routes
+        .add(
             "/api/admin/uploads",
-            get(uploads::list).post(uploads::create),
+            get(uploads::list)
+                .post(uploads::create)
+                .layer(DefaultBodyLimit::disable()),
+        )
+        .add(
+            "/api/admin/uploads/tasks",
+            get(uploads::list_tasks).post(uploads::create_task),
+        )
+        .add(
+            "/api/admin/uploads/tasks/{id}/chunks/{chunk_index}",
+            post(uploads::upload_task_chunk).layer(DefaultBodyLimit::disable()),
+        )
+        .add(
+            "/api/admin/uploads/tasks/{id}/complete",
+            post(uploads::complete_task),
         )
         .add(
             "/api/admin/uploads/{id}",
@@ -351,5 +443,17 @@ fn extension_routes(routes: Routes) -> Routes {
                 .put(uploads::update)
                 .delete(uploads::delete),
         )
+        .add("/api/admin/uploads/browser", get(uploads::browser))
+        .add("/api/admin/uploads/folders", post(uploads::create_folder))
+        .add(
+            "/api/admin/uploads/import-object",
+            post(uploads::import_object),
+        )
+        .add(
+            "/api/admin/uploads/import-objects",
+            post(uploads::import_objects),
+        )
+        .add("/api/admin/uploads/{id}/rename", put(uploads::rename))
+        .add("/api/admin/uploads/{id}/preview", get(uploads::preview))
         .add("/api/admin/uploads/{id}/download", get(uploads::download))
 }

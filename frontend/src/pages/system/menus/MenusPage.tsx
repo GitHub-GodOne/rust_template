@@ -25,9 +25,27 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { menuIconOptions, renderMenuIcon } from "../../../layouts/icons";
 
 function flattenMenus(menus: MenuRecord[]): MenuRecord[] {
   return menus.flatMap((menu) => [menu, ...flattenMenus(menu.children ?? [])]);
+}
+
+function iconSelectOptions(currentIcon?: string | null) {
+  if (
+    !currentIcon ||
+    menuIconOptions.some((option) => option.value === currentIcon)
+  ) {
+    return menuIconOptions;
+  }
+  return [
+    ...menuIconOptions,
+    {
+      value: currentIcon,
+      label: currentIcon,
+      icon: renderMenuIcon(currentIcon),
+    },
+  ];
 }
 
 export function MenusPage() {
@@ -63,7 +81,17 @@ export function MenusPage() {
   const columns: ColumnsType<MenuRecord> = [
     { title: "菜单名称", dataIndex: "title", width: 220 },
     { title: "路径", dataIndex: "path" },
-    { title: "图标", dataIndex: "icon", width: 120 },
+    {
+      title: "图标",
+      dataIndex: "icon",
+      width: 150,
+      render: (icon) => (
+        <Space size={8}>
+          {renderMenuIcon(icon)}
+          <span>{icon ?? "-"}</span>
+        </Space>
+      ),
+    },
     { title: "权限编码", dataIndex: "permission_code" },
     { title: "排序", dataIndex: "sort_order", width: 90 },
     {
@@ -181,8 +209,38 @@ export function MenusPage() {
           <Form.Item name="path" label="前端路径">
             <Input placeholder="/admin/system/users" />
           </Form.Item>
-          <Form.Item name="icon" label="图标编码">
-            <Input placeholder="user / team / menu" />
+          <Form.Item name="icon" label="图标">
+            <Select
+              allowClear
+              showSearch
+              placeholder="请选择图标"
+              optionFilterProp="label"
+              options={iconSelectOptions(form.getFieldValue("icon")).map(
+                (option) => ({
+                  value: option.value,
+                  label: option.label,
+                }),
+              )}
+              optionRender={(option) => {
+                const icon = iconSelectOptions(form.getFieldValue("icon")).find(
+                  (item) => item.value === option.value,
+                );
+                return (
+                  <Space size={8}>
+                    {icon?.icon}
+                    <span>{icon?.label ?? option.label}</span>
+                    <span className="menu-icon-code">{option.value}</span>
+                  </Space>
+                );
+              }}
+              labelRender={(option) => (
+                <Space size={8}>
+                  {renderMenuIcon(String(option.value))}
+                  <span>{option.label}</span>
+                  <span className="menu-icon-code">{option.value}</span>
+                </Space>
+              )}
+            />
           </Form.Item>
           <Form.Item name="permission_code" label="菜单权限编码">
             <Input placeholder="system:user:list" />

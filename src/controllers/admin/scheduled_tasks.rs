@@ -391,6 +391,7 @@ async fn execute_task(
         "database_backup" => {
             let backup = database_backups::create_postgres_backup(
                 &ctx.db,
+                &ctx.config.database.uri,
                 actor_id,
                 BackupTrigger::Scheduled,
             )
