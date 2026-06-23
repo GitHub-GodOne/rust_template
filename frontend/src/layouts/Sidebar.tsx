@@ -2,7 +2,11 @@ import { Drawer, Layout, Menu } from "antd";
 import type { MenuProps } from "antd";
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { type AdminMenuItem, defaultAdminMenus } from "../app/menu";
+import {
+  type AdminMenuItem,
+  defaultAdminMenus,
+  mergeMenuItems,
+} from "../app/menu";
 import { useAuthStore } from "../stores/auth";
 import { renderMenuIcon } from "./icons";
 
@@ -40,36 +44,6 @@ function findOpenKeys(pathname: string, menus: AdminMenuItem[]) {
   return keys;
 }
 
-function menuIdentity(item: AdminMenuItem) {
-  return item.path ?? item.title ?? item.label ?? item.key;
-}
-
-function mergeMenus(primary: AdminMenuItem[], fallback: AdminMenuItem[]) {
-  const merged = [...primary];
-
-  for (const fallbackItem of fallback) {
-    const fallbackIdentity = menuIdentity(fallbackItem);
-    const index = merged.findIndex(
-      (item) => menuIdentity(item) === fallbackIdentity,
-    );
-    if (index === -1) {
-      merged.push(fallbackItem);
-      continue;
-    }
-
-    merged[index] = {
-      ...fallbackItem,
-      ...merged[index],
-      children: mergeMenus(
-        merged[index].children ?? [],
-        fallbackItem.children ?? [],
-      ),
-    };
-  }
-
-  return merged;
-}
-
 function SidebarContent({
   collapsed,
   onNavigate,
@@ -82,7 +56,10 @@ function SidebarContent({
   const navigate = useNavigate();
   const location = useLocation();
   const visibleMenus = useMemo(
-    () => mergeMenus(menus, defaultAdminMenus),
+    () =>
+      menus.length > 0
+        ? mergeMenuItems(menus, defaultAdminMenus)
+        : defaultAdminMenus,
     [menus],
   );
   const items = useMemo(

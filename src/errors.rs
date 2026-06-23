@@ -14,6 +14,21 @@ pub struct ApiError {
 }
 
 impl ApiError {
+    #[must_use]
+    pub const fn status_code(&self) -> u16 {
+        self.status.as_u16()
+    }
+
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        self.code
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,

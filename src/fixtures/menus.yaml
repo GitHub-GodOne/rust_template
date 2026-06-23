@@ -252,6 +252,17 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 27
+  parent_id: 2
+  title: 命令管理
+  path: /admin/system/commands
+  icon: code
+  permission_code: system:command:list
+  sort_order: 218
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 24
   parent_id: 2
   title: SSH 管理
@@ -259,6 +270,39 @@
   icon: code
   permission_code: system:ssh:list
   sort_order: 220
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 28
+  parent_id: 2
+  title: VNC 管理
+  path: /admin/system/vnc
+  icon: monitor
+  permission_code: system:vnc:list
+  sort_order: 225
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 25
+  parent_id: 2
+  title: AI 图片生成
+  path: /admin/system/ai-images
+  icon: picture
+  permission_code: system:ai_image:list
+  sort_order: 230
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 26
+  parent_id: 2
+  title: HTTP 客户端配置
+  path: /admin/system/http-client
+  icon: api
+  permission_code: system:http_client:config
+  sort_order: 240
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"

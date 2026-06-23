@@ -56,3 +56,11 @@ You can check your [configuration](config/development.yaml) to pick either front
 ## Getting help
 
 Check out [a quick tour](https://loco.rs/docs/getting-started/tour/) or [the complete guide](https://loco.rs/docs/getting-started/guide/).
+
+## 前端编译：
+ - npm --prefix frontend run lint
+ - npm --prefix frontend run build
+## 强制清空重置插入seed
+如果这是纯开发库，想直接对齐最新 fixtures
+- 运行：! cargo loco -e development db seed --reset
+

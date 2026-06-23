@@ -6,7 +6,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use chrono::{offset::Local, Datelike};
@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     errors::{ApiError, ApiResult},
     models::system_settings as settings,
+    services::http_client::{self, HttpClientRuntimeOverrides},
 };
 
 pub use super::_entities::database_backups::{self, ActiveModel, Entity, Model};
@@ -195,10 +196,13 @@ pub async fn deliver_backup(db: &DatabaseConnection, backup: Model) -> ApiResult
     let targets = settings.targets();
     let delivery_timeout_seconds =
         u64::try_from(settings.delivery_timeout_seconds.clamp(1, 300)).unwrap_or(10);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(delivery_timeout_seconds))
-        .build()
-        .map_err(|_| ApiError::internal("failed to initialize delivery client"))?;
+    let client = http_client::build_http_client_with_overrides(
+        db,
+        HttpClientRuntimeOverrides {
+            request_timeout_seconds: Some(delivery_timeout_seconds),
+        },
+    )
+    .await?;
 
     let mut statuses = BTreeMap::new();
     if targets.is_empty() {

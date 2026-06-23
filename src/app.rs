@@ -17,11 +17,13 @@ use std::path::Path;
 use crate::{
     controllers,
     models::_entities::{
-        content_articles, content_categories, data_scopes, database_backups, database_restores,
-        departments, dict_items, dict_types, email_templates, menus, operation_logs,
-        payment_callbacks, payment_channels, payment_orders, payment_refunds, permissions,
-        rate_limit_events, rate_limit_rules, refresh_tokens, role_data_scopes, role_menus,
-        role_permissions, roles, scheduled_task_runs, scheduled_tasks, storage_buckets,
+        ai_image_generations, command_run_logs, command_runs, command_templates,
+        command_workflow_run_steps, command_workflow_runs, command_workflow_steps,
+        command_workflows, content_articles, content_categories, data_scopes, database_backups,
+        database_restores, departments, dict_items, dict_types, email_templates, menus,
+        operation_logs, payment_callbacks, payment_channels, payment_orders, payment_refunds,
+        permissions, rate_limit_events, rate_limit_rules, refresh_tokens, role_data_scopes,
+        role_menus, role_permissions, roles, scheduled_task_runs, scheduled_tasks, storage_buckets,
         storage_profiles, system_notifications, system_settings, tenants, upload_files,
         upload_tasks, user_departments, user_roles, users, work_order_assignments,
         work_order_attachments, work_order_comments, work_orders,
@@ -83,6 +85,7 @@ impl Hooks for App {
     #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
         tasks.register(crate::tasks::admin::RecoverAdmin);
+        tasks.register(crate::tasks::admin::SyncFixtureBaseline);
         tasks.register(crate::tasks::operations::RunDueScheduledTasks);
         // tasks-inject (do not remove)
     }
@@ -101,9 +104,17 @@ impl Hooks for App {
         truncate_table(&ctx.db, rate_limit_rules::Entity).await?;
         truncate_table(&ctx.db, database_restores::Entity).await?;
         truncate_table(&ctx.db, database_backups::Entity).await?;
+        truncate_table(&ctx.db, command_workflow_run_steps::Entity).await?;
+        truncate_table(&ctx.db, command_workflow_runs::Entity).await?;
+        truncate_table(&ctx.db, command_workflow_steps::Entity).await?;
+        truncate_table(&ctx.db, command_run_logs::Entity).await?;
+        truncate_table(&ctx.db, command_runs::Entity).await?;
+        truncate_table(&ctx.db, command_workflows::Entity).await?;
+        truncate_table(&ctx.db, command_templates::Entity).await?;
         truncate_table(&ctx.db, scheduled_task_runs::Entity).await?;
         truncate_table(&ctx.db, scheduled_tasks::Entity).await?;
         truncate_table(&ctx.db, system_notifications::Entity).await?;
+        truncate_table(&ctx.db, ai_image_generations::Entity).await?;
         truncate_table(&ctx.db, upload_tasks::Entity).await?;
         truncate_table(&ctx.db, upload_files::Entity).await?;
         truncate_table(&ctx.db, storage_buckets::Entity).await?;

@@ -8,13 +8,16 @@ use crate::{
     models::{rbac, users},
 };
 
+pub mod ai_images;
 pub mod backups;
+pub mod commands;
 pub mod content;
 pub mod data_scopes;
 pub mod departments;
 pub mod dicts;
 pub mod email_templates;
 pub mod file_manager;
+pub mod http_client;
 pub mod logs;
 pub mod menus;
 pub mod monitoring;
@@ -30,6 +33,7 @@ pub mod storage_profiles;
 pub mod tenants;
 pub mod uploads;
 pub mod users_admin;
+pub mod vnc;
 pub mod work_orders;
 
 pub async fn authorize(
@@ -127,6 +131,7 @@ fn core_routes(routes: Routes) -> Routes {
 
 fn operations_routes(routes: Routes) -> Routes {
     let routes = operations_infrastructure_routes(routes);
+    let routes = command_routes(routes);
     let routes = work_order_routes(routes);
     payment_routes(routes)
 }
@@ -196,6 +201,68 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/monitoring/processes",
             get(monitoring::processes),
+        )
+}
+
+fn command_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/commands",
+            get(commands::list).post(commands::create),
+        )
+        .add(
+            "/api/admin/commands/{id}",
+            get(commands::get)
+                .put(commands::update)
+                .delete(commands::delete),
+        )
+        .add(
+            "/api/admin/command-workflows",
+            get(commands::list_workflows).post(commands::create_workflow),
+        )
+        .add(
+            "/api/admin/command-workflows/{id}",
+            get(commands::get_workflow)
+                .put(commands::update_workflow)
+                .delete(commands::delete_workflow),
+        )
+        .add(
+            "/api/admin/command-workflows/{id}/run",
+            post(commands::run_workflow),
+        )
+        .add(
+            "/api/admin/command-workflow-runs",
+            get(commands::list_workflow_runs),
+        )
+        .add(
+            "/api/admin/command-workflow-runs/{id}",
+            get(commands::get_workflow_run),
+        )
+        .add("/api/admin/commands/{id}/run", post(commands::run_template))
+        .add(
+            "/api/admin/command-runs",
+            get(commands::list_runs).post(commands::run_ad_hoc),
+        )
+        .add("/api/admin/command-runs/{id}", get(commands::get_run))
+        .add(
+            "/api/admin/command-runs/{id}/logs",
+            get(commands::list_run_logs),
+        )
+        .add(
+            "/api/admin/command-runs/{id}/log-ticket",
+            post(commands::create_log_ticket),
+        )
+        .add(
+            "/api/admin/command-runs/{id}/preview",
+            get(commands::preview_run_artifact),
+        )
+        .add(
+            "/api/admin/command-runs/{id}/cancel",
+            post(commands::cancel_run),
+        )
+        .add(
+            "/api/admin/command-run-logs/{ticket}/ws",
+            get(commands::run_ws),
         )
 }
 
@@ -389,6 +456,9 @@ fn extension_routes(routes: Routes) -> Routes {
         );
     let routes = file_manager_routes(routes);
     let routes = ssh_routes(routes);
+    let routes = vnc_routes(routes);
+    let routes = ai_image_routes(routes);
+    let routes = http_client_routes(routes);
     upload_routes(routes)
 }
 
@@ -413,8 +483,81 @@ fn file_manager_routes(routes: Routes) -> Routes {
 fn ssh_routes(routes: Routes) -> Routes {
     routes
         .add("/api/admin/ssh/targets", get(ssh::targets))
+        .add(
+            "/api/admin/ssh/sessions",
+            get(ssh::sessions).post(ssh::create_session),
+        )
+        .add("/api/admin/ssh/sessions/{id}", delete(ssh::close_session))
+        .add(
+            "/api/admin/ssh/sessions/{id}/files",
+            get(ssh::session_files),
+        )
+        .add(
+            "/api/admin/ssh/sessions/{id}/tickets",
+            post(ssh::create_session_ticket),
+        )
+        .add(
+            "/api/admin/ssh/sessions/{id}/ws/{ticket}",
+            get(ssh::session_ws),
+        )
         .add("/api/admin/ssh/tickets", post(ssh::create_ticket))
         .add("/api/admin/ssh/sessions/{ticket}/ws", get(ssh::terminal_ws))
+}
+
+fn vnc_routes(routes: Routes) -> Routes {
+    routes
+        .add("/api/admin/vnc/targets", get(vnc::targets))
+        .add(
+            "/api/admin/vnc/sessions",
+            get(vnc::sessions).post(vnc::create_session),
+        )
+        .add("/api/admin/vnc/sessions/{id}", delete(vnc::close_session))
+        .add(
+            "/api/admin/vnc/sessions/{id}/tickets",
+            post(vnc::create_session_ticket),
+        )
+        .add(
+            "/api/admin/vnc/sessions/{id}/ws/{ticket}",
+            get(vnc::session_ws),
+        )
+}
+
+fn ai_image_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/ai-images/configs",
+            get(ai_images::list_configs).post(ai_images::create_config),
+        )
+        .add(
+            "/api/admin/ai-images/configs/{key}",
+            put(ai_images::update_config).delete(ai_images::delete_config),
+        )
+        .add(
+            "/api/admin/ai-images/generations",
+            get(ai_images::list_generations)
+                .post(ai_images::create_generation)
+                .layer(DefaultBodyLimit::disable()),
+        )
+        .add(
+            "/api/admin/ai-images/generations/{id}/preview",
+            get(ai_images::preview_generation),
+        )
+        .add(
+            "/api/admin/ai-images/generations/{id}/download",
+            get(ai_images::download_generation),
+        )
+}
+
+fn http_client_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/http-client/config",
+            get(http_client::get_config).put(http_client::update_config),
+        )
+        .add(
+            "/api/admin/http-client/test",
+            post(http_client::test_request),
+        )
 }
 
 fn upload_routes(routes: Routes) -> Routes {

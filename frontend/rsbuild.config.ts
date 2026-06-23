@@ -14,6 +14,7 @@ export default defineConfig({
         target: "http://127.0.0.1:5150",
         changeOrigin: true,
         secure: false,
+        ws: true,
       },
       "/api-docs": {
         target: "http://127.0.0.1:5150",

@@ -30,6 +30,24 @@ export async function fetchPermissions(params?: {
   return unwrap(response.data);
 }
 
+export async function fetchAllPermissions(keyword?: string) {
+  const items: PermissionRecord[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await fetchPermissions({
+      page,
+      page_size: 200,
+      keyword,
+    });
+    items.push(...response.items);
+    if (items.length >= response.total || response.items.length === 0) {
+      return items;
+    }
+    page += 1;
+  }
+}
+
 export async function createPermission(payload: SavePermissionParams) {
   const response = await apiClient.post<ApiResponse<PermissionRecord>>(
     "/admin/permissions",

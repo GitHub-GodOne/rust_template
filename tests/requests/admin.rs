@@ -2,8 +2,10 @@ use std::{
     fs,
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
 };
 
+use axum::http::{HeaderName, HeaderValue};
 use gpt_images::{
     app::App,
     models::_entities::{database_backups, payment_channels, system_settings, upload_files},
@@ -13,6 +15,7 @@ use gpt_images::{
 use loco_rs::{testing::prelude::*, TestServer};
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serial_test::serial;
+use tokio::time::sleep;
 
 use super::prepare_data;
 
@@ -33,6 +36,48 @@ async fn admin_token(request: &TestServer) -> String {
     let login_response: ApiResponse<LoginResponse> =
         serde_json::from_str(&response.text()).unwrap();
     login_response.data.unwrap().token
+}
+
+async fn wait_for_command_run(
+    request: &TestServer,
+    auth_key: &HeaderName,
+    auth_value: &HeaderValue,
+    run_id: i64,
+) -> serde_json::Value {
+    for _ in 0..30 {
+        let response = request
+            .get(&format!("/api/admin/command-runs/{run_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = serde_json::from_str(&response.text()).unwrap();
+        if !matches!(body["data"]["status"].as_str(), Some("queued" | "running")) {
+            return body;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    panic!("command run did not finish in time");
+}
+
+async fn wait_for_command_workflow_run(
+    request: &TestServer,
+    auth_key: &HeaderName,
+    auth_value: &HeaderValue,
+    run_id: i64,
+) -> serde_json::Value {
+    for _ in 0..30 {
+        let response = request
+            .get(&format!("/api/admin/command-workflow-runs/{run_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = serde_json::from_str(&response.text()).unwrap();
+        if !matches!(body["data"]["status"].as_str(), Some("queued" | "running")) {
+            return body;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    panic!("command workflow run did not finish in time");
 }
 
 #[tokio::test]
@@ -56,10 +101,26 @@ async fn admin_extensions_require_auth() {
             .await;
         assert_eq!(ticket_response.status_code(), 401);
 
+        let vnc_session_response = request
+            .post("/api/admin/vnc/sessions")
+            .json(&serde_json::json!({ "target_key": "local-vnc" }))
+            .await;
+        assert_eq!(vnc_session_response.status_code(), 401);
+
+        let http_test_response = request
+            .post("/api/admin/http-client/test")
+            .json(&serde_json::json!({ "url": "https://example.test" }))
+            .await;
+        assert_eq!(http_test_response.status_code(), 401);
+
         for path in [
             "/api/admin/logs",
             "/api/admin/settings",
+            "/api/admin/http-client/config",
+            "/api/admin/ai-images/configs",
+            "/api/admin/ai-images/generations",
             "/api/admin/ssh/targets",
+            "/api/admin/vnc/targets",
             "/api/admin/email-templates",
             "/api/admin/dict-types",
             "/api/admin/dict-types/1/items",
@@ -82,6 +143,10 @@ async fn admin_extensions_require_auth() {
             "/api/admin/monitoring/overview",
             "/api/admin/monitoring/server",
             "/api/admin/monitoring/processes",
+            "/api/admin/commands",
+            "/api/admin/command-workflows",
+            "/api/admin/command-workflow-runs",
+            "/api/admin/command-runs",
             "/api/admin/work-orders",
             "/api/admin/payment-channels",
             "/api/admin/payment-orders",
@@ -146,12 +211,18 @@ async fn super_admin_can_access_admin_users() {
         assert!(body.contains("system:content_article:publish"));
         assert!(body.contains("system:docs:view"));
         assert!(body.contains("system:file:list"));
+        assert!(body.contains("system:command:list"));
         assert!(body.contains("system:ssh:list"));
+        assert!(body.contains("system:vnc:list"));
+        assert!(body.contains("system:ai_image:list"));
         assert!(body.contains("/admin/system/users"));
         assert!(body.contains("/admin/system/content"));
         assert!(body.contains("/admin/system/docs"));
         assert!(body.contains("/admin/system/files"));
+        assert!(body.contains("/admin/system/commands"));
         assert!(body.contains("/admin/system/ssh"));
+        assert!(body.contains("/admin/system/vnc"));
+        assert!(body.contains("/admin/system/ai-images"));
         assert!(body.contains("\"effective_data_scope\":\"all\""));
         assert!(body.contains("\"tenant\":{"));
         assert!(body.contains("\"departments_enabled\":true"));
@@ -172,7 +243,11 @@ async fn super_admin_can_access_admin_extensions() {
         for path in [
             "/api/admin/logs",
             "/api/admin/settings",
+            "/api/admin/http-client/config",
+            "/api/admin/ai-images/configs",
+            "/api/admin/ai-images/generations",
             "/api/admin/ssh/targets",
+            "/api/admin/vnc/targets",
             "/api/admin/email-templates",
             "/api/admin/dict-types",
             "/api/admin/dict-types/1/items",
@@ -191,6 +266,199 @@ async fn super_admin_can_access_admin_extensions() {
                 .await;
             assert_eq!(response.status_code(), 200, "{path}");
         }
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn super_admin_can_manage_http_client_config() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let config_response = request
+            .get("/api/admin/http-client/config")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(config_response.status_code(), 200);
+        let config_body: serde_json::Value = serde_json::from_str(&config_response.text()).unwrap();
+        assert_eq!(config_body["data"]["request_timeout_seconds"], 120);
+        assert_eq!(config_body["data"]["connect_timeout_seconds"], 20);
+        assert_eq!(config_body["data"]["proxy_enabled"], false);
+
+        let update_response = request
+            .put("/api/admin/http-client/config")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "enabled": true,
+                "request_timeout_seconds": 30,
+                "connect_timeout_seconds": 5,
+                "pool_idle_timeout_seconds": 45,
+                "proxy_enabled": true,
+                "proxy_url": "http://127.0.0.1:8888",
+                "danger_accept_invalid_certs": false,
+                "user_agent": "gpt-images-request-test/1.0"
+            }))
+            .await;
+        assert_eq!(update_response.status_code(), 200);
+        assert!(update_response
+            .text()
+            .contains("gpt-images-request-test/1.0"));
+
+        let updated_config = request
+            .get("/api/admin/http-client/config")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(updated_config.status_code(), 200);
+        let updated_body: serde_json::Value = serde_json::from_str(&updated_config.text()).unwrap();
+        assert_eq!(updated_body["data"]["request_timeout_seconds"], 30);
+        assert_eq!(updated_body["data"]["connect_timeout_seconds"], 5);
+        assert_eq!(updated_body["data"]["pool_idle_timeout_seconds"], 45);
+        assert_eq!(updated_body["data"]["proxy_enabled"], true);
+
+        let invalid_timeout = request
+            .put("/api/admin/http-client/config")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "enabled": true,
+                "request_timeout_seconds": 0,
+                "connect_timeout_seconds": 5,
+                "pool_idle_timeout_seconds": 45,
+                "proxy_enabled": false,
+                "proxy_url": null,
+                "danger_accept_invalid_certs": false,
+                "user_agent": null
+            }))
+            .await;
+        assert_eq!(invalid_timeout.status_code(), 400);
+
+        let missing_proxy_url = request
+            .put("/api/admin/http-client/config")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "enabled": true,
+                "request_timeout_seconds": 30,
+                "connect_timeout_seconds": 5,
+                "pool_idle_timeout_seconds": 45,
+                "proxy_enabled": true,
+                "proxy_url": "",
+                "danger_accept_invalid_certs": false,
+                "user_agent": null
+            }))
+            .await;
+        assert_eq!(missing_proxy_url.status_code(), 400);
+
+        let invalid_test_url = request
+            .post("/api/admin/http-client/test")
+            .add_header(auth_key, auth_value)
+            .json(&serde_json::json!({ "url": "ftp://example.test/file" }))
+            .await;
+        assert_eq!(invalid_test_url.status_code(), 400);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn super_admin_can_manage_ai_image_configs() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let list_response = request
+            .get("/api/admin/ai-images/configs")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(list_response.status_code(), 200);
+        assert!(list_response.text().contains("\"items\"") || list_response.text().contains("[]"));
+
+        let invalid_create = request
+            .post("/api/admin/ai-images/configs")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "key": "",
+                "name": "",
+                "base_url": "",
+                "save_mode": "invalid"
+            }))
+            .await;
+        assert_eq!(invalid_create.status_code(), 400);
+
+        let create_response = request
+            .post("/api/admin/ai-images/configs")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "key": "request-image",
+                "name": "请求测试生图",
+                "enabled": true,
+                "base_url": "https://example.test/v1",
+                "api_key": "secret-token",
+                "model": "gpt-image-2",
+                "size": "1024x1024",
+                "quality": "high",
+                "n": 1,
+                "save_mode": "local",
+                "local_output_dir": "storage/ai-images/request-tests",
+                "storage_bucket_id": null,
+                "storage_prefix": null,
+                "description": "request test"
+            }))
+            .await;
+        assert_eq!(create_response.status_code(), 200);
+        let create_body = create_response.text();
+        assert!(create_body.contains("request-image"));
+        assert!(create_body.contains("\"api_key_configured\":true"));
+        assert!(!create_body.contains("secret-token"));
+
+        let setting = system_settings::Entity::find_by_id(20)
+            .one(&ctx.db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(setting.value.contains("request-image"));
+        assert!(setting.value.contains("secret-token"));
+
+        let update_response = request
+            .put("/api/admin/ai-images/configs/request-image")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "key": "request-image",
+                "name": "请求测试生图已更新",
+                "enabled": true,
+                "base_url": "https://example.test/v1",
+                "api_key": null,
+                "model": "gpt-image-2",
+                "size": "1024x1536",
+                "quality": "high",
+                "n": 2,
+                "save_mode": "local",
+                "local_output_dir": "storage/ai-images/request-tests",
+                "storage_bucket_id": null,
+                "storage_prefix": null,
+                "description": "updated"
+            }))
+            .await;
+        assert_eq!(update_response.status_code(), 200);
+        let update_body = update_response.text();
+        assert!(update_body.contains("请求测试生图已更新"));
+        assert!(!update_body.contains("secret-token"));
+
+        let generations_response = request
+            .get("/api/admin/ai-images/generations")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(generations_response.status_code(), 200);
+
+        let delete_response = request
+            .delete("/api/admin/ai-images/configs/request-image")
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(delete_response.status_code(), 200);
     })
     .await;
 }
@@ -1118,6 +1386,10 @@ async fn super_admin_can_access_operations_infrastructure() {
             "/api/admin/monitoring/overview",
             "/api/admin/monitoring/server",
             "/api/admin/monitoring/processes",
+            "/api/admin/commands",
+            "/api/admin/command-workflows",
+            "/api/admin/command-workflow-runs",
+            "/api/admin/command-runs",
             "/api/admin/work-orders",
             "/api/admin/payment-channels",
             "/api/admin/payment-orders",
@@ -1174,6 +1446,359 @@ async fn super_admin_can_view_server_monitoring() {
 
 #[tokio::test]
 #[serial]
+async fn super_admin_can_manage_command_runs() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+        let cwd = std::env::current_dir().unwrap();
+        let preview_dir = cwd.join("storage/command-preview-tests");
+        fs::create_dir_all(&preview_dir).unwrap();
+        let cwd = cwd.to_string_lossy().to_string();
+
+        let invalid_template = request
+            .post("/api/admin/commands")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "无效命令模板",
+                "code": "invalid_command_template",
+                "working_directory": cwd,
+                "command": "printf invalid",
+                "env_vars": "[1]",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(invalid_template.status_code(), 400);
+
+        let create_template = request
+            .post("/api/admin/commands")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试命令",
+                "code": "request_test_command",
+                "description": "请求测试命令模板",
+                "working_directory": cwd,
+                "command": "printf template-output",
+                "default_args": "",
+                "env_vars": "{\"REQUEST_TEST_ENV\":\"ok\"}",
+                "setup_script": "",
+                "timeout_seconds": 5,
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(create_template.status_code(), 200);
+        let template_body: serde_json::Value =
+            serde_json::from_str(&create_template.text()).unwrap();
+        let template_id = template_body["data"]["id"].as_i64().unwrap();
+
+        let update_template = request
+            .put(&format!("/api/admin/commands/{template_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试命令已更新",
+                "code": "request_test_command",
+                "description": "请求测试命令模板已更新",
+                "working_directory": cwd,
+                "command": "sh -c 'printf template-updated; printf preview-output > storage/command-preview-tests/template-{{random:6}}.txt'",
+                "env_vars": "{\"REQUEST_TEST_ENV\":\"updated\"}",
+                "timeout_seconds": 5,
+                "preview_path_template": "storage/command-preview-tests/template-{{random:6}}.txt",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(update_template.status_code(), 200);
+        let update_template_body: serde_json::Value =
+            serde_json::from_str(&update_template.text()).unwrap();
+        assert_eq!(update_template_body["data"]["name"], "请求测试命令已更新");
+        assert_eq!(
+            update_template_body["data"]["preview_path_template"],
+            "storage/command-preview-tests/template-{{random:6}}.txt"
+        );
+
+        let run_template = request
+            .post(&format!("/api/admin/commands/{template_id}/run"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({}))
+            .await;
+        assert_eq!(run_template.status_code(), 200);
+        let run_body: serde_json::Value = serde_json::from_str(&run_template.text()).unwrap();
+        let run_id = run_body["data"]["id"].as_i64().unwrap();
+        let finished = wait_for_command_run(&request, &auth_key, &auth_value, run_id).await;
+        assert_eq!(finished["data"]["status"], "success");
+        assert_eq!(finished["data"]["exit_code"], 0);
+        assert!(finished["data"]["effective_script"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("/opt/homebrew/bin"));
+        assert!(finished["data"]["output_tail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("template-updated"));
+        assert_eq!(
+            finished["data"]["preview_path_template"],
+            "storage/command-preview-tests/template-{{random:6}}.txt"
+        );
+        let preview_path = finished["data"]["preview_path"].as_str().unwrap_or_default();
+        assert!(preview_path.contains("storage/command-preview-tests/template-"));
+        assert!(preview_path.ends_with(".txt"));
+        assert!(!preview_path.contains("{{random"));
+        let preview = request
+            .get(&format!("/api/admin/command-runs/{run_id}/preview"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(preview.status_code(), 200);
+        assert_eq!(preview.text(), "preview-output");
+
+        let logs = request
+            .get(&format!(
+                "/api/admin/command-runs/{run_id}/logs?after_seq=0"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(logs.status_code(), 200);
+        assert!(logs.text().contains("template-updated"));
+
+        let invalid_workflow = request
+            .post("/api/admin/command-workflows")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "无效请求测试编排",
+                "code": "invalid_request_test_workflow",
+                "steps": []
+            }))
+            .await;
+        assert_eq!(invalid_workflow.status_code(), 400);
+
+        let create_workflow = request
+            .post("/api/admin/command-workflows")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试编排",
+                "code": "request_test_workflow",
+                "description": "请求测试编排描述",
+                "enabled": true,
+                "steps": [
+                    {
+                        "template_id": template_id,
+                        "name": "第一步",
+                        "sort_order": 1,
+                        "args": "step-one-{{random:6}}",
+                        "enabled": true
+                    },
+                    {
+                        "template_id": template_id,
+                        "name": "第二步",
+                        "sort_order": 2,
+                        "args": "step-two",
+                        "working_directory": cwd,
+                        "timeout_seconds": 5,
+                        "enabled": true
+                    }
+                ]
+            }))
+            .await;
+        assert_eq!(create_workflow.status_code(), 200);
+        let workflow_body: serde_json::Value =
+            serde_json::from_str(&create_workflow.text()).unwrap();
+        let workflow_id = workflow_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(workflow_body["data"]["steps"].as_array().unwrap().len(), 2);
+
+        let update_workflow = request
+            .put(&format!("/api/admin/command-workflows/{workflow_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "请求测试编排已更新",
+                "code": "request_test_workflow",
+                "description": "请求测试编排描述已更新",
+                "enabled": true,
+                "steps": [
+                    {
+                        "template_id": template_id,
+                        "name": "第一步",
+                        "sort_order": 1,
+                        "args": "step-one-{{random:6}}",
+                        "enabled": true
+                    },
+                    {
+                        "template_id": template_id,
+                        "name": "第二步",
+                        "sort_order": 2,
+                        "args": "step-two",
+                        "enabled": true
+                    }
+                ]
+            }))
+            .await;
+        assert_eq!(update_workflow.status_code(), 200);
+        assert!(update_workflow.text().contains("请求测试编排已更新"));
+
+        let run_workflow = request
+            .post(&format!("/api/admin/command-workflows/{workflow_id}/run"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "name": "请求测试编排运行" }))
+            .await;
+        assert_eq!(run_workflow.status_code(), 200);
+        let workflow_run_body: serde_json::Value =
+            serde_json::from_str(&run_workflow.text()).unwrap();
+        let workflow_run_id = workflow_run_body["data"]["id"].as_i64().unwrap();
+        let workflow_finished =
+            wait_for_command_workflow_run(&request, &auth_key, &auth_value, workflow_run_id).await;
+        assert_eq!(workflow_finished["data"]["status"], "success");
+        let workflow_steps = workflow_finished["data"]["steps"].as_array().unwrap();
+        assert_eq!(workflow_steps.len(), 2);
+        assert!(workflow_steps
+            .iter()
+            .all(|step| step["status"] == "success"));
+        let first_args = workflow_steps[0]["resolved_args"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(first_args.starts_with("step-one-{{random:6}}"));
+        let first_command_run_id = workflow_steps[0]["command_run_id"].as_i64().unwrap();
+        let first_command_run = request
+            .get(&format!("/api/admin/command-runs/{first_command_run_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(first_command_run.status_code(), 200);
+        let first_command_run_body: serde_json::Value =
+            serde_json::from_str(&first_command_run.text()).unwrap();
+        assert!(first_command_run_body["data"]["command_line"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("step-one-{{random:6}}"));
+        assert!(first_command_run_body["data"]["effective_script"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("step-one-"));
+        assert!(!first_command_run_body["data"]["effective_script"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("{{random"));
+
+        let workflow_runs = request
+            .get(&format!(
+                "/api/admin/command-workflow-runs?workflow_id={workflow_id}&keyword=请求测试编排"
+            ))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(workflow_runs.status_code(), 200);
+        assert!(workflow_runs.text().contains("请求测试编排运行"));
+
+        let workflow_list = request
+            .get("/api/admin/command-workflows?keyword=请求测试编排")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(workflow_list.status_code(), 200);
+        assert!(workflow_list.text().contains("请求测试编排已更新"));
+
+        let delete_workflow = request
+            .delete(&format!("/api/admin/command-workflows/{workflow_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_workflow.status_code(), 200);
+
+        let ticket = request
+            .post(&format!("/api/admin/command-runs/{run_id}/log-ticket"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(ticket.status_code(), 200);
+        let ticket_body: serde_json::Value = serde_json::from_str(&ticket.text()).unwrap();
+        assert!(ticket_body["data"]["ticket"].as_str().is_some());
+
+        let rerun = request
+            .post("/api/admin/command-runs")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "编辑重跑请求测试",
+                "working_directory": cwd,
+                "command_line": "sh -c 'printf rerun-output; printf rerun-preview > storage/command-preview-tests/rerun-{{random:6}}.txt'",
+                "preview_path_template": "storage/command-preview-tests/rerun-{{random:6}}.txt",
+                "timeout_seconds": 5
+            }))
+            .await;
+        assert_eq!(rerun.status_code(), 200);
+        let rerun_body: serde_json::Value = serde_json::from_str(&rerun.text()).unwrap();
+        let rerun_id = rerun_body["data"]["id"].as_i64().unwrap();
+        let rerun_finished = wait_for_command_run(&request, &auth_key, &auth_value, rerun_id).await;
+        assert_eq!(rerun_finished["data"]["status"], "success");
+        assert!(rerun_finished["data"]["command_line"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("rerun-output"));
+        assert!(rerun_finished["data"]["command_line"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("{{random:6}}"));
+        assert_eq!(
+            rerun_finished["data"]["preview_path_template"],
+            "storage/command-preview-tests/rerun-{{random:6}}.txt"
+        );
+        let rerun_preview_path = rerun_finished["data"]["preview_path"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(rerun_preview_path.contains("storage/command-preview-tests/rerun-"));
+        assert!(!rerun_preview_path.contains("{{random"));
+        assert!(!rerun_finished["data"]["effective_script"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("{{random"));
+        let rerun_preview = request
+            .get(&format!("/api/admin/command-runs/{rerun_id}/preview"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(rerun_preview.status_code(), 200);
+        assert_eq!(rerun_preview.text(), "rerun-preview");
+
+        let long_run = request
+            .post("/api/admin/command-runs")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "取消请求测试",
+                "working_directory": cwd,
+                "command_line": "while true; do :; done",
+                "timeout_seconds": 10
+            }))
+            .await;
+        assert_eq!(long_run.status_code(), 200);
+        let long_run_body: serde_json::Value = serde_json::from_str(&long_run.text()).unwrap();
+        let long_run_id = long_run_body["data"]["id"].as_i64().unwrap();
+        let active_runs = request
+            .get("/api/admin/command-runs")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(active_runs.status_code(), 200);
+        let active_body = active_runs.text();
+        assert!(active_body.contains("取消请求测试"), "{active_body}");
+        assert!(!active_body.contains("backend restarted"), "{active_body}");
+        sleep(Duration::from_millis(100)).await;
+        let cancel = request
+            .post(&format!("/api/admin/command-runs/{long_run_id}/cancel"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(cancel.status_code(), 200);
+        let cancel_body = cancel.text();
+        assert!(cancel_body.contains("cancelled"), "{cancel_body}");
+        let cancelled = wait_for_command_run(&request, &auth_key, &auth_value, long_run_id).await;
+        assert_eq!(cancelled["data"]["status"], "cancelled");
+
+        let list_runs = request
+            .get("/api/admin/command-runs?keyword=请求测试")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(list_runs.status_code(), 200);
+        assert!(list_runs.text().contains("请求测试"));
+
+        let delete_template = request
+            .delete(&format!("/api/admin/commands/{template_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(delete_template.status_code(), 200);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn super_admin_can_create_ssh_terminal_ticket() {
     request::<App, _, _>(|request, ctx| async move {
         seed::<App>(&ctx).await.unwrap();
@@ -1208,6 +1833,64 @@ async fn super_admin_can_create_ssh_terminal_ticket() {
             .json(&serde_json::json!({ "target_key": "missing-target" }))
             .await;
         assert_eq!(invalid_ticket.status_code(), 400);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn super_admin_can_create_vnc_session_ticket() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let targets = request
+            .get("/api/admin/vnc/targets")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(targets.status_code(), 200);
+        assert!(targets.text().contains("local-vnc"));
+
+        let session = request
+            .post("/api/admin/vnc/sessions")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "target_key": "local-vnc" }))
+            .await;
+        assert_eq!(session.status_code(), 200);
+        let session_body: serde_json::Value = serde_json::from_str(&session.text()).unwrap();
+        let session_id = session_body["data"]["id"].as_str().unwrap().to_string();
+        assert_eq!(session_body["data"]["target_key"], "local-vnc");
+
+        let sessions = request
+            .get("/api/admin/vnc/sessions")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(sessions.status_code(), 200);
+        assert!(sessions.text().contains(&session_id));
+
+        let ticket = request
+            .post(&format!("/api/admin/vnc/sessions/{session_id}/tickets"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(ticket.status_code(), 200);
+        let ticket_body: serde_json::Value = serde_json::from_str(&ticket.text()).unwrap();
+        assert!(ticket_body["data"]["ticket"].as_str().is_some());
+        assert!(ticket_body["data"]["expires_at"].as_str().is_some());
+
+        let invalid_session = request
+            .post("/api/admin/vnc/sessions")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "target_key": "missing-target" }))
+            .await;
+        assert_eq!(invalid_session.status_code(), 400);
+
+        let close = request
+            .delete(&format!("/api/admin/vnc/sessions/{session_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(close.status_code(), 200);
     })
     .await;
 }

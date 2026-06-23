@@ -121,6 +121,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:setting:list",
       },
       {
+        key: "system-http-client",
+        label: "HTTP 客户端配置",
+        path: "/admin/system/http-client",
+        icon: "api",
+        permission: "system:http_client:config",
+      },
+      {
         key: "system-notifications",
         label: "通知中心",
         path: "/admin/system/notifications",
@@ -156,11 +163,32 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:monitor:view",
       },
       {
+        key: "system-commands",
+        label: "命令管理",
+        path: "/admin/system/commands",
+        icon: "code",
+        permission: "system:command:list",
+      },
+      {
         key: "system-ssh",
         label: "SSH 管理",
         path: "/admin/system/ssh",
         icon: "code",
         permission: "system:ssh:list",
+      },
+      {
+        key: "system-vnc",
+        label: "VNC 管理",
+        path: "/admin/system/vnc",
+        icon: "monitor",
+        permission: "system:vnc:list",
+      },
+      {
+        key: "system-ai-images",
+        label: "AI 图片生成",
+        path: "/admin/system/ai-images",
+        icon: "picture",
+        permission: "system:ai_image:list",
       },
       {
         key: "system-email-templates",
@@ -193,6 +221,43 @@ export const defaultAdminMenus: AdminMenuItem[] = [
     ],
   },
 ];
+
+export function menuIdentity(item: AdminMenuItem) {
+  return item.path ?? `${item.label}::${item.title ?? item.label}`;
+}
+
+export function cloneMenuItem(item: AdminMenuItem): AdminMenuItem {
+  return {
+    ...item,
+    children: item.children?.map(cloneMenuItem),
+  };
+}
+
+export function mergeMenuItems(
+  sourceMenus: AdminMenuItem[],
+  fallbackMenus: AdminMenuItem[],
+): AdminMenuItem[] {
+  const merged = sourceMenus.map(cloneMenuItem);
+
+  for (const fallback of fallbackMenus) {
+    const existing = merged.find(
+      (item) => menuIdentity(item) === menuIdentity(fallback),
+    );
+    if (!existing) {
+      merged.push(cloneMenuItem(fallback));
+      continue;
+    }
+
+    if (fallback.children?.length) {
+      existing.children = mergeMenuItems(
+        existing.children ?? [],
+        fallback.children,
+      );
+    }
+  }
+
+  return merged;
+}
 
 export function findMenuByPath(pathname: string, items = defaultAdminMenus) {
   for (const item of items) {

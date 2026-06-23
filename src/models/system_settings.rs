@@ -1,6 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
+use serde::de::DeserializeOwned;
 
 use super::_entities::system_settings;
 
@@ -31,4 +32,24 @@ pub async fn number_i64(
         .and_then(|setting| setting.value.parse::<i64>().ok())
         .unwrap_or(default_value);
     Ok(value)
+}
+
+pub async fn json_value<T>(db: &DatabaseConnection, key: &str, default_value: T) -> Result<T, DbErr>
+where
+    T: DeserializeOwned,
+{
+    let Some(setting) = system_settings::Entity::find()
+        .filter(system_settings::Column::Key.eq(key))
+        .one(db)
+        .await?
+    else {
+        return Ok(default_value);
+    };
+
+    let value = setting.value.trim();
+    if value.is_empty() {
+        return Ok(default_value);
+    }
+
+    Ok(serde_json::from_str(value).unwrap_or(default_value))
 }

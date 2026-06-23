@@ -1,10 +1,13 @@
 import {
   BranchesOutlined,
+  FontSizeOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SettingOutlined,
   UserOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
 } from "@ant-design/icons";
 import {
   Avatar,
@@ -21,6 +24,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { current, logout, switchCurrentDepartment } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { useUiStore } from "../stores/ui";
 
 const { Header } = Layout;
 
@@ -37,6 +41,10 @@ export function HeaderBar({
   const currentDepartment = useAuthStore((state) => state.currentDepartment);
   const signOut = useAuthStore((state) => state.signOut);
   const setSession = useAuthStore((state) => state.setSession);
+  const contentZoom = useUiStore((state) => state.contentZoom);
+  const zoomIn = useUiStore((state) => state.zoomIn);
+  const zoomOut = useUiStore((state) => state.zoomOut);
+  const resetZoom = useUiStore((state) => state.resetZoom);
   const [switchingDepartment, setSwitchingDepartment] = useState(false);
   const navigate = useNavigate();
 
@@ -114,7 +122,29 @@ export function HeaderBar({
           </Typography.Text>
         </div>
       </Space>
-      <Space size={12}>
+      <Space size={12} className="admin-header-actions">
+        <Space.Compact className="admin-zoom-control">
+          <Button
+            type="text"
+            aria-label="缩小内容"
+            icon={<ZoomOutOutlined />}
+            onClick={zoomOut}
+          />
+          <Button
+            type="text"
+            aria-label="重置内容缩放"
+            icon={<FontSizeOutlined />}
+            onClick={resetZoom}
+          >
+            {Math.round(contentZoom * 100)}%
+          </Button>
+          <Button
+            type="text"
+            aria-label="放大内容"
+            icon={<ZoomInOutlined />}
+            onClick={zoomIn}
+          />
+        </Space.Compact>
         {showDepartmentSwitch ? (
           <Select
             allowClear

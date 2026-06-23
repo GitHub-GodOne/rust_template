@@ -242,6 +242,17 @@
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - role_id: 1
+  menu_id: 27
+  can_create: true
+  can_update: true
+  can_delete: true
+  can_import: true
+  can_export: true
+  can_print: true
+  can_help: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- role_id: 1
   menu_id: 23
   can_create: true
   can_update: true
@@ -254,6 +265,39 @@
   updated_at: "2023-11-12T12:34:56.789Z"
 - role_id: 1
   menu_id: 24
+  can_create: true
+  can_update: true
+  can_delete: true
+  can_import: true
+  can_export: true
+  can_print: true
+  can_help: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- role_id: 1
+  menu_id: 28
+  can_create: true
+  can_update: true
+  can_delete: true
+  can_import: true
+  can_export: true
+  can_print: true
+  can_help: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- role_id: 1
+  menu_id: 25
+  can_create: true
+  can_update: true
+  can_delete: true
+  can_import: true
+  can_export: true
+  can_print: true
+  can_help: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- role_id: 1
+  menu_id: 26
   can_create: true
   can_update: true
   can_delete: true

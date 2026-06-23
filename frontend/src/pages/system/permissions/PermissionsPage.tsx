@@ -1,10 +1,20 @@
 import { SafetyCertificateOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card, Checkbox, Col, List, Row, Space, Tag, message } from "antd";
+import {
+  Alert,
+  Card,
+  Checkbox,
+  Col,
+  List,
+  Row,
+  Space,
+  Tag,
+  message,
+} from "antd";
 import type { CheckboxValueType } from "antd/es/checkbox/Group";
 import { useEffect, useMemo, useState } from "react";
 import { type MenuRecord, fetchMenus } from "../../../api/admin/menus";
-import { fetchPermissions } from "../../../api/admin/permissions";
+import { fetchAllPermissions } from "../../../api/admin/permissions";
 import {
   type RoleMenuGrant,
   fetchRoleMenus,
@@ -62,7 +72,7 @@ export function PermissionsPage() {
   });
   const permissionsQuery = useQuery({
     queryKey: ["admin-permissions-all"],
-    queryFn: () => fetchPermissions({ page: 1, page_size: 100 }),
+    queryFn: () => fetchAllPermissions(),
   });
   const menusQuery = useQuery({
     queryKey: ["admin-menus"],
@@ -206,20 +216,28 @@ export function PermissionsPage() {
             <div className="permission-grid">
               <div className="permission-row">
                 <strong>接口 / 功能权限</strong>
-                <Checkbox.Group
-                  value={selectedPermissionIds}
-                  onChange={(values: CheckboxValueType[]) =>
-                    setSelectedPermissionIds(values.map(Number))
-                  }
-                >
-                  <Space wrap>
-                    {(permissionsQuery.data?.items ?? []).map((permission) => (
-                      <Checkbox key={permission.id} value={permission.id}>
-                        {permission.name}
-                      </Checkbox>
-                    ))}
-                  </Space>
-                </Checkbox.Group>
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="接口权限和菜单可见是两套授权"
+                    description="给角色勾选 AI 图片生成相关接口权限后，还需要在下方给“AI 图片生成”菜单勾选“菜单可见”，用户登录后才会看到导航入口。"
+                  />
+                  <Checkbox.Group
+                    value={selectedPermissionIds}
+                    onChange={(values: CheckboxValueType[]) =>
+                      setSelectedPermissionIds(values.map(Number))
+                    }
+                  >
+                    <Space wrap>
+                      {(permissionsQuery.data ?? []).map((permission) => (
+                        <Checkbox key={permission.id} value={permission.id}>
+                          {permission.name}
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  </Checkbox.Group>
+                </Space>
               </div>
               {menus.map((menu) => {
                 const grant = menuGrants[menu.id];

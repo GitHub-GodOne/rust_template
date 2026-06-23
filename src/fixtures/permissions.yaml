@@ -818,3 +818,94 @@
   description: 允许创建 SSH 终端连接
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 118
+  name: 查看 AI 图片生成
+  code: system:ai_image:list
+  group_name: system:ai_image
+  description: 允许查看 AI 图片配置和生成记录
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 119
+  name: 配置 AI 图片生成
+  code: system:ai_image:config
+  group_name: system:ai_image
+  description: 允许新增、更新和删除 AI 图片配置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 120
+  name: 生成 AI 图片
+  code: system:ai_image:generate
+  group_name: system:ai_image
+  description: 允许使用参考图发起 AI 图片生成
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 121
+  name: 查看 HTTP 客户端配置
+  code: system:http_client:config
+  group_name: system:http_client
+  description: 允许查看和保存项目外部 HTTP 请求配置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 122
+  name: 测试 HTTP 客户端配置
+  code: system:http_client:test
+  group_name: system:http_client
+  description: 允许发起测试请求验证 HTTP 客户端配置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 123
+  name: 查看命令管理
+  code: system:command:list
+  group_name: system:command
+  description: 允许查看命令模板和执行记录
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 124
+  name: 新增命令模板
+  code: system:command:create
+  group_name: system:command
+  description: 允许新增命令模板
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 125
+  name: 更新命令模板
+  code: system:command:update
+  group_name: system:command
+  description: 允许更新命令模板
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 126
+  name: 删除命令模板
+  code: system:command:delete
+  group_name: system:command
+  description: 允许删除命令模板
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 127
+  name: 执行命令
+  code: system:command:run
+  group_name: system:command
+  description: 允许执行命令模板和临时命令
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 128
+  name: 取消命令
+  code: system:command:cancel
+  group_name: system:command
+  description: 允许取消正在运行的命令
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 129
+  name: 查看 VNC 管理
+  code: system:vnc:list
+  group_name: system:vnc
+  description: 允许查看 VNC 管理页面和连接目标
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 130
+  name: 连接 VNC 远程桌面
+  code: system:vnc:connect
+  group_name: system:vnc
+  description: 允许创建 VNC 远程桌面连接
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

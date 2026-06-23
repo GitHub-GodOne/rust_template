@@ -1,4 +1,5 @@
 import {
+  AppstoreOutlined,
   CloudDownloadOutlined,
   CloudUploadOutlined,
   DeleteOutlined,
@@ -10,6 +11,7 @@ import {
   LinkOutlined,
   PlusOutlined,
   ReloadOutlined,
+  TableOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,6 +23,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -58,6 +61,8 @@ type FolderFormValues = {
 type RenameFormValues = {
   name: string;
 };
+
+type FileViewMode = "table" | "card";
 
 function joinRelativePath(prefix: string, name: string) {
   const cleanName = name.trim().replace(/^\/+|\/+$/g, "");
@@ -129,6 +134,7 @@ export function FilesPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadingName, setUploadingName] = useState<string>();
+  const [viewMode, setViewMode] = useState<FileViewMode>("table");
   const [treeData, setTreeData] = useState<DataNode[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>([""]);
   const [folderForm] = Form.useForm<FolderFormValues>();
@@ -472,6 +478,48 @@ export function FilesPage() {
     </Space>
   );
 
+  const renderFileCard = (record: ManagedFileRecord) => {
+    const openRecord = () =>
+      record.is_dir ? openPath(record.path) : openPreview(record);
+
+    return (
+      <Card
+        key={record.path}
+        className={[
+          "material-card",
+          record.is_dir ? "material-folder-card" : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        hoverable
+        onDoubleClick={openRecord}
+      >
+        <button
+          className="material-card-preview"
+          type="button"
+          onClick={openRecord}
+        >
+          {record.is_dir ? <FolderOutlined /> : fileIcon(record)}
+        </button>
+        <Space direction="vertical" size={8} className="full-width">
+          <Typography.Text strong ellipsis title={record.name}>
+            {record.name}
+          </Typography.Text>
+          <div className="material-card-meta">
+            <span>
+              {record.is_dir ? "文件夹" : (record.mime_type ?? "文件")}
+            </span>
+            <span>{record.is_dir ? "-" : formatBytes(record.size_bytes)}</span>
+          </div>
+          <Typography.Text type="secondary" ellipsis title={record.path}>
+            {record.path || "根目录"}
+          </Typography.Text>
+          <div className="material-card-actions">{renderActions(record)}</div>
+        </Space>
+      </Card>
+    );
+  };
+
   const columns: ColumnsType<ManagedFileRecord> = [
     {
       title: "名称",
@@ -522,6 +570,7 @@ export function FilesPage() {
       title: "操作",
       key: "actions",
       width: 360,
+      fixed: "right",
       render: (_, record) => renderActions(record),
     },
   ];
@@ -743,6 +792,14 @@ export function FilesPage() {
                   上传文件
                 </PermissionButton>
               </Upload>
+              <Segmented<FileViewMode>
+                value={viewMode}
+                onChange={(value) => setViewMode(value)}
+                options={[
+                  { label: "表格", value: "table", icon: <TableOutlined /> },
+                  { label: "文件", value: "card", icon: <AppstoreOutlined /> },
+                ]}
+              />
               {selectedRoot ? (
                 <Button
                   icon={<LinkOutlined />}
@@ -773,17 +830,33 @@ export function FilesPage() {
                 拖拽文件到这里上传到 {currentPath || "根目录"}
               </Typography.Text>
             </div>
-            <DataTable<ManagedFileRecord>
-              rowKey="path"
-              columns={columns}
-              dataSource={rows}
-              loading={browserQuery.isLoading}
-              pagination={false}
-              onRow={(record) => ({
-                onDoubleClick: () =>
-                  record.is_dir ? openPath(record.path) : openPreview(record),
-              })}
-            />
+            {viewMode === "table" ? (
+              <div className="material-file-table-scroll">
+                <DataTable<ManagedFileRecord>
+                  rowKey="path"
+                  columns={columns}
+                  dataSource={rows}
+                  loading={browserQuery.isLoading}
+                  pagination={false}
+                  onRow={(record) => ({
+                    onDoubleClick: () =>
+                      record.is_dir
+                        ? openPath(record.path)
+                        : openPreview(record),
+                  })}
+                />
+              </div>
+            ) : (
+              <Spin spinning={browserQuery.isLoading}>
+                {rows.length > 0 ? (
+                  <div className="material-card-grid">
+                    {rows.map(renderFileCard)}
+                  </div>
+                ) : (
+                  <Empty description="暂无文件" />
+                )}
+              </Spin>
+            )}
           </Upload.Dragger>
         </Space>
       </div>

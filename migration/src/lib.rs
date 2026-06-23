@@ -15,6 +15,10 @@ mod m20260527_000010_content_management;
 mod m20260527_000011_departments;
 mod m20260527_000012_resource_storage;
 mod m20260527_000013_upload_tasks;
+mod m20260615_000014_ai_image_generations;
+mod m20260616_000015_command_management;
+mod m20260619_000016_command_orchestration;
+mod m20260621_000017_command_artifact_preview;
 
 pub struct Migrator;
 
@@ -36,6 +40,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20260527_000011_departments::Migration),
             Box::new(m20260527_000012_resource_storage::Migration),
             Box::new(m20260527_000013_upload_tasks::Migration),
+            Box::new(m20260615_000014_ai_image_generations::Migration),
+            Box::new(m20260616_000015_command_management::Migration),
+            Box::new(m20260619_000016_command_orchestration::Migration),
+            Box::new(m20260621_000017_command_artifact_preview::Migration),
             // inject-above (do not remove this comment)
         ]
     }

@@ -303,3 +303,51 @@
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 22
+  key: vnc_manager.targets
+  name: VNC 连接目标
+  group_key: vnc_manager
+  value: "[]"
+  value_type: json
+  default_value: "[]"
+  description: 后台 VNC 管理可连接的远程桌面列表，本机 VNC 内置可用
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 195
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 20
+  key: ai_image_manager.providers
+  name: AI 图片生成配置
+  group_key: ai_image_manager
+  value: "[]"
+  value_type: secret
+  default_value: "[]"
+  description: 后台 AI 图片生成可复用配置
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 200
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 21
+  key: http_client.runtime
+  name: HTTP 客户端配置
+  group_key: http_client
+  value: '{"enabled":true,"request_timeout_seconds":120,"connect_timeout_seconds":20,"pool_idle_timeout_seconds":90,"proxy_enabled":false,"proxy_url":null,"danger_accept_invalid_certs":false,"user_agent":null}'
+  value_type: json
+  default_value: '{"enabled":true,"request_timeout_seconds":120,"connect_timeout_seconds":20,"pool_idle_timeout_seconds":90,"proxy_enabled":false,"proxy_url":null,"danger_accept_invalid_certs":false,"user_agent":null}'
+  description: 项目外部 HTTP 请求的 reqwest 运行时参数
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 205
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

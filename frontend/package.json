@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5",
+    "@novnc/novnc": "^1.7.0",
     "@tanstack/react-query": "^5",
     "@xterm/addon-fit": "^0.10",
     "@xterm/xterm": "^5",
