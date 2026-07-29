@@ -126,13 +126,13 @@ export function HeaderBar({
         <Space.Compact className="admin-zoom-control">
           <Button
             type="text"
-            aria-label="缩小内容"
+            aria-label="缩小页面"
             icon={<ZoomOutOutlined />}
             onClick={zoomOut}
           />
           <Button
             type="text"
-            aria-label="重置内容缩放"
+            aria-label="重置页面缩放"
             icon={<FontSizeOutlined />}
             onClick={resetZoom}
           >
@@ -140,7 +140,7 @@ export function HeaderBar({
           </Button>
           <Button
             type="text"
-            aria-label="放大内容"
+            aria-label="放大页面"
             icon={<ZoomInOutlined />}
             onClick={zoomIn}
           />

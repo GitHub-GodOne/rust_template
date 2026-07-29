@@ -58,6 +58,8 @@ fn is_backend_path(path: &str) -> bool {
         || path == "api-docs"
         || path.starts_with("api-docs/")
         || path == "swagger-ui"
+        || path == "public"
+        || path.starts_with("public/files/")
 }
 
 fn content_type(path: &str) -> &'static str {

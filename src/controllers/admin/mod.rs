@@ -10,6 +10,7 @@ use crate::{
 
 pub mod ai_images;
 pub mod backups;
+pub mod chat_messages;
 pub mod commands;
 pub mod content;
 pub mod data_scopes;
@@ -52,6 +53,20 @@ pub fn routes() -> Routes {
     let routes = operations_routes(routes);
     let routes = content_routes(routes);
     extension_routes(routes)
+}
+
+#[must_use]
+pub fn public_routes() -> Routes {
+    Routes::new()
+        .add(
+            "/public/files/{token}",
+            get(file_manager::public_file).post(file_manager::public_file_with_password),
+        )
+        .add("/api/command-api/runs", post(commands::api_run_command))
+        .add(
+            "/api/command-api/runs/{id}",
+            get(commands::api_get_run_status),
+        )
 }
 
 fn core_routes(routes: Routes) -> Routes {
@@ -215,6 +230,14 @@ fn command_routes(routes: Routes) -> Routes {
             get(commands::get)
                 .put(commands::update)
                 .delete(commands::delete),
+        )
+        .add(
+            "/api/admin/command-api-keys",
+            get(commands::list_api_keys).post(commands::create_api_key),
+        )
+        .add(
+            "/api/admin/command-api-keys/{id}",
+            put(commands::update_api_key).delete(commands::delete_api_key),
         )
         .add(
             "/api/admin/command-workflows",
@@ -417,6 +440,24 @@ fn extension_routes(routes: Routes) -> Routes {
             post(email_templates::test_send),
         )
         .add(
+            "/api/admin/chat-messages",
+            get(chat_messages::list).post(chat_messages::create),
+        )
+        .add(
+            "/api/admin/chat-messages/{id}",
+            get(chat_messages::get)
+                .put(chat_messages::update)
+                .delete(chat_messages::delete),
+        )
+        .add(
+            "/api/admin/chat-messages/{id}/mark-sent",
+            post(chat_messages::mark_sent),
+        )
+        .add(
+            "/api/admin/chat-messages/{id}/copy",
+            post(chat_messages::copy),
+        )
+        .add(
             "/api/admin/dict-types",
             get(dicts::list_types).post(dicts::create_type),
         )
@@ -475,6 +516,7 @@ fn file_manager_routes(routes: Routes) -> Routes {
             post(file_manager::upload).layer(DefaultBodyLimit::disable()),
         )
         .add("/api/admin/files/rename", put(file_manager::rename))
+        .add("/api/admin/files/access", put(file_manager::update_access))
         .add("/api/admin/files", delete(file_manager::delete))
         .add("/api/admin/files/preview", get(file_manager::preview))
         .add("/api/admin/files/download", get(file_manager::download))
@@ -557,6 +599,36 @@ fn http_client_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/http-client/test",
             post(http_client::test_request),
+        )
+        .add(
+            "/api/admin/http-client/requests",
+            get(http_client::list_requests).post(http_client::create_request),
+        )
+        .add(
+            "/api/admin/http-client/requests/{id}",
+            get(http_client::get_request)
+                .put(http_client::update_request)
+                .delete(http_client::delete_request),
+        )
+        .add(
+            "/api/admin/http-client/requests/{id}/send",
+            post(http_client::send_request),
+        )
+        .add(
+            "/api/admin/http-client/runs",
+            get(http_client::list_runs).post(http_client::send_ad_hoc_request),
+        )
+        .add(
+            "/api/admin/http-client/runs/{id}",
+            get(http_client::get_run),
+        )
+        .add(
+            "/api/admin/http-client/runs/{id}/download",
+            get(http_client::download_run_result),
+        )
+        .add(
+            "/api/admin/http-client/parse-import",
+            post(http_client::parse_import),
         )
 }
 

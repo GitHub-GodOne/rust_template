@@ -136,6 +136,63 @@ async fn can_login_with_verify(#[case] test_name: &str, #[case] password: &str) 
 
 #[tokio::test]
 #[serial]
+async fn login_fails_lock_account_until_end_of_day() {
+    request::<App, _, _>(|request, ctx| async move {
+        let email = "lockout@loco.com";
+        let password = "12341234";
+        let register_response = request
+            .post("/api/auth/register")
+            .json(&serde_json::json!({
+                "name": "loco",
+                "email": email,
+                "password": password
+            }))
+            .await;
+        assert_eq!(register_response.status_code(), 200);
+
+        let user = users::Model::find_by_email(&ctx.db, email).await.unwrap();
+        request
+            .get(&format!(
+                "/api/auth/verify/{}",
+                user.email_verification_token.unwrap()
+            ))
+            .await;
+
+        for attempt in 1..=3 {
+            let response = request
+                .post("/api/auth/login")
+                .json(&serde_json::json!({
+                    "email": email,
+                    "password": "wrong-password"
+                }))
+                .await;
+            assert_eq!(response.status_code(), 401);
+            let user = users::Model::find_by_email(&ctx.db, email).await.unwrap();
+            assert_eq!(user.failed_login_attempts, attempt);
+            if attempt < 3 {
+                assert!(user.locked_until.is_none());
+            } else {
+                assert!(user.locked_until.is_some());
+            }
+        }
+
+        let locked_response = request
+            .post("/api/auth/login")
+            .json(&serde_json::json!({
+                "email": email,
+                "password": password
+            }))
+            .await;
+        assert_eq!(locked_response.status_code(), 401);
+        assert!(locked_response
+            .text()
+            .contains("账号已因登录失败次数过多被锁定"));
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn login_with_un_existing_email() {
     configure_insta!();
 

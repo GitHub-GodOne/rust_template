@@ -3,25 +3,30 @@
 use std::{
     fmt::Write as _,
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Component, Path as FsPath, PathBuf},
 };
 
 use axum::{
     extract::{multipart::Field, Multipart},
     http::{header, HeaderMap, HeaderName, HeaderValue},
     response::IntoResponse,
+    Form,
 };
-use loco_rs::prelude::*;
+use loco_rs::{hash, prelude::*};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     controllers::admin::authorize,
     errors::{ApiError, ApiResult},
-    models::{admin_logs, system_settings},
+    models::{_entities::managed_file_access_rules, admin_logs, system_settings},
     responses::{self, ApiResponse, EmptyData},
 };
 
 const ROOTS_SETTING_KEY: &str = "file_manager.roots";
+const VISIBILITY_PRIVATE: &str = "private";
+const VISIBILITY_PUBLIC: &str = "public";
 
 #[derive(Debug, Clone, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct FileRootRecord {
@@ -37,6 +42,9 @@ pub struct ManagedFileRecord {
     pub name: String,
     pub path: String,
     pub url: String,
+    pub public_url: Option<String>,
+    pub visibility: String,
+    pub requires_password: bool,
     pub is_dir: bool,
     pub extension: Option<String>,
     pub mime_type: Option<String>,
@@ -79,6 +87,20 @@ pub struct RenameFileParams {
     pub name: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct UpdateFileAccessParams {
+    pub root_key: String,
+    pub path: String,
+    pub visibility: String,
+    pub password: Option<String>,
+    pub clear_password: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PublicFilePasswordParams {
+    pub password: String,
+}
+
 #[utoipa::path(
     get,
     path = "/api/admin/files/roots",
@@ -115,7 +137,7 @@ pub async fn browser(
     }
 
     let mut directories = Vec::new();
-    let mut files = Vec::new();
+    let mut file_entries = Vec::new();
     for entry in fs::read_dir(directory).map_err(|_| ApiError::internal("failed to list files"))? {
         let entry = entry.map_err(|_| ApiError::internal("failed to list files"))?;
         let metadata = entry
@@ -123,13 +145,28 @@ pub async fn browser(
             .map_err(|_| ApiError::internal("failed to read file metadata"))?;
         let name = entry.file_name().to_string_lossy().to_string();
         let item_path = join_relative_path(&relative, &name);
-        let record = file_record(&root, &item_path, &name, &metadata);
         if metadata.is_dir() {
-            directories.push(record);
+            directories.push(file_record(&root, &item_path, &name, &metadata, None));
         } else if metadata.is_file() {
-            files.push(record);
+            file_entries.push((item_path, name, metadata));
         }
     }
+    let rules = access_rules_for_paths(
+        &ctx,
+        &root.key,
+        file_entries
+            .iter()
+            .map(|(path, _, _)| path.as_str())
+            .collect::<Vec<_>>(),
+    )
+    .await?;
+    let mut files = file_entries
+        .iter()
+        .map(|(path, name, metadata)| {
+            let rule = rules.iter().find(|rule| rule.path == *path);
+            file_record(&root, path, name, metadata, rule)
+        })
+        .collect::<Vec<_>>();
     directories.sort_by(|left, right| left.name.cmp(&right.name));
     files.sort_by(|left, right| left.name.cmp(&right.name));
 
@@ -176,7 +213,7 @@ pub async fn create_folder(
     )
     .await;
     Ok(responses::ok(file_record(
-        &root, &relative, &name, &metadata,
+        &root, &relative, &name, &metadata, None,
     )))
 }
 
@@ -252,7 +289,7 @@ pub async fn upload(
     )
     .await;
     Ok(responses::ok(file_record(
-        &root, &relative, &filename, &metadata,
+        &root, &relative, &filename, &metadata, None,
     )))
 }
 
@@ -282,6 +319,7 @@ pub async fn rename(
         return Err(ApiError::bad_request("target path already exists"));
     }
     fs::rename(&source, &target).map_err(|_| ApiError::internal("failed to rename file"))?;
+    update_access_rule_path(&ctx, &root.key, &relative, &target_relative, user.id).await?;
     let metadata = fs::metadata(&target).map_err(|_| ApiError::internal("failed to read file"))?;
     record_file_log(
         &ctx,
@@ -292,11 +330,13 @@ pub async fn rename(
         None,
     )
     .await;
+    let rule = access_rule_for_path(&ctx, &root.key, &target_relative).await?;
     Ok(responses::ok(file_record(
         &root,
         &target_relative,
         &name,
         &metadata,
+        rule.as_ref(),
     )))
 }
 
@@ -322,6 +362,7 @@ pub async fn delete(
         fs::remove_dir(&target).map_err(|_| ApiError::bad_request("folder is not empty"))?;
     } else {
         fs::remove_file(&target).map_err(|_| ApiError::internal("failed to delete file"))?;
+        delete_access_rule(&ctx, &root.key, &relative).await?;
     }
     record_file_log(
         &ctx,
@@ -333,6 +374,48 @@ pub async fn delete(
     )
     .await;
     Ok(responses::empty())
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/files/access",
+    tag = "admin-files",
+    security(("bearer_auth" = [])),
+    request_body = UpdateFileAccessParams,
+    responses((status = 200, body = ApiResponse<ManagedFileRecord>))
+)]
+#[debug_handler]
+pub async fn update_access(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<UpdateFileAccessParams>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:file:update").await?;
+    let root = find_root(&ctx, &params.root_key).await?;
+    let relative = normalize_required_path(&params.path)?;
+    let target = resolve_existing_path(&root, &relative)?;
+    if !target.is_file() {
+        return Err(ApiError::bad_request("path is not a file"));
+    }
+    let rule = save_access_rule(&ctx, &root.key, &relative, &params, user.id).await?;
+    let metadata = fs::metadata(&target).map_err(|_| ApiError::internal("failed to read file"))?;
+    let name = file_name(&relative)?;
+    record_file_log(
+        &ctx,
+        &user,
+        "access",
+        format!("更新文件访问设置：{relative} -> {}", rule.visibility),
+        Some(200),
+        None,
+    )
+    .await;
+    Ok(responses::ok(file_record(
+        &root,
+        &relative,
+        &name,
+        &metadata,
+        Some(&rule),
+    )))
 }
 
 #[utoipa::path(
@@ -373,6 +456,34 @@ pub async fn download(
     Ok(response)
 }
 
+#[debug_handler]
+pub async fn public_file(
+    State(ctx): State<AppContext>,
+    Path(token): Path<String>,
+) -> ApiResult<Response> {
+    let (root, rule) = public_access_rule(&ctx, &token).await?;
+    if rule.password_hash.is_some() {
+        return Ok(password_form_response(&token, None));
+    }
+    raw_file_response(&root, &rule.path, FileDisposition::Inline, false)
+}
+
+#[debug_handler]
+pub async fn public_file_with_password(
+    State(ctx): State<AppContext>,
+    Path(token): Path<String>,
+    Form(params): Form<PublicFilePasswordParams>,
+) -> ApiResult<Response> {
+    let (root, rule) = public_access_rule(&ctx, &token).await?;
+    let Some(password_hash) = rule.password_hash.as_deref() else {
+        return raw_file_response(&root, &rule.path, FileDisposition::Inline, false);
+    };
+    if !hash::verify_password(&params.password, password_hash) {
+        return Ok(password_form_response(&token, Some("访问密码不正确")));
+    }
+    raw_file_response(&root, &rule.path, FileDisposition::Inline, true)
+}
+
 async fn file_response(
     ctx: &AppContext,
     user: &crate::models::users::Model,
@@ -381,39 +492,7 @@ async fn file_response(
 ) -> ApiResult<Response> {
     let root = find_root(ctx, &params.root_key).await?;
     let relative = normalize_required_path(&params.path)?;
-    let target = resolve_existing_path(&root, &relative)?;
-    if !target.is_file() {
-        return Err(ApiError::bad_request("path is not a file"));
-    }
-    let bytes = fs::read(&target).map_err(|_| ApiError::bad_request("file content not found"))?;
-    let name = file_name(&relative)?;
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        mime_type(&relative)
-            .unwrap_or("application/octet-stream")
-            .parse()
-            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
-    );
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!(
-            "{}; filename=\"{}\"",
-            disposition.as_header_value(),
-            sanitize_filename(&name)
-        ))
-        .map_err(|_| ApiError::internal("failed to build file response"))?,
-    );
-    if matches!(disposition, FileDisposition::Inline) {
-        headers.insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("private, no-store"),
-        );
-        headers.insert(
-            HeaderName::from_static("x-content-type-options"),
-            HeaderValue::from_static("nosniff"),
-        );
-    }
+    let response = raw_file_response(&root, &relative, disposition, true)?;
     record_file_log(
         ctx,
         user,
@@ -423,6 +502,49 @@ async fn file_response(
         None,
     )
     .await;
+    Ok(response)
+}
+
+fn raw_file_response(
+    root: &FileRootRecord,
+    relative: &str,
+    disposition: FileDisposition,
+    private_cache: bool,
+) -> ApiResult<Response> {
+    let target = resolve_existing_path(root, relative)?;
+    if !target.is_file() {
+        return Err(ApiError::bad_request("path is not a file"));
+    }
+    let bytes = fs::read(&target).map_err(|_| ApiError::bad_request("file content not found"))?;
+    let name = file_name(relative)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        mime_type(relative)
+            .unwrap_or("application/octet-stream")
+            .parse()
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&content_disposition(disposition, &name))
+            .map_err(|_| ApiError::internal("failed to build file response"))?,
+    );
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    if matches!(disposition, FileDisposition::Inline) || private_cache {
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+    } else {
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=300"),
+        );
+    }
     Ok((headers, bytes).into_response())
 }
 
@@ -525,7 +647,7 @@ fn resolve_new_path(root: &FileRootRecord, relative: &str) -> ApiResult<PathBuf>
     Ok(target)
 }
 
-fn ensure_under_root(root: &Path, target: &Path) -> ApiResult<()> {
+fn ensure_under_root(root: &FsPath, target: &FsPath) -> ApiResult<()> {
     if target.starts_with(root) {
         Ok(())
     } else {
@@ -555,7 +677,7 @@ fn normalize_relative_path(path: Option<&str>) -> ApiResult<String> {
     {
         return Err(ApiError::bad_request("invalid file path"));
     }
-    if Path::new(path).components().any(|component| {
+    if FsPath::new(path).components().any(|component| {
         matches!(
             component,
             Component::ParentDir | Component::RootDir | Component::Prefix(_)
@@ -571,11 +693,26 @@ fn file_record(
     relative: &str,
     name: &str,
     metadata: &fs::Metadata,
+    rule: Option<&managed_file_access_rules::Model>,
 ) -> ManagedFileRecord {
+    let is_public = rule.is_some_and(|rule| rule.enabled && rule.visibility == VISIBILITY_PUBLIC);
+    let public_link = rule
+        .and_then(|rule| rule.public_token.as_deref())
+        .filter(|_| is_public)
+        .map(public_token_url);
     ManagedFileRecord {
         name: name.to_string(),
         path: relative.to_string(),
         url: public_url(root, relative),
+        public_url: public_link,
+        visibility: if is_public {
+            VISIBILITY_PUBLIC.to_string()
+        } else {
+            VISIBILITY_PRIVATE.to_string()
+        },
+        requires_password: rule
+            .and_then(|rule| rule.password_hash.as_ref())
+            .is_some_and(|_| is_public),
         is_dir: metadata.is_dir(),
         extension: if metadata.is_file() {
             file_extension(relative)
@@ -613,6 +750,202 @@ fn public_url(root: &FileRootRecord, relative: &str) -> String {
             .collect::<Vec<_>>()
             .join("/")
     )
+}
+
+fn public_token_url(token: &str) -> String {
+    format!("/public/files/{}", percent_encode_segment(token))
+}
+
+async fn access_rules_for_paths(
+    ctx: &AppContext,
+    root_key: &str,
+    paths: Vec<&str>,
+) -> ApiResult<Vec<managed_file_access_rules::Model>> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(managed_file_access_rules::Entity::find()
+        .filter(managed_file_access_rules::Column::RootKey.eq(root_key))
+        .filter(managed_file_access_rules::Column::Path.is_in(paths))
+        .filter(managed_file_access_rules::Column::Enabled.eq(true))
+        .all(&ctx.db)
+        .await?)
+}
+
+async fn access_rule_for_path(
+    ctx: &AppContext,
+    root_key: &str,
+    path: &str,
+) -> ApiResult<Option<managed_file_access_rules::Model>> {
+    Ok(managed_file_access_rules::Entity::find()
+        .filter(managed_file_access_rules::Column::RootKey.eq(root_key))
+        .filter(managed_file_access_rules::Column::Path.eq(path))
+        .filter(managed_file_access_rules::Column::Enabled.eq(true))
+        .one(&ctx.db)
+        .await?)
+}
+
+async fn save_access_rule(
+    ctx: &AppContext,
+    root_key: &str,
+    path: &str,
+    params: &UpdateFileAccessParams,
+    user_id: i32,
+) -> ApiResult<managed_file_access_rules::Model> {
+    let visibility = params.visibility.trim();
+    if visibility != VISIBILITY_PRIVATE && visibility != VISIBILITY_PUBLIC {
+        return Err(ApiError::bad_request("invalid file visibility"));
+    }
+    let existing = access_rule_for_path(ctx, root_key, path).await?;
+    let password_hash = match params
+        .password
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(password) => Some(
+            hash::hash_password(password)
+                .map_err(|_| ApiError::internal("failed to hash access password"))?,
+        ),
+        None if params.clear_password.unwrap_or(false) || visibility == VISIBILITY_PRIVATE => None,
+        None => existing
+            .as_ref()
+            .and_then(|rule| rule.password_hash.clone()),
+    };
+    let public_token = if visibility == VISIBILITY_PUBLIC {
+        existing
+            .as_ref()
+            .and_then(|rule| rule.public_token.clone())
+            .or_else(|| Some(Uuid::new_v4().to_string()))
+    } else {
+        None
+    };
+
+    if let Some(rule) = existing {
+        let mut active = rule.into_active_model();
+        active.visibility = Set(visibility.to_string());
+        active.public_token = Set(public_token);
+        active.password_hash = Set(password_hash);
+        active.enabled = Set(true);
+        active.updated_by = Set(Some(user_id));
+        return Ok(active.update(&ctx.db).await?);
+    }
+
+    Ok(managed_file_access_rules::ActiveModel {
+        root_key: Set(root_key.to_string()),
+        path: Set(path.to_string()),
+        visibility: Set(visibility.to_string()),
+        public_token: Set(public_token),
+        password_hash: Set(password_hash),
+        enabled: Set(true),
+        created_by: Set(Some(user_id)),
+        updated_by: Set(Some(user_id)),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?)
+}
+
+async fn update_access_rule_path(
+    ctx: &AppContext,
+    root_key: &str,
+    old_path: &str,
+    new_path: &str,
+    user_id: i32,
+) -> ApiResult<()> {
+    if let Some(rule) = access_rule_for_path(ctx, root_key, old_path).await? {
+        let mut active = rule.into_active_model();
+        active.path = Set(new_path.to_string());
+        active.updated_by = Set(Some(user_id));
+        active.update(&ctx.db).await?;
+    }
+    Ok(())
+}
+
+async fn delete_access_rule(ctx: &AppContext, root_key: &str, path: &str) -> ApiResult<()> {
+    if let Some(rule) = access_rule_for_path(ctx, root_key, path).await? {
+        rule.delete(&ctx.db).await?;
+    }
+    Ok(())
+}
+
+async fn public_access_rule(
+    ctx: &AppContext,
+    token: &str,
+) -> ApiResult<(FileRootRecord, managed_file_access_rules::Model)> {
+    let rule = managed_file_access_rules::Entity::find()
+        .filter(managed_file_access_rules::Column::PublicToken.eq(token))
+        .filter(managed_file_access_rules::Column::Visibility.eq(VISIBILITY_PUBLIC))
+        .filter(managed_file_access_rules::Column::Enabled.eq(true))
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("public file not found"))?;
+    let root = find_root(ctx, &rule.root_key).await?;
+    resolve_existing_path(&root, &rule.path)?;
+    Ok((root, rule))
+}
+
+fn password_form_response(token: &str, error: Option<&str>) -> Response {
+    let error_html = error
+        .map(|value| format!("<p style=\"color:#dc2626\">{}</p>", escape_html(value)))
+        .unwrap_or_default();
+    let body = format!(
+        r#"<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件访问密码</title>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f6fb;margin:0;display:grid;place-items:center;min-height:100vh}}main{{width:min(420px,calc(100vw - 32px));background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.14);padding:28px}}input,button{{box-sizing:border-box;width:100%;height:42px;border-radius:8px;font-size:16px}}input{{border:1px solid #cbd5e1;padding:0 12px}}button{{margin-top:14px;border:0;background:#2563eb;color:#fff;font-weight:700}}</style>
+</head>
+<body><main><h1>请输入访问密码</h1>{error_html}<form method="post" action="/public/files/{token}"><input name="password" type="password" autofocus autocomplete="current-password"><button type="submit">访问文件</button></form></main></body>
+</html>"#,
+        token = percent_encode_segment(token),
+    );
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    (headers, body).into_response()
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn content_disposition(disposition: FileDisposition, file_name: &str) -> String {
+    let fallback = ascii_filename_fallback(file_name);
+    format!(
+        "{}; filename=\"{}\"; filename*=UTF-8''{}",
+        disposition.as_header_value(),
+        fallback,
+        percent_encode_segment(file_name)
+    )
+}
+
+fn ascii_filename_fallback(file_name: &str) -> String {
+    let fallback = file_name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if fallback.is_empty() || fallback == "." || fallback == ".." {
+        "file.bin".to_string()
+    } else {
+        fallback
+    }
 }
 
 fn percent_encode_segment(segment: &str) -> String {
@@ -738,10 +1071,11 @@ fn sanitize_filename(file_name: &str) -> String {
         .trim()
         .chars()
         .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
-                ch
-            } else {
+            if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
                 '_'
+            } else {
+                ch
             }
         })
         .collect::<String>();

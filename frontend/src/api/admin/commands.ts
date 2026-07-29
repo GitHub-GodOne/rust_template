@@ -44,6 +44,19 @@ export type CommandRunRecord = {
   updated_at: string;
 };
 
+export type CommandApiKeyRecord = {
+  id: number;
+  name: string;
+  token: string;
+  description?: string | null;
+  enabled: boolean;
+  last_used_at?: string | null;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CommandRunLogRecord = {
   id: number;
   run_id: number;
@@ -138,6 +151,13 @@ export type RunCommandParams = {
   preview_path_template?: string | null;
 };
 
+export type SaveCommandApiKeyParams = {
+  name: string;
+  token?: string | null;
+  description?: string | null;
+  enabled?: boolean;
+};
+
 export type SaveCommandWorkflowStepParams = {
   id?: number | null;
   template_id: number;
@@ -202,6 +222,41 @@ export async function updateCommandTemplate(
 
 export async function deleteCommandTemplate(id: number) {
   await apiClient.delete(`/admin/commands/${id}`);
+}
+
+export async function fetchCommandApiKeys(params?: {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  enabled?: boolean;
+}) {
+  const response = await apiClient.get<
+    ApiResponse<PageResponse<CommandApiKeyRecord>>
+  >("/admin/command-api-keys", { params });
+  return unwrap(response.data);
+}
+
+export async function createCommandApiKey(payload: SaveCommandApiKeyParams) {
+  const response = await apiClient.post<ApiResponse<CommandApiKeyRecord>>(
+    "/admin/command-api-keys",
+    payload,
+  );
+  return unwrap(response.data);
+}
+
+export async function updateCommandApiKey(
+  id: number,
+  payload: SaveCommandApiKeyParams,
+) {
+  const response = await apiClient.put<ApiResponse<CommandApiKeyRecord>>(
+    `/admin/command-api-keys/${id}`,
+    payload,
+  );
+  return unwrap(response.data);
+}
+
+export async function deleteCommandApiKey(id: number) {
+  await apiClient.delete(`/admin/command-api-keys/${id}`);
 }
 
 export async function fetchCommandWorkflows(params?: {

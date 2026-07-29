@@ -909,3 +909,94 @@
   description: 允许创建 VNC 远程桌面连接
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 131
+  name: 查看请求管理
+  code: system:http_client:request:list
+  group_name: system:http_client
+  description: 允许查看已保存的 HTTP 请求
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 132
+  name: 新增请求管理
+  code: system:http_client:request:create
+  group_name: system:http_client
+  description: 允许新增和导入 HTTP 请求
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 133
+  name: 更新请求管理
+  code: system:http_client:request:update
+  group_name: system:http_client
+  description: 允许更新已保存的 HTTP 请求
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 134
+  name: 删除请求管理
+  code: system:http_client:request:delete
+  group_name: system:http_client
+  description: 允许删除已保存的 HTTP 请求
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 135
+  name: 发送 HTTP 请求
+  code: system:http_client:request:send
+  group_name: system:http_client
+  description: 允许发送临时或已保存的 HTTP 请求
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 136
+  name: 查看请求记录
+  code: system:http_client:run:list
+  group_name: system:http_client
+  description: 允许查看 HTTP 请求执行记录
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 137
+  name: 下载请求结果
+  code: system:http_client:run:download
+  group_name: system:http_client
+  description: 允许下载 HTTP 请求响应结果
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 138
+  name: 查看聊天管理
+  code: system:chat:list
+  group_name: system:chat
+  description: 允许查看聊天管理列表
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 139
+  name: 聊天详情
+  code: system:chat:detail
+  group_name: system:chat
+  description: 允许查看聊天内容详情
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 140
+  name: 新增聊天内容
+  code: system:chat:create
+  group_name: system:chat
+  description: 允许新增聊天内容
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 141
+  name: 更新聊天内容
+  code: system:chat:update
+  group_name: system:chat
+  description: 允许更新聊天内容和标记发送
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 142
+  name: 删除聊天内容
+  code: system:chat:delete
+  group_name: system:chat
+  description: 允许删除聊天内容
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 143
+  name: 复制聊天内容
+  code: system:chat:copy
+  group_name: system:chat
+  description: 允许复制发送内容并记录复制次数
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

@@ -24,6 +24,9 @@ pub struct Model {
     pub email_verified_at: Option<DateTimeWithTimeZone>,
     pub magic_link_token: Option<String>,
     pub magic_link_expiration: Option<DateTimeWithTimeZone>,
+    pub failed_login_attempts: i32,
+    pub locked_until: Option<DateTimeWithTimeZone>,
+    pub last_failed_login_at: Option<DateTimeWithTimeZone>,
     pub tenant_id: Option<i32>,
     pub current_department_id: Option<i32>,
 }

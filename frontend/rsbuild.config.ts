@@ -7,6 +7,10 @@ export default defineConfig({
   html: {
     favicon: "src/assets/favicon.ico",
     title: "Loco SaaS Starter",
+    meta: {
+      viewport:
+        "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+    },
   },
   server: {
     proxy: {

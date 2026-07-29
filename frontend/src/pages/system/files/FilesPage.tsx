@@ -27,6 +27,7 @@ import {
   Select,
   Space,
   Spin,
+  Switch,
   Tag,
   Tree,
   Typography,
@@ -47,6 +48,7 @@ import {
   fetchFileRoots,
   previewManagedFile,
   renameManagedFile,
+  updateManagedFileAccess,
   uploadManagedFile,
 } from "../../../api/admin/files";
 import { CrudPage } from "../../../components/admin/CrudPage";
@@ -60,6 +62,13 @@ type FolderFormValues = {
 
 type RenameFormValues = {
   name: string;
+};
+
+type AccessFormValues = {
+  visibility: string;
+  password_enabled?: boolean;
+  password?: string;
+  clear_password?: boolean;
 };
 
 type FileViewMode = "table" | "card";
@@ -127,6 +136,9 @@ export function FilesPage() {
   const [keyword, setKeyword] = useState("");
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [renaming, setRenaming] = useState<ManagedFileRecord | null>(null);
+  const [accessEditing, setAccessEditing] = useState<ManagedFileRecord | null>(
+    null,
+  );
   const [previewing, setPreviewing] = useState<ManagedFileRecord | null>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string>();
   const [previewText, setPreviewText] = useState<string>();
@@ -139,6 +151,9 @@ export function FilesPage() {
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>([""]);
   const [folderForm] = Form.useForm<FolderFormValues>();
   const [renameForm] = Form.useForm<RenameFormValues>();
+  const [accessForm] = Form.useForm<AccessFormValues>();
+  const accessPasswordEnabled = Form.useWatch("password_enabled", accessForm);
+  const accessVisibility = Form.useWatch("visibility", accessForm);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -277,6 +292,43 @@ export function FilesPage() {
     },
   });
 
+  const accessMutation = useMutation({
+    mutationFn: (values: AccessFormValues) => {
+      if (!rootKey || !accessEditing) {
+        throw new Error("请选择文件");
+      }
+      return updateManagedFileAccess({
+        root_key: rootKey,
+        path: accessEditing.path,
+        visibility: values.visibility,
+        password:
+          values.visibility === "public" && values.password_enabled
+            ? values.password?.trim() || null
+            : null,
+        clear_password:
+          values.visibility === "private" ||
+          (values.visibility === "public" &&
+            !values.password_enabled &&
+            accessEditing.requires_password) ||
+          values.clear_password,
+      });
+    },
+    onSuccess: (record) => {
+      message.success("访问设置已保存");
+      setAccessEditing(null);
+      accessForm.resetFields();
+      refreshFiles();
+      if (previewing?.path === record.path) {
+        setPreviewing(record);
+      }
+    },
+    onError: (error) => {
+      message.error(
+        error instanceof Error ? error.message : "访问设置保存失败",
+      );
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (record: ManagedFileRecord) => {
       if (!rootKey) {
@@ -400,8 +452,23 @@ export function FilesPage() {
     renameForm.setFieldsValue({ name: record.name });
   };
 
+  const openAccessEditor = (record: ManagedFileRecord) => {
+    setAccessEditing(record);
+    accessForm.setFieldsValue({
+      visibility: record.visibility ?? "private",
+      password_enabled: record.requires_password,
+      password: undefined,
+      clear_password: false,
+    });
+  };
+
   const copyUrl = async (record: ManagedFileRecord | FileRootRecord) => {
-    const url = "path" in record ? record.url : record.url_path;
+    const url =
+      "path" in record
+        ? record.visibility === "public" && record.public_url
+          ? record.public_url
+          : `/api/admin/files/download?root_key=${encodeURIComponent(rootKey ?? "")}&path=${encodeURIComponent(record.path)}`
+        : record.url_path;
     try {
       await navigator.clipboard.writeText(
         new URL(url, window.location.origin).toString(),
@@ -454,6 +521,16 @@ export function FilesPage() {
           下载
         </PermissionButton>
       ) : null}
+      {!record.is_dir ? (
+        <PermissionButton
+          size="small"
+          icon={<LinkOutlined />}
+          permission="system:file:update"
+          onClick={() => openAccessEditor(record)}
+        >
+          访问设置
+        </PermissionButton>
+      ) : null}
       <PermissionButton
         size="small"
         icon={<EditOutlined />}
@@ -477,6 +554,20 @@ export function FilesPage() {
       </Popconfirm>
     </Space>
   );
+
+  const renderVisibilityTag = (record: ManagedFileRecord) => {
+    if (record.is_dir) {
+      return <Tag>目录</Tag>;
+    }
+    if (record.visibility === "public") {
+      return record.requires_password ? (
+        <Tag color="orange">公开-需密码</Tag>
+      ) : (
+        <Tag color="green">公开</Tag>
+      );
+    }
+    return <Tag>私有</Tag>;
+  };
 
   const renderFileCard = (record: ManagedFileRecord) => {
     const openRecord = () =>
@@ -511,6 +602,7 @@ export function FilesPage() {
             </span>
             <span>{record.is_dir ? "-" : formatBytes(record.size_bytes)}</span>
           </div>
+          {renderVisibilityTag(record)}
           <Typography.Text type="secondary" ellipsis title={record.path}>
             {record.path || "根目录"}
           </Typography.Text>
@@ -545,7 +637,22 @@ export function FilesPage() {
         record.is_dir ? <Tag color="blue">文件夹</Tag> : <Tag>文件</Tag>,
     },
     { title: "路径", dataIndex: "path", width: 260, ellipsis: true },
-    { title: "URL", dataIndex: "url", width: 260, ellipsis: true },
+    {
+      title: "访问",
+      key: "visibility",
+      width: 130,
+      render: (_, record) => renderVisibilityTag(record),
+    },
+    {
+      title: "URL",
+      dataIndex: "url",
+      width: 260,
+      ellipsis: true,
+      render: (_, record) =>
+        record.visibility === "public" && record.public_url
+          ? record.public_url
+          : record.url,
+    },
     {
       title: "MIME",
       dataIndex: "mime_type",
@@ -906,6 +1013,75 @@ export function FilesPage() {
           >
             <Input />
           </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        title="访问设置"
+        open={Boolean(accessEditing)}
+        onCancel={() => setAccessEditing(null)}
+        onOk={() => accessForm.submit()}
+        confirmLoading={accessMutation.isPending}
+      >
+        <Form
+          form={accessForm}
+          layout="vertical"
+          initialValues={{ visibility: "private", password_enabled: false }}
+          onFinish={(values) => accessMutation.mutate(values)}
+        >
+          <Form.Item label="文件路径">
+            <Typography.Text>{accessEditing?.path ?? "-"}</Typography.Text>
+          </Form.Item>
+          <Form.Item name="visibility" label="访问方式">
+            <Segmented
+              options={[
+                { label: "私有", value: "private" },
+                { label: "公开", value: "public" },
+              ]}
+            />
+          </Form.Item>
+          {accessVisibility === "public" ? (
+            <Form.Item
+              name="password_enabled"
+              label="访问密码"
+              valuePropName="checked"
+            >
+              <Switch checkedChildren="启用" unCheckedChildren="关闭" />
+            </Form.Item>
+          ) : null}
+          {accessVisibility === "public" && accessPasswordEnabled ? (
+            <Form.Item
+              name="password"
+              label={
+                accessEditing?.requires_password ? "新访问密码" : "访问密码"
+              }
+              rules={[
+                {
+                  required: !accessEditing?.requires_password,
+                  message: "请输入访问密码",
+                },
+              ]}
+            >
+              <Input.Password placeholder="留空则保留原密码" />
+            </Form.Item>
+          ) : null}
+          {accessEditing?.requires_password ? (
+            <Form.Item name="clear_password" valuePropName="checked">
+              <Switch
+                checkedChildren="清除原密码"
+                unCheckedChildren="保留原密码"
+              />
+            </Form.Item>
+          ) : null}
+          {accessEditing?.public_url ? (
+            <Form.Item label="公开链接">
+              <Typography.Text copyable>
+                {new URL(
+                  accessEditing.public_url,
+                  window.location.origin,
+                ).toString()}
+              </Typography.Text>
+            </Form.Item>
+          ) : null}
         </Form>
       </Modal>
       <Modal

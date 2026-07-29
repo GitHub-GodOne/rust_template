@@ -97,6 +97,10 @@ type RenameFormValues = {
   original_name: string;
 };
 
+type AccessFormValues = {
+  visibility: "private" | "public";
+};
+
 function joinPrefix(prefix: string | undefined, name: string) {
   const cleanName = name.trim().replace(/^\/+|\/+$/g, "");
   if (!cleanName) {
@@ -160,6 +164,7 @@ export function UploadsPage() {
   const [uploadingName, setUploadingName] = useState<string>();
   const [detail, setDetail] = useState<UploadRecord | null>(null);
   const [editing, setEditing] = useState<UploadRecord | null>(null);
+  const [accessEditing, setAccessEditing] = useState<UploadRecord | null>(null);
   const [renaming, setRenaming] = useState<UploadRecord | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [treeData, setTreeData] = useState<DataNode[]>([]);
@@ -169,6 +174,8 @@ export function UploadsPage() {
   const [previewError, setPreviewError] = useState<string>();
   const [previewLoading, setPreviewLoading] = useState(false);
   const [form] = Form.useForm<UpdateUploadParams>();
+  const [accessForm] = Form.useForm<AccessFormValues>();
+  const accessVisibility = Form.useWatch("visibility", accessForm);
   const [folderForm] = Form.useForm<FolderFormValues>();
   const [renameForm] = Form.useForm<RenameFormValues>();
   const queryClient = useQueryClient();
@@ -355,6 +362,31 @@ export function UploadsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
     },
   });
+  const accessMutation = useMutation({
+    mutationFn: (values: AccessFormValues) => {
+      if (!accessEditing) {
+        throw new Error("请选择素材");
+      }
+      return updateUpload(accessEditing.id, { visibility: values.visibility });
+    },
+    onSuccess: (record) => {
+      message.success("访问设置已保存");
+      setAccessEditing(null);
+      accessForm.resetFields();
+      if (detail?.id === record.id) {
+        setDetail(record);
+      }
+      if (previewing?.id === record.id) {
+        setPreviewing(record);
+      }
+      queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
+    },
+    onError: (error) => {
+      message.error(
+        error instanceof Error ? error.message : "访问设置保存失败",
+      );
+    },
+  });
   const deleteMutation = useMutation({
     mutationFn: deleteUpload,
     onSuccess: () => {
@@ -474,6 +506,13 @@ export function UploadsPage() {
     renameForm.setFieldsValue({ original_name: record.original_name });
   };
 
+  const openAccessEditor = (record: UploadRecord) => {
+    setAccessEditing(record);
+    accessForm.setFieldsValue({
+      visibility: record.visibility === "public" ? "public" : "private",
+    });
+  };
+
   const currentPathSegments = pathSegments(prefix);
   const folderPrefixes = browserQuery.data?.prefixes ?? [];
 
@@ -506,7 +545,9 @@ export function UploadsPage() {
     const link = publicLink(record);
     if (!link) {
       if (record.visibility !== "public") {
-        message.warning("该文件不是公开文件，无法复制公开分享链接");
+        message.warning(
+          "该文件是私有文件，请先在访问设置中改为公开再复制分享链接",
+        );
       } else {
         message.warning("当前存储未配置公开访问地址");
       }
@@ -632,6 +673,14 @@ export function UploadsPage() {
       </PermissionButton>
       <PermissionButton
         size="small"
+        icon={<LinkOutlined />}
+        permission="system:upload:update"
+        onClick={() => openAccessEditor(record)}
+      >
+        访问设置
+      </PermissionButton>
+      <PermissionButton
+        size="small"
         icon={<EditOutlined />}
         permission="system:upload:update"
         onClick={() => editRecord(record)}
@@ -726,7 +775,7 @@ export function UploadsPage() {
     {
       title: "操作",
       key: "actions",
-      width: 420,
+      width: 500,
       render: (_, record) => renderActions(record),
     },
   ];
@@ -1544,6 +1593,56 @@ export function UploadsPage() {
           >
             <Input placeholder="例如 avatar.png" />
           </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        title="访问设置"
+        open={Boolean(accessEditing)}
+        onCancel={() => setAccessEditing(null)}
+        onOk={() => accessForm.submit()}
+        confirmLoading={accessMutation.isPending}
+      >
+        <Form
+          form={accessForm}
+          layout="vertical"
+          onFinish={(values) => accessMutation.mutate(values)}
+        >
+          <Form.Item label="文件名">
+            <Typography.Text>
+              {accessEditing?.original_name ?? "-"}
+            </Typography.Text>
+          </Form.Item>
+          <Form.Item label="对象键">
+            <Typography.Text copyable>
+              {accessEditing?.object_key ?? "-"}
+            </Typography.Text>
+          </Form.Item>
+          <Form.Item name="visibility" label="访问范围">
+            <Segmented
+              options={[
+                { value: "private", label: "私有" },
+                { value: "public", label: "公开" },
+              ]}
+            />
+          </Form.Item>
+          {accessVisibility === "public" ? (
+            accessEditing?.url ? (
+              <Form.Item label="公开链接">
+                <Typography.Text copyable>
+                  {publicLink({ ...accessEditing, visibility: "public" })}
+                </Typography.Text>
+              </Form.Item>
+            ) : (
+              <Typography.Text type="warning">
+                当前存储未配置公开访问地址，设置为公开后仍需要先配置存储映射 URL
+                才能复制访问。
+              </Typography.Text>
+            )
+          ) : (
+            <Typography.Text type="secondary">
+              私有素材只能通过后台登录后的预览和下载接口访问，不会复制公开分享链接。
+            </Typography.Text>
+          )}
         </Form>
       </Modal>
       <Modal

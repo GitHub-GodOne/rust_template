@@ -17,16 +17,17 @@ use std::path::Path;
 use crate::{
     controllers,
     models::_entities::{
-        ai_image_generations, command_run_logs, command_runs, command_templates,
-        command_workflow_run_steps, command_workflow_runs, command_workflow_steps,
-        command_workflows, content_articles, content_categories, data_scopes, database_backups,
-        database_restores, departments, dict_items, dict_types, email_templates, menus,
-        operation_logs, payment_callbacks, payment_channels, payment_orders, payment_refunds,
-        permissions, rate_limit_events, rate_limit_rules, refresh_tokens, role_data_scopes,
-        role_menus, role_permissions, roles, scheduled_task_runs, scheduled_tasks, storage_buckets,
-        storage_profiles, system_notifications, system_settings, tenants, upload_files,
-        upload_tasks, user_departments, user_roles, users, work_order_assignments,
-        work_order_attachments, work_order_comments, work_orders,
+        ai_image_generations, chat_message_attachments, chat_messages, command_api_keys,
+        command_run_logs, command_runs, command_templates, command_workflow_run_steps,
+        command_workflow_runs, command_workflow_steps, command_workflows, content_articles,
+        content_categories, data_scopes, database_backups, database_restores, departments,
+        dict_items, dict_types, email_templates, http_request_presets, http_request_runs,
+        managed_file_access_rules, menus, operation_logs, payment_callbacks, payment_channels,
+        payment_orders, payment_refunds, permissions, rate_limit_events, rate_limit_rules,
+        refresh_tokens, role_data_scopes, role_menus, role_permissions, roles, scheduled_task_runs,
+        scheduled_tasks, storage_buckets, storage_profiles, system_notifications, system_settings,
+        tenants, upload_files, upload_tasks, user_departments, user_roles, users,
+        work_order_assignments, work_order_attachments, work_order_comments, work_orders,
     },
     tasks,
     workers::downloader::DownloadWorker,
@@ -65,6 +66,7 @@ impl Hooks for App {
         AppRoutes::with_default_routes() // controller routes below
             .add_route(controllers::auth::routes())
             .add_route(controllers::admin::routes())
+            .add_route(controllers::admin::public_routes())
             .add_route(controllers::docs::routes())
             .add_route(controllers::frontend::routes())
     }
@@ -90,6 +92,7 @@ impl Hooks for App {
         // tasks-inject (do not remove)
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, managed_file_access_rules::Entity).await?;
         truncate_table(&ctx.db, content_articles::Entity).await?;
         truncate_table(&ctx.db, content_categories::Entity).await?;
         truncate_table(&ctx.db, payment_callbacks::Entity).await?;
@@ -104,11 +107,16 @@ impl Hooks for App {
         truncate_table(&ctx.db, rate_limit_rules::Entity).await?;
         truncate_table(&ctx.db, database_restores::Entity).await?;
         truncate_table(&ctx.db, database_backups::Entity).await?;
+        truncate_table(&ctx.db, http_request_runs::Entity).await?;
+        truncate_table(&ctx.db, http_request_presets::Entity).await?;
+        truncate_table(&ctx.db, chat_message_attachments::Entity).await?;
+        truncate_table(&ctx.db, chat_messages::Entity).await?;
         truncate_table(&ctx.db, command_workflow_run_steps::Entity).await?;
         truncate_table(&ctx.db, command_workflow_runs::Entity).await?;
         truncate_table(&ctx.db, command_workflow_steps::Entity).await?;
         truncate_table(&ctx.db, command_run_logs::Entity).await?;
         truncate_table(&ctx.db, command_runs::Entity).await?;
+        truncate_table(&ctx.db, command_api_keys::Entity).await?;
         truncate_table(&ctx.db, command_workflows::Entity).await?;
         truncate_table(&ctx.db, command_templates::Entity).await?;
         truncate_table(&ctx.db, scheduled_task_runs::Entity).await?;

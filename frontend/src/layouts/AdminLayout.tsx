@@ -10,6 +10,7 @@ import { HeaderBar } from "./HeaderBar";
 import { Sidebar } from "./Sidebar";
 
 const { Content } = Layout;
+const DESKTOP_LAYOUT_ZOOM_THRESHOLD = 0.7;
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -25,7 +26,9 @@ export function AdminLayout() {
   );
   const contentZoom = useUiStore((state) => state.contentZoom);
   const screens = Grid.useBreakpoint();
-  const isMobile = !screens.md;
+  const viewportIsMobile = !screens.md;
+  const isMobile =
+    viewportIsMobile && contentZoom > DESKTOP_LAYOUT_ZOOM_THRESHOLD;
   const isSshPage = location.pathname === "/admin/system/ssh";
   const isVncPage = location.pathname === "/admin/system/vnc";
   const isKeepAlivePage = isSshPage || isVncPage;
@@ -43,7 +46,10 @@ export function AdminLayout() {
   }, [hasSshPermission, hasVncPermission, isSshPage, isVncPage]);
 
   return (
-    <Layout className="admin-root">
+    <Layout
+      className="admin-root"
+      style={{ "--admin-layout-zoom": contentZoom } as CSSProperties}
+    >
       <Sidebar
         collapsed={collapsed}
         isMobile={isMobile}
@@ -65,12 +71,7 @@ export function AdminLayout() {
         <Content className="admin-content-shell">
           <div
             className="admin-content"
-            style={
-              {
-                "--admin-content-zoom": contentZoom,
-                borderRadius: isMobile ? 0 : borderRadiusLG,
-              } as CSSProperties
-            }
+            style={{ borderRadius: isMobile ? 0 : borderRadiusLG }}
           >
             <div hidden={isKeepAlivePage}>
               <Outlet />

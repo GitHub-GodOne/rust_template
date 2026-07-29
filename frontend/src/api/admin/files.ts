@@ -13,6 +13,9 @@ export type ManagedFileRecord = {
   name: string;
   path: string;
   url: string;
+  public_url?: string | null;
+  visibility: string;
+  requires_password: boolean;
   is_dir: boolean;
   extension?: string | null;
   mime_type?: string | null;
@@ -36,6 +39,14 @@ export type RenameFileParams = {
   root_key: string;
   path: string;
   name: string;
+};
+
+export type UpdateManagedFileAccessParams = {
+  root_key: string;
+  path: string;
+  visibility: string;
+  password?: string | null;
+  clear_password?: boolean;
 };
 
 export async function fetchFileRoots() {
@@ -97,6 +108,16 @@ export async function uploadManagedFile(
 export async function renameManagedFile(payload: RenameFileParams) {
   const response = await apiClient.put<ApiResponse<ManagedFileRecord>>(
     "/admin/files/rename",
+    payload,
+  );
+  return unwrap(response.data);
+}
+
+export async function updateManagedFileAccess(
+  payload: UpdateManagedFileAccessParams,
+) {
+  const response = await apiClient.put<ApiResponse<ManagedFileRecord>>(
+    "/admin/files/access",
     payload,
   );
   return unwrap(response.data);

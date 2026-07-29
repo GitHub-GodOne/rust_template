@@ -8,6 +8,7 @@ import { LoginPage } from "../pages/auth/LoginPage";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { AiImagesPage } from "../pages/system/ai-images/AiImagesPage";
 import { BackupsPage } from "../pages/system/backups/BackupsPage";
+import { ChatMessagesPage } from "../pages/system/chat-messages/ChatMessagesPage";
 import { CommandsPage } from "../pages/system/commands/CommandsPage";
 import { ContentPage } from "../pages/system/content/ContentPage";
 import { DepartmentsPage } from "../pages/system/departments/DepartmentsPage";
@@ -213,6 +214,14 @@ export function AppRouter() {
           element={
             <RequirePermission permission="system:file:list">
               <FilesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="system/chat-messages"
+          element={
+            <RequirePermission permission="system:chat:list">
+              <ChatMessagesPage />
             </RequirePermission>
           }
         />

@@ -2102,6 +2102,72 @@ async fn super_admin_can_manage_work_orders() {
 
 #[tokio::test]
 #[serial]
+async fn super_admin_can_manage_chat_messages() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let create_response = request
+            .post("/api/admin/chat-messages")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "title": "请求测试聊天",
+                "content": "第一行\n第二行",
+                "status": "draft",
+                "remark": "用于请求测试"
+            }))
+            .await;
+        assert_eq!(create_response.status_code(), 200);
+        let create_body: serde_json::Value = serde_json::from_str(&create_response.text()).unwrap();
+        let message_id = create_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(create_body["data"]["content"], "第一行\n第二行");
+        assert_eq!(create_body["data"]["attachment_count"], 0);
+
+        let list_response = request
+            .get("/api/admin/chat-messages?keyword=请求测试聊天")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(list_response.status_code(), 200);
+        assert!(list_response.text().contains("请求测试聊天"));
+
+        let copy_response = request
+            .post(&format!("/api/admin/chat-messages/{message_id}/copy"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(copy_response.status_code(), 200);
+        let copy_body: serde_json::Value = serde_json::from_str(&copy_response.text()).unwrap();
+        assert_eq!(copy_body["data"]["content"], "第一行\n第二行");
+        assert_eq!(copy_body["data"]["copy_count"], 1);
+
+        let mark_sent_response = request
+            .post(&format!("/api/admin/chat-messages/{message_id}/mark-sent"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(mark_sent_response.status_code(), 200);
+        let mark_sent_body: serde_json::Value =
+            serde_json::from_str(&mark_sent_response.text()).unwrap();
+        assert_eq!(mark_sent_body["data"]["status"], "sent");
+        assert!(mark_sent_body["data"]["sent_at"].is_string());
+
+        let delete_response = request
+            .delete(&format!("/api/admin/chat-messages/{message_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_response.status_code(), 200);
+
+        let get_deleted_response = request
+            .get(&format!("/api/admin/chat-messages/{message_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(get_deleted_response.status_code(), 400);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn super_admin_can_manage_operations_records() {
     request::<App, _, _>(|request, ctx| async move {
         seed::<App>(&ctx).await.unwrap();

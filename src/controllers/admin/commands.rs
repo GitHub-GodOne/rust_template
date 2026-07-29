@@ -35,8 +35,9 @@ use crate::{
     controllers::admin::authorize,
     errors::{ApiError, ApiResult},
     models::_entities::{
-        command_run_logs, command_runs, command_templates, command_workflow_run_steps,
-        command_workflow_runs, command_workflow_steps, command_workflows,
+        command_api_keys, command_run_logs, command_runs, command_templates,
+        command_workflow_run_steps, command_workflow_runs, command_workflow_steps,
+        command_workflows,
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
     services::{
@@ -74,6 +75,27 @@ pub struct CommandRunQueryParams {
     pub template_id: Option<i32>,
     pub status: Option<String>,
     pub keyword: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct CommandApiKeyQueryParams {
+    pub page: Option<u64>,
+    pub page_size: Option<u64>,
+    pub keyword: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+impl CommandApiKeyQueryParams {
+    #[must_use]
+    pub fn page(&self) -> u64 {
+        self.page.unwrap_or(1).max(1)
+    }
+
+    #[must_use]
+    pub fn page_size(&self) -> u64 {
+        self.page_size.unwrap_or(10).clamp(1, 100)
+    }
 }
 
 impl CommandRunQueryParams {
@@ -183,6 +205,20 @@ pub struct CommandRunRecord {
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CommandApiKeyRecord {
+    pub id: i32,
+    pub name: String,
+    pub token: String,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub last_used_at: Option<String>,
+    pub created_by: Option<i32>,
+    pub updated_by: Option<i32>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct CommandRunLogTicketRecord {
     pub ticket: String,
     pub expires_at: String,
@@ -287,6 +323,34 @@ pub struct RunCommandParams {
     pub env_vars: Option<String>,
     pub timeout_seconds: Option<i32>,
     pub preview_path_template: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CommandApiRunParams {
+    pub template_id: Option<i32>,
+    pub template_code: Option<String>,
+    pub name: Option<String>,
+    pub working_directory: Option<String>,
+    pub command_line: Option<String>,
+    pub setup_script: Option<String>,
+    pub python_venv_path: Option<String>,
+    pub env_vars: Option<String>,
+    pub timeout_seconds: Option<i32>,
+    pub preview_path_template: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct SaveCommandApiKeyParams {
+    pub name: String,
+    pub token: Option<String>,
+    pub description: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CommandApiRunStatusRecord {
+    pub run: CommandRunRecord,
+    pub logs: Vec<CommandRunLogRecord>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -400,9 +464,10 @@ pub async fn create(
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:create").await?;
     validate_template(&params)?;
+    ensure_template_code_unique(&ctx, &params.code, None).await?;
     let template = command_templates::ActiveModel {
         name: Set(params.name),
-        code: Set(params.code),
+        code: Set(params.code.trim().to_string()),
         description: Set(normalize_optional(params.description)),
         working_directory: Set(params.working_directory),
         command: Set(params.command),
@@ -440,10 +505,11 @@ pub async fn update(
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:update").await?;
     validate_template(&params)?;
+    ensure_template_code_unique(&ctx, &params.code, Some(id)).await?;
     let template = find_template(&ctx, id).await?;
     let mut active = template.into_active_model();
     active.name = Set(params.name);
-    active.code = Set(params.code);
+    active.code = Set(params.code.trim().to_string());
     active.description = Set(normalize_optional(params.description));
     active.working_directory = Set(params.working_directory);
     active.command = Set(params.command);
@@ -476,6 +542,135 @@ pub async fn delete(
     authorize(&ctx, &auth, "system:command:delete").await?;
     find_template(&ctx, id).await?;
     command_templates::Entity::delete_by_id(id)
+        .exec(&ctx.db)
+        .await?;
+    Ok(responses::empty())
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/command-api-keys",
+    tag = "admin-commands",
+    security(("bearer_auth" = [])),
+    params(CommandApiKeyQueryParams),
+    responses((status = 200, body = ApiResponse<PageResponse<CommandApiKeyRecord>>))
+)]
+#[debug_handler]
+pub async fn list_api_keys(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<CommandApiKeyQueryParams>,
+) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:command:list").await?;
+    let page = params.page();
+    let page_size = params.page_size();
+    let mut query = command_api_keys::Entity::find().order_by_desc(command_api_keys::Column::Id);
+    if let Some(keyword) = params.keyword.as_deref().filter(|value| !value.is_empty()) {
+        query = query.filter(
+            Condition::any()
+                .add(command_api_keys::Column::Name.contains(keyword))
+                .add(command_api_keys::Column::Description.contains(keyword)),
+        );
+    }
+    if let Some(enabled) = params.enabled {
+        query = query.filter(command_api_keys::Column::Enabled.eq(enabled));
+    }
+    let total = query.clone().count(&ctx.db).await?;
+    let items = query
+        .paginate(&ctx.db, page_size)
+        .fetch_page(page - 1)
+        .await?
+        .into_iter()
+        .map(CommandApiKeyRecord::from)
+        .collect();
+    Ok(responses::ok(PageResponse {
+        items,
+        page,
+        page_size,
+        total,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/command-api-keys",
+    tag = "admin-commands",
+    security(("bearer_auth" = [])),
+    request_body = SaveCommandApiKeyParams,
+    responses((status = 200, body = ApiResponse<CommandApiKeyRecord>))
+)]
+#[debug_handler]
+pub async fn create_api_key(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<SaveCommandApiKeyParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:command:create").await?;
+    validate_api_key(&params)?;
+    let token = normalize_optional(params.token).unwrap_or_else(generate_api_token);
+    ensure_api_key_token_unique(&ctx, &token, None).await?;
+    let key = command_api_keys::ActiveModel {
+        name: Set(params.name.trim().to_string()),
+        token: Set(token),
+        description: Set(normalize_optional(params.description)),
+        enabled: Set(params.enabled.unwrap_or(true)),
+        created_by: Set(Some(actor.id)),
+        updated_by: Set(Some(actor.id)),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?;
+    Ok(responses::ok(CommandApiKeyRecord::from(key)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/command-api-keys/{id}",
+    tag = "admin-commands",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    request_body = SaveCommandApiKeyParams,
+    responses((status = 200, body = ApiResponse<CommandApiKeyRecord>))
+)]
+#[debug_handler]
+pub async fn update_api_key(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+    Json(params): Json<SaveCommandApiKeyParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:command:update").await?;
+    validate_api_key(&params)?;
+    let token = normalize_optional(params.token).unwrap_or_else(generate_api_token);
+    ensure_api_key_token_unique(&ctx, &token, Some(id)).await?;
+    let key = find_api_key(&ctx, id).await?;
+    let mut active = key.into_active_model();
+    active.name = Set(params.name.trim().to_string());
+    active.token = Set(token);
+    active.description = Set(normalize_optional(params.description));
+    active.enabled = Set(params.enabled.unwrap_or(true));
+    active.updated_by = Set(Some(actor.id));
+    let key = active.update(&ctx.db).await?;
+    Ok(responses::ok(CommandApiKeyRecord::from(key)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/command-api-keys/{id}",
+    tag = "admin-commands",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    responses((status = 200, body = ApiResponse<EmptyData>))
+)]
+#[debug_handler]
+pub async fn delete_api_key(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:command:delete").await?;
+    find_api_key(&ctx, id).await?;
+    command_api_keys::Entity::delete_by_id(id)
         .exec(&ctx.db)
         .await?;
     Ok(responses::empty())
@@ -562,9 +757,10 @@ pub async fn create_workflow(
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:create").await?;
     validate_workflow(&ctx, &params).await?;
+    ensure_workflow_code_unique(&ctx, &params.code, None).await?;
     let workflow = command_workflows::ActiveModel {
         name: Set(params.name),
-        code: Set(params.code),
+        code: Set(params.code.trim().to_string()),
         description: Set(normalize_optional(params.description)),
         enabled: Set(params.enabled.unwrap_or(true)),
         created_by: Set(Some(actor.id)),
@@ -595,10 +791,11 @@ pub async fn update_workflow(
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:update").await?;
     validate_workflow(&ctx, &params).await?;
+    ensure_workflow_code_unique(&ctx, &params.code, Some(id)).await?;
     let workflow = find_workflow(&ctx, id).await?;
     let mut active = workflow.into_active_model();
     active.name = Set(params.name);
-    active.code = Set(params.code);
+    active.code = Set(params.code.trim().to_string());
     active.description = Set(normalize_optional(params.description));
     active.enabled = Set(params.enabled.unwrap_or(true));
     active.updated_by = Set(Some(actor.id));
@@ -815,6 +1012,50 @@ pub async fn run_ad_hoc(
 }
 
 #[utoipa::path(
+    post,
+    path = "/api/command-api/runs",
+    tag = "command-api",
+    security(("bearer_auth" = [])),
+    request_body = CommandApiRunParams,
+    responses((status = 200, body = ApiResponse<CommandRunRecord>))
+)]
+#[debug_handler]
+pub async fn api_run_command(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Json(params): Json<CommandApiRunParams>,
+) -> ApiResult<Response> {
+    let key = authorize_command_api_key(&ctx, &headers).await?;
+    let request = build_api_command_request(&ctx, params, &key).await?;
+    let run = command_runner::start_command_run(ctx.db.clone(), request).await?;
+    Ok(responses::ok(CommandRunRecord::from(run)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/command-api/runs/{id}",
+    tag = "command-api",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path), CommandRunLogQueryParams),
+    responses((status = 200, body = ApiResponse<CommandApiRunStatusRecord>))
+)]
+#[debug_handler]
+pub async fn api_get_run_status(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Query(params): Query<CommandRunLogQueryParams>,
+) -> ApiResult<Response> {
+    authorize_command_api_key(&ctx, &headers).await?;
+    let run = find_run(&ctx, id).await?;
+    let logs = run_logs(&ctx, id, &params).await?;
+    Ok(responses::ok(CommandApiRunStatusRecord {
+        run: CommandRunRecord::from(run),
+        logs,
+    }))
+}
+
+#[utoipa::path(
     get,
     path = "/api/admin/command-runs",
     tag = "admin-commands",
@@ -899,20 +1140,7 @@ pub async fn list_run_logs(
 ) -> ApiResult<Response> {
     authorize(&ctx, &auth, "system:command:list").await?;
     find_run(&ctx, id).await?;
-    let mut query = command_run_logs::Entity::find()
-        .filter(command_run_logs::Column::RunId.eq(id))
-        .order_by_asc(command_run_logs::Column::Seq);
-    if let Some(after_seq) = params.after_seq {
-        query = query.filter(command_run_logs::Column::Seq.gt(after_seq));
-    }
-    let logs = query
-        .limit(params.limit.unwrap_or(500).clamp(1, 2000))
-        .all(&ctx.db)
-        .await?
-        .into_iter()
-        .map(CommandRunLogRecord::from)
-        .collect::<Vec<_>>();
-    Ok(responses::ok(logs))
+    Ok(responses::ok(run_logs(&ctx, id, &params).await?))
 }
 
 #[utoipa::path(
@@ -1080,11 +1308,155 @@ fn consume_log_ticket(ticket: &str) -> ApiResult<i32> {
     Ok(ticket.run_id)
 }
 
+async fn authorize_command_api_key(
+    ctx: &AppContext,
+    headers: &HeaderMap,
+) -> ApiResult<command_api_keys::Model> {
+    let token = bearer_token(headers)?;
+    let key = command_api_keys::Entity::find()
+        .filter(command_api_keys::Column::Token.eq(token))
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::unauthorized("invalid command api key"))?;
+    if !key.enabled {
+        return Err(ApiError::unauthorized("command api key is disabled"));
+    }
+    let mut active = key.clone().into_active_model();
+    active.last_used_at = Set(Some(Utc::now().fixed_offset()));
+    let key = active.update(&ctx.db).await?;
+    Ok(key)
+}
+
+fn bearer_token(headers: &HeaderMap) -> ApiResult<String> {
+    let value = headers
+        .get(header::AUTHORIZATION)
+        .ok_or_else(|| ApiError::unauthorized("missing bearer token"))?;
+    let value = value
+        .to_str()
+        .map_err(|_| ApiError::unauthorized("invalid bearer token"))?
+        .trim();
+    let token = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))
+        .ok_or_else(|| ApiError::unauthorized("missing bearer token"))?
+        .trim();
+    if token.is_empty() {
+        return Err(ApiError::unauthorized("missing bearer token"));
+    }
+    Ok(token.to_string())
+}
+
+async fn build_api_command_request(
+    ctx: &AppContext,
+    params: CommandApiRunParams,
+    key: &command_api_keys::Model,
+) -> ApiResult<CommandRunRequest> {
+    let triggered_by = format!("api:{}", key.name);
+    if params.template_id.is_some()
+        || params
+            .template_code
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        let template = find_template_for_api(ctx, params.template_id, params.template_code).await?;
+        if !template.enabled {
+            return Err(ApiError::bad_request("command template is disabled"));
+        }
+        let command_line = params
+            .command_line
+            .unwrap_or_else(|| build_template_command_line(&template));
+        return Ok(CommandRunRequest {
+            template_id: Some(template.id),
+            name: params.name.unwrap_or(template.name),
+            working_directory: params
+                .working_directory
+                .unwrap_or(template.working_directory),
+            command_line,
+            setup_script: params.setup_script.or(template.setup_script),
+            python_venv_path: params.python_venv_path.or(template.python_venv_path),
+            env_vars: params.env_vars.or(template.env_vars),
+            timeout_seconds: params.timeout_seconds.or(template.timeout_seconds),
+            preview_path_template: params
+                .preview_path_template
+                .or(template.preview_path_template),
+            triggered_by,
+            created_by: key.created_by,
+        });
+    }
+
+    let command_line = params
+        .command_line
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ApiError::bad_request("command line is required"))?;
+    let working_directory = params
+        .working_directory
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ApiError::bad_request("working directory is required"))?;
+    Ok(CommandRunRequest {
+        template_id: None,
+        name: params.name.unwrap_or_else(|| "API 命令".to_string()),
+        working_directory,
+        command_line,
+        setup_script: params.setup_script,
+        python_venv_path: params.python_venv_path,
+        env_vars: params.env_vars,
+        timeout_seconds: params.timeout_seconds,
+        preview_path_template: params.preview_path_template,
+        triggered_by,
+        created_by: key.created_by,
+    })
+}
+
+async fn find_template_for_api(
+    ctx: &AppContext,
+    template_id: Option<i32>,
+    template_code: Option<String>,
+) -> ApiResult<command_templates::Model> {
+    if let Some(id) = template_id {
+        return find_template(ctx, id).await;
+    }
+    let code = template_code
+        .and_then(|value| normalize_optional(Some(value)))
+        .ok_or_else(|| ApiError::bad_request("template id or code is required"))?;
+    command_templates::Entity::find()
+        .filter(command_templates::Column::Code.eq(code))
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("command template not found"))
+}
+
+async fn run_logs(
+    ctx: &AppContext,
+    run_id: i32,
+    params: &CommandRunLogQueryParams,
+) -> ApiResult<Vec<CommandRunLogRecord>> {
+    let mut query = command_run_logs::Entity::find()
+        .filter(command_run_logs::Column::RunId.eq(run_id))
+        .order_by_asc(command_run_logs::Column::Seq);
+    if let Some(after_seq) = params.after_seq {
+        query = query.filter(command_run_logs::Column::Seq.gt(after_seq));
+    }
+    Ok(query
+        .limit(params.limit.unwrap_or(500).clamp(1, 2000))
+        .all(&ctx.db)
+        .await?
+        .into_iter()
+        .map(CommandRunLogRecord::from)
+        .collect::<Vec<_>>())
+}
+
 async fn find_template(ctx: &AppContext, id: i32) -> ApiResult<command_templates::Model> {
     command_templates::Entity::find_by_id(id)
         .one(&ctx.db)
         .await?
         .ok_or_else(|| ApiError::bad_request("command template not found"))
+}
+
+async fn find_api_key(ctx: &AppContext, id: i32) -> ApiResult<command_api_keys::Model> {
+    command_api_keys::Entity::find_by_id(id)
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("command api key not found"))
 }
 
 async fn find_run(ctx: &AppContext, id: i32) -> ApiResult<command_runs::Model> {
@@ -1207,6 +1579,69 @@ fn validate_template(params: &SaveCommandTemplateParams) -> ApiResult<()> {
     Ok(())
 }
 
+fn validate_api_key(params: &SaveCommandApiKeyParams) -> ApiResult<()> {
+    if params.name.trim().is_empty() {
+        return Err(ApiError::bad_request("name is required"));
+    }
+    if params
+        .token
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(ApiError::bad_request("token must not be empty"));
+    }
+    Ok(())
+}
+
+async fn ensure_api_key_token_unique(
+    ctx: &AppContext,
+    token: &str,
+    ignore_id: Option<i32>,
+) -> ApiResult<()> {
+    let existing = command_api_keys::Entity::find()
+        .filter(command_api_keys::Column::Token.eq(token))
+        .one(&ctx.db)
+        .await?;
+    if existing.is_some_and(|key| Some(key.id) != ignore_id) {
+        return Err(ApiError::bad_request("授权密钥已存在"));
+    }
+    Ok(())
+}
+
+fn generate_api_token() -> String {
+    format!("eyJ0_{}", Uuid::new_v4().simple())
+}
+
+async fn ensure_template_code_unique(
+    ctx: &AppContext,
+    code: &str,
+    ignore_id: Option<i32>,
+) -> ApiResult<()> {
+    let existing = command_templates::Entity::find()
+        .filter(command_templates::Column::Code.eq(code.trim()))
+        .one(&ctx.db)
+        .await?;
+    if existing.is_some_and(|template| Some(template.id) != ignore_id) {
+        return Err(ApiError::bad_request("命令模板编码已存在"));
+    }
+    Ok(())
+}
+
+async fn ensure_workflow_code_unique(
+    ctx: &AppContext,
+    code: &str,
+    ignore_id: Option<i32>,
+) -> ApiResult<()> {
+    let existing = command_workflows::Entity::find()
+        .filter(command_workflows::Column::Code.eq(code.trim()))
+        .one(&ctx.db)
+        .await?;
+    if existing.is_some_and(|workflow| Some(workflow.id) != ignore_id) {
+        return Err(ApiError::bad_request("任务编排编码已存在"));
+    }
+    Ok(())
+}
+
 async fn validate_workflow(ctx: &AppContext, params: &SaveCommandWorkflowParams) -> ApiResult<()> {
     if params.name.trim().is_empty() || params.code.trim().is_empty() {
         return Err(ApiError::bad_request("name and code are required"));
@@ -1303,6 +1738,23 @@ impl From<command_templates::Model> for CommandTemplateRecord {
             updated_by: template.updated_by,
             created_at: template.created_at.to_rfc3339(),
             updated_at: template.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<command_api_keys::Model> for CommandApiKeyRecord {
+    fn from(key: command_api_keys::Model) -> Self {
+        Self {
+            id: key.id,
+            name: key.name,
+            token: key.token,
+            description: key.description,
+            enabled: key.enabled,
+            last_used_at: key.last_used_at.map(|value| value.to_rfc3339()),
+            created_by: key.created_by,
+            updated_by: key.updated_by,
+            created_at: key.created_at.to_rfc3339(),
+            updated_at: key.updated_at.to_rfc3339(),
         }
     }
 }

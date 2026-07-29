@@ -107,6 +107,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:file:list",
       },
       {
+        key: "system-chat-messages",
+        label: "聊天管理",
+        path: "/admin/system/chat-messages",
+        icon: "message",
+        permission: "system:chat:list",
+      },
+      {
         key: "system-storage",
         label: "存储配置",
         path: "/admin/system/storage",

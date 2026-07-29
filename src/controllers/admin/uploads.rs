@@ -93,8 +93,8 @@ pub struct UploadRecord {
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct UpdateUploadParams {
-    pub category: Option<String>,
-    pub tags: Option<String>,
+    pub category: Option<Option<String>>,
+    pub tags: Option<Option<String>>,
     pub visibility: Option<String>,
     pub status: Option<String>,
 }
@@ -869,10 +869,18 @@ pub async fn update(
     let file = find_file(&ctx, id).await?;
 
     let mut active = file.into_active_model();
-    active.category = Set(params.category);
-    active.tags = Set(params.tags);
-    active.visibility = Set(params.visibility.unwrap_or_else(|| "private".to_string()));
-    active.status = Set(params.status.unwrap_or_else(|| "active".to_string()));
+    if let Some(category) = params.category {
+        active.category = Set(normalize_optional_text(category));
+    }
+    if let Some(tags) = params.tags {
+        active.tags = Set(normalize_optional_text(tags));
+    }
+    if let Some(visibility) = params.visibility {
+        active.visibility = Set(visibility);
+    }
+    if let Some(status) = params.status {
+        active.status = Set(status);
+    }
     let file = active.update(&ctx.db).await?;
     record_upload_log(
         &ctx,
@@ -1381,6 +1389,12 @@ fn validate_visibility(visibility: Option<&str>) -> ApiResult<()> {
         "private" | "public" => Ok(()),
         _ => Err(ApiError::bad_request("invalid file visibility")),
     }
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn upload_task_root() -> PathBuf {

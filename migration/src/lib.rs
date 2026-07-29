@@ -19,6 +19,10 @@ mod m20260615_000014_ai_image_generations;
 mod m20260616_000015_command_management;
 mod m20260619_000016_command_orchestration;
 mod m20260621_000017_command_artifact_preview;
+mod m20260623_000018_http_request_manager;
+mod m20260703_000019_chat_management;
+mod m20260703_000020_managed_file_access_rules;
+mod m20260717_000021_command_api_keys;
 
 pub struct Migrator;
 
@@ -44,6 +48,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20260616_000015_command_management::Migration),
             Box::new(m20260619_000016_command_orchestration::Migration),
             Box::new(m20260621_000017_command_artifact_preview::Migration),
+            Box::new(m20260623_000018_http_request_manager::Migration),
+            Box::new(m20260703_000019_chat_management::Migration),
+            Box::new(m20260703_000020_managed_file_access_rules::Migration),
+            Box::new(m20260717_000021_command_api_keys::Migration),
             // inject-above (do not remove this comment)
         ]
     }

@@ -252,6 +252,17 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 29
+  parent_id: 2
+  title: 聊天管理
+  path: /admin/system/chat-messages
+  icon: message
+  permission_code: system:chat:list
+  sort_order: 218
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 27
   parent_id: 2
   title: 命令管理

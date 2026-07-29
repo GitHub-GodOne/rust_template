@@ -11,9 +11,12 @@ use crate::{
     responses::{self, ApiResponse, EmptyData},
     views::auth::{CurrentResponse, LoginResponse, RefreshResponse},
 };
+use chrono::{Duration, Local, TimeZone};
 use loco_rs::prelude::*;
 use regex::Regex;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -174,6 +177,96 @@ pub async fn reset(
     Ok(responses::empty())
 }
 
+fn end_of_today() -> ApiResult<chrono::DateTime<chrono::FixedOffset>> {
+    let tomorrow = Local::now().date_naive() + Duration::days(1);
+    let Some(midnight) = tomorrow.and_hms_opt(0, 0, 0) else {
+        return Err(ApiError::internal("failed to calculate lockout time"));
+    };
+    let Some(local_midnight) = Local.from_local_datetime(&midnight).single() else {
+        return Err(ApiError::internal("failed to calculate lockout time"));
+    };
+    Ok(local_midnight.into())
+}
+
+fn is_locked(user: &users::Model) -> bool {
+    user.locked_until
+        .is_some_and(|locked_until| locked_until > Local::now())
+}
+
+async fn record_locked_login(ctx: &AppContext, user: &users::Model) {
+    admin_logs::record(
+        &ctx.db,
+        admin_logs::LogInput {
+            log_type: "login",
+            level: "warn",
+            module: "auth",
+            action: "login_locked",
+            message: "登录失败：账号已锁定",
+            user_id: Some(user.id),
+            operator: Some(user.email.clone()),
+            method: Some("POST"),
+            path: Some("/api/auth/login"),
+            status: Some(401),
+            error_message: Some("account locked".to_string()),
+        },
+    )
+    .await;
+}
+
+async fn record_failed_password(ctx: &AppContext, user: &users::Model, attempts: i32) {
+    admin_logs::record(
+        &ctx.db,
+        admin_logs::LogInput {
+            log_type: "login",
+            level: "warn",
+            module: "auth",
+            action: if attempts >= 3 {
+                "login_locked"
+            } else {
+                "login_failed"
+            },
+            message: if attempts >= 3 {
+                "登录失败：密码错误次数过多，账号已锁定"
+            } else {
+                "登录失败：密码错误"
+            },
+            user_id: Some(user.id),
+            operator: Some(user.email.clone()),
+            method: Some("POST"),
+            path: Some("/api/auth/login"),
+            status: Some(401),
+            error_message: Some(format!("invalid password, attempts={attempts}")),
+        },
+    )
+    .await;
+}
+
+async fn update_failed_login(ctx: &AppContext, user: users::Model) -> ApiResult<i32> {
+    let attempts = user.failed_login_attempts.saturating_add(1);
+    let mut active = user.into_active_model();
+    active.failed_login_attempts = Set(attempts);
+    active.last_failed_login_at = Set(Some(Local::now().into()));
+    if attempts >= 3 {
+        active.locked_until = Set(Some(end_of_today()?));
+    }
+    active.update(&ctx.db).await?;
+    Ok(attempts)
+}
+
+async fn reset_login_failures(ctx: &AppContext, user: &users::Model) -> ApiResult<users::Model> {
+    if user.failed_login_attempts == 0
+        && user.locked_until.is_none()
+        && user.last_failed_login_at.is_none()
+    {
+        return Ok(user.clone());
+    }
+    let mut active = user.clone().into_active_model();
+    active.failed_login_attempts = Set(0);
+    active.locked_until = Set(None);
+    active.last_failed_login_at = Set(None);
+    Ok(active.update(&ctx.db).await?)
+}
+
 /// Creates a user login and returns access and refresh tokens.
 #[utoipa::path(
     post,
@@ -215,27 +308,25 @@ pub async fn login(
         return Err(ApiError::unauthorized("Invalid credentials!"));
     };
 
+    if is_locked(&user) {
+        record_locked_login(&ctx, &user).await;
+        return Err(ApiError::unauthorized(
+            "账号已因登录失败次数过多被锁定，请明天再试",
+        ));
+    }
+
     if !user.verify_password(&params.password) {
-        admin_logs::record(
-            &ctx.db,
-            admin_logs::LogInput {
-                log_type: "login",
-                level: "warn",
-                module: "auth",
-                action: "login_failed",
-                message: "登录失败：密码错误",
-                user_id: Some(user.id),
-                operator: Some(user.email.clone()),
-                method: Some("POST"),
-                path: Some("/api/auth/login"),
-                status: Some(401),
-                error_message: Some("invalid password".to_string()),
-            },
-        )
-        .await;
+        let attempts = update_failed_login(&ctx, user.clone()).await?;
+        record_failed_password(&ctx, &user, attempts).await;
+        if attempts >= 3 {
+            return Err(ApiError::unauthorized(
+                "账号已因登录失败次数过多被锁定，请明天再试",
+            ));
+        }
         return Err(ApiError::unauthorized("unauthorized!"));
     }
 
+    let user = reset_login_failures(&ctx, &user).await?;
     let response = login_response(&ctx, &user).await?;
     admin_logs::record(
         &ctx.db,
