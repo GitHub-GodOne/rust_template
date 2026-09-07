@@ -34,10 +34,13 @@ struct CommandLogTicket {
 use crate::{
     controllers::admin::authorize,
     errors::{ApiError, ApiResult},
-    models::_entities::{
-        command_api_keys, command_run_logs, command_runs, command_templates,
-        command_workflow_run_steps, command_workflow_runs, command_workflow_steps,
-        command_workflows,
+    models::{
+        _entities::{
+            command_api_keys, command_run_logs, command_runs, command_templates,
+            command_workflow_run_steps, command_workflow_runs, command_workflow_steps,
+            command_workflows, users,
+        },
+        rbac,
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
     services::{
@@ -549,8 +552,8 @@ pub async fn delete(
 
 #[utoipa::path(
     get,
-    path = "/api/admin/command-api-keys",
-    tag = "admin-commands",
+    path = "/api/admin/api-keys",
+    tag = "admin-api-keys",
     security(("bearer_auth" = [])),
     params(CommandApiKeyQueryParams),
     responses((status = 200, body = ApiResponse<PageResponse<CommandApiKeyRecord>>))
@@ -561,7 +564,7 @@ pub async fn list_api_keys(
     State(ctx): State<AppContext>,
     Query(params): Query<CommandApiKeyQueryParams>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:command:list").await?;
+    authorize(&ctx, &auth, "system:api_key:list").await?;
     let page = params.page();
     let page_size = params.page_size();
     let mut query = command_api_keys::Entity::find().order_by_desc(command_api_keys::Column::Id);
@@ -593,8 +596,8 @@ pub async fn list_api_keys(
 
 #[utoipa::path(
     post,
-    path = "/api/admin/command-api-keys",
-    tag = "admin-commands",
+    path = "/api/admin/api-keys",
+    tag = "admin-api-keys",
     security(("bearer_auth" = [])),
     request_body = SaveCommandApiKeyParams,
     responses((status = 200, body = ApiResponse<CommandApiKeyRecord>))
@@ -605,7 +608,7 @@ pub async fn create_api_key(
     State(ctx): State<AppContext>,
     Json(params): Json<SaveCommandApiKeyParams>,
 ) -> ApiResult<Response> {
-    let actor = authorize(&ctx, &auth, "system:command:create").await?;
+    let actor = authorize(&ctx, &auth, "system:api_key:create").await?;
     validate_api_key(&params)?;
     let token = normalize_optional(params.token).unwrap_or_else(generate_api_token);
     ensure_api_key_token_unique(&ctx, &token, None).await?;
@@ -625,8 +628,8 @@ pub async fn create_api_key(
 
 #[utoipa::path(
     put,
-    path = "/api/admin/command-api-keys/{id}",
-    tag = "admin-commands",
+    path = "/api/admin/api-keys/{id}",
+    tag = "admin-api-keys",
     security(("bearer_auth" = [])),
     params(("id" = i32, Path)),
     request_body = SaveCommandApiKeyParams,
@@ -639,16 +642,18 @@ pub async fn update_api_key(
     Path(id): Path<i32>,
     Json(params): Json<SaveCommandApiKeyParams>,
 ) -> ApiResult<Response> {
-    let actor = authorize(&ctx, &auth, "system:command:update").await?;
+    let actor = authorize(&ctx, &auth, "system:api_key:update").await?;
     validate_api_key(&params)?;
     let token = normalize_optional(params.token).unwrap_or_else(generate_api_token);
     ensure_api_key_token_unique(&ctx, &token, Some(id)).await?;
     let key = find_api_key(&ctx, id).await?;
+    let owner_id = key.created_by.or(Some(actor.id));
     let mut active = key.into_active_model();
     active.name = Set(params.name.trim().to_string());
     active.token = Set(token);
     active.description = Set(normalize_optional(params.description));
     active.enabled = Set(params.enabled.unwrap_or(true));
+    active.created_by = Set(owner_id);
     active.updated_by = Set(Some(actor.id));
     let key = active.update(&ctx.db).await?;
     Ok(responses::ok(CommandApiKeyRecord::from(key)))
@@ -656,8 +661,8 @@ pub async fn update_api_key(
 
 #[utoipa::path(
     delete,
-    path = "/api/admin/command-api-keys/{id}",
-    tag = "admin-commands",
+    path = "/api/admin/api-keys/{id}",
+    tag = "admin-api-keys",
     security(("bearer_auth" = [])),
     params(("id" = i32, Path)),
     responses((status = 200, body = ApiResponse<EmptyData>))
@@ -668,7 +673,7 @@ pub async fn delete_api_key(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:command:delete").await?;
+    authorize(&ctx, &auth, "system:api_key:delete").await?;
     find_api_key(&ctx, id).await?;
     command_api_keys::Entity::delete_by_id(id)
         .exec(&ctx.db)
@@ -1321,6 +1326,14 @@ async fn authorize_command_api_key(
     if !key.enabled {
         return Err(ApiError::unauthorized("command api key is disabled"));
     }
+    let owner_id = key
+        .created_by
+        .ok_or_else(|| ApiError::unauthorized("API key is not bound to a user"))?;
+    let owner = users::Entity::find_by_id(owner_id)
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::unauthorized("API key owner no longer exists"))?;
+    rbac::assert_permission(&ctx.db, owner.id, "system:command:run").await?;
     let mut active = key.clone().into_active_model();
     active.last_used_at = Set(Some(Utc::now().fixed_offset()));
     let key = active.update(&ctx.db).await?;
@@ -1590,7 +1603,26 @@ fn validate_api_key(params: &SaveCommandApiKeyParams) -> ApiResult<()> {
     {
         return Err(ApiError::bad_request("token must not be empty"));
     }
+    if let Some(token) = params.token.as_deref().map(str::trim) {
+        if token.chars().any(char::is_whitespace) {
+            return Err(ApiError::bad_request("token must not contain whitespace"));
+        }
+        if token_looks_like_jwt(token) {
+            return Err(ApiError::bad_request(
+                "token must not use the three-segment JWT format",
+            ));
+        }
+    }
     Ok(())
+}
+
+fn token_looks_like_jwt(token: &str) -> bool {
+    let mut segments = token.split('.');
+    matches!(
+        (segments.next(), segments.next(), segments.next(), segments.next()),
+        (Some(header), Some(payload), Some(signature), None)
+            if !header.is_empty() && !payload.is_empty() && !signature.is_empty()
+    )
 }
 
 async fn ensure_api_key_token_unique(

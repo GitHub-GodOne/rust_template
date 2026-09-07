@@ -117,6 +117,7 @@ pub async fn start_command_run(
     tokio::spawn(run_command_task(
         db,
         run.id,
+        working_directory,
         build_result.effective_script,
         request.timeout_seconds,
         cancel_rx,
@@ -169,6 +170,7 @@ pub async fn mark_stale_runs_failed(db: &DatabaseConnection) -> ApiResult<()> {
 async fn run_command_task(
     db: DatabaseConnection,
     run_id: i32,
+    working_directory: PathBuf,
     effective_script: String,
     timeout_seconds: Option<i32>,
     cancel_rx: oneshot::Receiver<()>,
@@ -182,7 +184,8 @@ async fn run_command_task(
         );
         return;
     }
-    if let Err(error) = append_system_log(&db, run_id, "命令开始执行\n").await {
+    let start_log = command_start_log(&working_directory);
+    if let Err(error) = append_system_log(&db, run_id, &start_log).await {
         tracing::error!(
             run_id,
             error = error.message(),
@@ -190,14 +193,7 @@ async fn run_command_task(
         );
     }
 
-    let mut child = match Command::new("/bin/bash")
-        .arg("-lc")
-        .arg(effective_script)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+    let mut child = match shell_command(&working_directory, effective_script).spawn() {
         Ok(child) => child,
         Err(error) => {
             let _ = finish_run_with_status(
@@ -205,7 +201,10 @@ async fn run_command_task(
                 run_id,
                 FinishStatus::Failed,
                 None,
-                Some(format!("failed to spawn command: {error}")),
+                Some(format!(
+                    "failed to spawn command in {}: {error}",
+                    working_directory.display()
+                )),
             )
             .await;
             return;
@@ -271,6 +270,29 @@ async fn run_command_task(
                 finish_run_with_status(&db, run_id, FinishStatus::Failed, None, Some(error)).await;
         }
     }
+}
+
+fn shell_command(working_directory: &Path, effective_script: String) -> Command {
+    let mut command = Command::new("/bin/bash");
+    command
+        .arg("-lc")
+        .arg(effective_script)
+        .current_dir(working_directory)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
+}
+
+fn command_start_log(working_directory: &Path) -> String {
+    let user = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "<未设置>".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| "<未设置>".to_string());
+    format!(
+        "命令开始执行\n工作目录: {}\n运行环境: USER={user} HOME={home}\n",
+        working_directory.display()
+    )
 }
 
 async fn wait_for_child(
@@ -755,4 +777,31 @@ fn clear_cancelled(run_id: i32) -> ApiResult<()> {
         .map_err(|_| ApiError::internal("failed to lock command cancel state"))?
         .remove(&run_id);
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{fs, path::PathBuf};
+
+    use super::shell_command;
+
+    #[tokio::test]
+    async fn shell_process_uses_configured_working_directory() {
+        let directory =
+            std::env::temp_dir().join(format!("gpt-images-command-cwd-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+
+        let output = shell_command(&directory, "pwd".to_string())
+            .output()
+            .await
+            .unwrap();
+        assert!(output.status.success());
+        let actual = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim());
+        assert_eq!(
+            actual.canonicalize().unwrap(),
+            directory.canonicalize().unwrap()
+        );
+
+        fs::remove_dir(&directory).unwrap();
+    }
 }

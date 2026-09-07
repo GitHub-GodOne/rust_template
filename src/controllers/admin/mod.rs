@@ -19,6 +19,7 @@ pub mod dicts;
 pub mod email_templates;
 pub mod file_manager;
 pub mod http_client;
+pub mod image_api;
 pub mod logs;
 pub mod menus;
 pub mod monitoring;
@@ -30,6 +31,7 @@ pub mod roles;
 pub mod scheduled_tasks;
 pub mod settings;
 pub mod ssh;
+pub mod static_hosting;
 pub mod storage_profiles;
 pub mod tenants;
 pub mod uploads;
@@ -62,6 +64,7 @@ pub fn public_routes() -> Routes {
             "/public/files/{token}",
             get(file_manager::public_file).post(file_manager::public_file_with_password),
         )
+        .add("/api/uploads/{id}", get(uploads::public_file))
         .add("/api/command-api/runs", post(commands::api_run_command))
         .add(
             "/api/command-api/runs/{id}",
@@ -230,6 +233,14 @@ fn command_routes(routes: Routes) -> Routes {
             get(commands::get)
                 .put(commands::update)
                 .delete(commands::delete),
+        )
+        .add(
+            "/api/admin/api-keys",
+            get(commands::list_api_keys).post(commands::create_api_key),
+        )
+        .add(
+            "/api/admin/api-keys/{id}",
+            put(commands::update_api_key).delete(commands::delete_api_key),
         )
         .add(
             "/api/admin/command-api-keys",
@@ -496,6 +507,7 @@ fn extension_routes(routes: Routes) -> Routes {
             put(storage_profiles::update_bucket).delete(storage_profiles::delete_bucket),
         );
     let routes = file_manager_routes(routes);
+    let routes = static_hosting_routes(routes);
     let routes = ssh_routes(routes);
     let routes = vnc_routes(routes);
     let routes = ai_image_routes(routes);
@@ -517,9 +529,44 @@ fn file_manager_routes(routes: Routes) -> Routes {
         )
         .add("/api/admin/files/rename", put(file_manager::rename))
         .add("/api/admin/files/access", put(file_manager::update_access))
-        .add("/api/admin/files", delete(file_manager::delete))
+        .add(
+            "/api/admin/files/content",
+            get(file_manager::read_content).put(file_manager::update_content),
+        )
+        .add(
+            "/api/admin/files",
+            post(file_manager::create_file).delete(file_manager::delete),
+        )
         .add("/api/admin/files/preview", get(file_manager::preview))
         .add("/api/admin/files/download", get(file_manager::download))
+}
+
+fn static_hosting_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/static-sites",
+            get(static_hosting::list).post(static_hosting::create),
+        )
+        .add(
+            "/api/admin/static-sites/browser",
+            get(static_hosting::browser),
+        )
+        .add(
+            "/api/admin/static-sites/folders",
+            post(static_hosting::create_folder),
+        )
+        .add(
+            "/api/admin/static-sites/upload",
+            post(static_hosting::upload).layer(DefaultBodyLimit::disable()),
+        )
+        .add(
+            "/api/admin/static-sites/files",
+            delete(static_hosting::delete_file),
+        )
+        .add(
+            "/api/admin/static-sites/{key}",
+            put(static_hosting::update).delete(static_hosting::delete_site),
+        )
 }
 
 fn ssh_routes(routes: Routes) -> Routes {
@@ -533,6 +580,10 @@ fn ssh_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/ssh/sessions/{id}/files",
             get(ssh::session_files),
+        )
+        .add(
+            "/api/admin/ssh/sessions/{id}/files/preview",
+            get(ssh::preview_session_file),
         )
         .add(
             "/api/admin/ssh/sessions/{id}/tickets",
@@ -550,6 +601,10 @@ fn vnc_routes(routes: Routes) -> Routes {
     routes
         .add("/api/admin/vnc/targets", get(vnc::targets))
         .add(
+            "/api/admin/vnc/credentials",
+            put(vnc::save_credentials).delete(vnc::delete_credentials),
+        )
+        .add(
             "/api/admin/vnc/sessions",
             get(vnc::sessions).post(vnc::create_session),
         )
@@ -566,6 +621,15 @@ fn vnc_routes(routes: Routes) -> Routes {
 
 fn ai_image_routes(routes: Routes) -> Routes {
     routes
+        .add("/api/image-api/generations", post(image_api::generate))
+        .add(
+            "/api/image-api/images/generations",
+            post(image_api::generate_direct),
+        )
+        .add(
+            "/api/image-api/images/edits",
+            post(image_api::edit_direct).layer(DefaultBodyLimit::disable()),
+        )
         .add(
             "/api/admin/ai-images/configs",
             get(ai_images::list_configs).post(ai_images::create_config),
@@ -635,6 +699,10 @@ fn http_client_routes(routes: Routes) -> Routes {
 fn upload_routes(routes: Routes) -> Routes {
     routes
         .add(
+            "/api/file-api/uploads",
+            post(uploads::file_api_create).layer(DefaultBodyLimit::disable()),
+        )
+        .add(
             "/api/admin/uploads",
             get(uploads::list)
                 .post(uploads::create)
@@ -660,6 +728,7 @@ fn upload_routes(routes: Routes) -> Routes {
         )
         .add("/api/admin/uploads/browser", get(uploads::browser))
         .add("/api/admin/uploads/folders", post(uploads::create_folder))
+        .add("/api/admin/uploads/files", post(uploads::create_file))
         .add(
             "/api/admin/uploads/import-object",
             post(uploads::import_object),
@@ -669,6 +738,10 @@ fn upload_routes(routes: Routes) -> Routes {
             post(uploads::import_objects),
         )
         .add("/api/admin/uploads/{id}/rename", put(uploads::rename))
+        .add(
+            "/api/admin/uploads/{id}/content",
+            get(uploads::read_content).put(uploads::update_content),
+        )
         .add("/api/admin/uploads/{id}/preview", get(uploads::preview))
         .add("/api/admin/uploads/{id}/download", get(uploads::download))
 }

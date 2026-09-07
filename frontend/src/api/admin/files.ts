@@ -35,10 +35,28 @@ export type CreateFileFolderParams = {
   path: string;
 };
 
+export type CreateManagedFileParams = {
+  root_key: string;
+  path: string;
+  content?: string;
+};
+
 export type RenameFileParams = {
   root_key: string;
   path: string;
   name: string;
+};
+
+export type ManagedFileContentRecord = {
+  content: string;
+  size_bytes: number;
+  updated_at?: string | null;
+};
+
+export type UpdateManagedFileContentParams = {
+  root_key: string;
+  path: string;
+  content: string;
 };
 
 export type UpdateManagedFileAccessParams = {
@@ -69,6 +87,14 @@ export async function fetchFileBrowser(params: {
 export async function createFileFolder(payload: CreateFileFolderParams) {
   const response = await apiClient.post<ApiResponse<ManagedFileRecord>>(
     "/admin/files/folders",
+    payload,
+  );
+  return unwrap(response.data);
+}
+
+export async function createManagedFile(payload: CreateManagedFileParams) {
+  const response = await apiClient.post<ApiResponse<ManagedFileRecord>>(
+    "/admin/files",
     payload,
   );
   return unwrap(response.data);
@@ -113,6 +139,27 @@ export async function renameManagedFile(payload: RenameFileParams) {
   return unwrap(response.data);
 }
 
+export async function fetchManagedFileContent(params: {
+  root_key: string;
+  path: string;
+}) {
+  const response = await apiClient.get<ApiResponse<ManagedFileContentRecord>>(
+    "/admin/files/content",
+    { params },
+  );
+  return unwrap(response.data);
+}
+
+export async function updateManagedFileContent(
+  payload: UpdateManagedFileContentParams,
+) {
+  const response = await apiClient.put<ApiResponse<ManagedFileRecord>>(
+    "/admin/files/content",
+    payload,
+  );
+  return unwrap(response.data);
+}
+
 export async function updateManagedFileAccess(
   payload: UpdateManagedFileAccessParams,
 ) {
@@ -137,6 +184,7 @@ export async function previewManagedFile(params: {
   const response = await apiClient.get("/admin/files/preview", {
     params,
     responseType: "blob",
+    timeout: 0,
   });
   return response.data as Blob;
 }
@@ -148,6 +196,7 @@ export async function downloadManagedFile(params: {
   const response = await apiClient.get("/admin/files/download", {
     params,
     responseType: "blob",
+    timeout: 0,
   });
   return response.data as Blob;
 }

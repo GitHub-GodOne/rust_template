@@ -263,6 +263,17 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 30
+  parent_id: 2
+  title: 静态托管
+  path: /admin/system/static-hosting
+  icon: global
+  permission_code: system:static_host:list
+  sort_order: 217
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 27
   parent_id: 2
   title: 命令管理
@@ -270,6 +281,17 @@
   icon: code
   permission_code: system:command:list
   sort_order: 218
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 31
+  parent_id: 2
+  title: API 授权
+  path: /admin/system/api-keys
+  icon: key
+  permission_code: system:api_key:list
+  sort_order: 219
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"

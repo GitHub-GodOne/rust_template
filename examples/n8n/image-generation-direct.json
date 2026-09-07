@@ -1,0 +1,172 @@
+{
+  "name": "后台管理 - 纯生图接口",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "92228251-7270-4fee-b460-7cc45510e07c",
+      "name": "手动触发",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "28c8492d-f508-44d5-a5ba-3c2fbb11bf61",
+              "name": "api_base_url",
+              "value": "http://host.docker.internal:5150",
+              "type": "string"
+            },
+            {
+              "id": "1d10907d-f880-4a11-a248-c50b90eb3f4e",
+              "name": "platform_bearer_token",
+              "value": "eyJ0_REPLACE_WITH_YOUR_PLATFORM_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "b831c6a9-0758-463d-b55f-9f0590505ae3",
+              "name": "ai_api_url",
+              "value": "https://api.pikju.top/v1",
+              "type": "string"
+            },
+            {
+              "id": "0feab267-855b-4343-aefb-d9858f5761aa",
+              "name": "ai_api_key",
+              "value": "REPLACE_WITH_YOUR_AI_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "75eb4b17-8fd6-4de8-8db4-87cfa6632a75",
+              "name": "prompt",
+              "value": "电影感雨夜城市街道，霓虹灯倒影",
+              "type": "string"
+            },
+            {
+              "id": "c240e0ad-ad84-4f17-9a9b-f12c33074cf4",
+              "name": "model",
+              "value": "gpt-image-2",
+              "type": "string"
+            },
+            {
+              "id": "ed278b16-0238-4753-9c1b-c5ee659c9c9c",
+              "name": "size",
+              "value": "1024x1536",
+              "type": "string"
+            },
+            {
+              "id": "eb7f40bf-6a50-4c69-b748-20da9edeab2f",
+              "name": "quality",
+              "value": "high",
+              "type": "string"
+            },
+            {
+              "id": "af1bf047-89c5-46b0-80df-f67d7a676423",
+              "name": "output_format",
+              "value": "png",
+              "type": "string"
+            },
+            {
+              "id": "575c97a8-d482-443c-bfb7-1811cf207125",
+              "name": "n",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "da327c0f-9d0d-4649-94c5-0ca890caa24e",
+              "name": "timeout_seconds",
+              "value": 900,
+              "type": "number"
+            },
+            {
+              "id": "a97e93f5-0760-41c1-8665-ff3c173309c6",
+              "name": "prefix",
+              "value": "n8n/ai-generated-direct",
+              "type": "string"
+            },
+            {
+              "id": "45f4fc2e-a434-4fe2-9665-164a40493dd4",
+              "name": "visibility",
+              "value": "public",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "ea699d69-0533-4025-9129-afc86990ec4c",
+      "name": "配置纯生图请求",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.api_base_url + '/api/image-api/images/generations' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.platform_bearer_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ prompt: $json.prompt, api_url: $json.ai_api_url, api_key: $json.ai_api_key, model: $json.model, size: $json.size, quality: $json.quality, output_format: $json.output_format, n: Number($json.n), timeout_seconds: Number($json.timeout_seconds), prefix: $json.prefix, visibility: $json.visibility }) }}",
+        "options": {
+          "timeout": 950000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "cc214e36-c3a2-4fd3-a5b5-6f071c8fb481",
+      "name": "调用纯生图接口",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.first();\nlet payload = item.json;\n\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  const text = value.trim();\n  if (!text) throw new Error('图片接口返回了空响应');\n  try {\n    return JSON.parse(text);\n  } catch {\n    throw new Error('图片接口响应不是合法 JSON');\n  }\n};\n\ntry {\n  payload = parseJson(payload);\n\n  for (let depth = 0; depth < 4; depth += 1) {\n    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) break;\n    if (payload.success !== undefined || Array.isArray(payload.files)) break;\n\n    if (Object.prototype.hasOwnProperty.call(payload, 'body')) {\n      payload = parseJson(payload.body);\n      continue;\n    }\n\n    if (payload.response && typeof payload.response === 'object' && Object.prototype.hasOwnProperty.call(payload.response, 'body')) {\n      payload = parseJson(payload.response.body);\n      continue;\n    }\n\n    if (Object.prototype.hasOwnProperty.call(payload, 'data')) {\n      const candidate = parseJson(payload.data);\n      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate) && (candidate.success !== undefined || candidate.data !== undefined || Array.isArray(candidate.files))) {\n        payload = candidate;\n        continue;\n      }\n    }\n\n    break;\n  }\n\n  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    throw new Error('图片接口响应不是 JSON 对象');\n  }\n\n  let data;\n  let code = payload.code || 'OK';\n  let message = payload.message || 'ok';\n\n  if (payload.success !== undefined) {\n    if (payload.success !== true) {\n      throw new Error(payload.message || payload.error?.message || '图片生成失败');\n    }\n    data = payload.data;\n  } else if (Array.isArray(payload.files)) {\n    data = payload;\n  } else {\n    const keys = Object.keys(payload).slice(0, 20).join(', ') || '无';\n    throw new Error('未识别到图片接口响应；当前字段：' + keys + '。请确认 Code 节点连接在“调用纯生图接口”之后');\n  }\n\n  if (!data || !Array.isArray(data.files)) {\n    const keys = data && typeof data === 'object' ? Object.keys(data).slice(0, 20).join(', ') : '无';\n    throw new Error('图片接口响应缺少 files；data 字段：' + keys);\n  }\n\n  const files = data.files.map((file) => ({\n    id: file.id ?? null,\n    original_name: file.original_name ?? null,\n    filename: file.filename ?? null,\n    mime_type: file.mime_type ?? null,\n    size_bytes: file.size_bytes ?? null,\n    storage_provider: file.storage_provider ?? null,\n    storage_bucket_id: file.storage_bucket_id ?? null,\n    object_key: file.object_key ?? null,\n    network_url: file.network_url ?? null,\n    public_url: file.public_url ?? null,\n    download_url: file.download_url ?? null,\n    local_path: file.local_path ?? null,\n    created_at: file.created_at ?? null,\n  }));\n\n  const firstFile = files[0] || {};\n  return [{\n    json: {\n      success: true,\n      code,\n      message,\n      provider_key: data.provider_key ?? null,\n      provider_name: data.provider_name ?? null,\n      operation: data.operation ?? null,\n      model: data.model ?? null,\n      size: data.size ?? null,\n      quality: data.quality ?? null,\n      output_format: data.output_format ?? null,\n      image_url: firstFile.public_url || firstFile.network_url || null,\n      local_path: firstFile.local_path || null,\n      files,\n    },\n  }];\n} catch (error) {\n  const receivedFields = payload && typeof payload === 'object' && !Array.isArray(payload)\n    ? Object.keys(payload).slice(0, 20)\n    : [];\n  return [{\n    json: {\n      success: false,\n      code: payload?.code || 'INVALID_RESPONSE',\n      message: error instanceof Error ? error.message : String(error),\n      received_fields: receivedFields,\n    },\n  }];\n}"
+      },
+      "id": "2a74d913-1361-47df-86da-a28552829e9a",
+      "name": "整理 JSON 结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 300]
+    }
+  ],
+  "connections": {
+    "手动触发": {
+      "main": [[{"node": "配置纯生图请求", "type": "main", "index": 0}]]
+    },
+    "配置纯生图请求": {
+      "main": [[{"node": "调用纯生图接口", "type": "main", "index": 0}]]
+    },
+    "调用纯生图接口": {
+      "main": [[{"node": "整理 JSON 结果", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

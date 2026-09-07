@@ -80,7 +80,7 @@ pub struct CurrentMenuItem {
     pub permission_code: Option<String>,
     pub actions: CurrentMenuActions,
     #[schema(no_recursion)]
-    pub children: Vec<CurrentMenuItem>,
+    pub children: Vec<Self>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]

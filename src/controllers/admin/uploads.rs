@@ -5,9 +5,9 @@ use std::{collections::VecDeque, fs, path::PathBuf};
 use axum::{
     extract::{multipart::Field, Multipart},
     http::{header, HeaderMap, HeaderName, HeaderValue},
-    response::IntoResponse,
 };
 use chrono::{Local, Utc};
+use futures_util::TryStreamExt;
 use loco_rs::prelude::*;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel, PaginatorTrait,
@@ -28,8 +28,79 @@ use crate::{
         admin_logs, system_settings,
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
-    services::storage::{self, StorageBrowserRecord, StoragePrefixRecord},
+    services::{
+        file_stream,
+        storage::{self, StorageObjectRecord, StoragePrefixRecord},
+    },
 };
+
+const MAX_EDITABLE_UPLOAD_BYTES: usize = 1024 * 1024;
+const TEXT_ENCODING_SAMPLE_BYTES: usize = 64 * 1024;
+const EDITABLE_UPLOAD_EXTENSIONS: &[&str] = &[
+    "bash",
+    "c",
+    "cc",
+    "cfg",
+    "cjs",
+    "conf",
+    "config",
+    "cpp",
+    "cs",
+    "css",
+    "csv",
+    "cts",
+    "cxx",
+    "dockerignore",
+    "editorconfig",
+    "env",
+    "eslintrc",
+    "fish",
+    "gitignore",
+    "go",
+    "h",
+    "hpp",
+    "htm",
+    "html",
+    "ini",
+    "java",
+    "js",
+    "json",
+    "jsx",
+    "kt",
+    "kts",
+    "less",
+    "lock",
+    "log",
+    "lua",
+    "markdown",
+    "md",
+    "mjs",
+    "mts",
+    "npmrc",
+    "php",
+    "prettierrc",
+    "properties",
+    "py",
+    "rb",
+    "rs",
+    "sass",
+    "scss",
+    "sh",
+    "sql",
+    "svelte",
+    "svg",
+    "toml",
+    "ts",
+    "tsx",
+    "txt",
+    "vue",
+    "xml",
+    "yaml",
+    "yml",
+    "zsh",
+];
+const EDITABLE_UPLOAD_FILENAMES: &[&str] =
+    &["dockerfile", "license", "makefile", "procfile", "readme"];
 
 #[derive(Debug, Deserialize, Serialize, utoipa::IntoParams, utoipa::ToSchema)]
 #[into_params(parameter_in = Query)]
@@ -76,6 +147,8 @@ pub struct UploadRecord {
     pub etag: Option<String>,
     pub object_key: String,
     pub url: String,
+    pub public_url: Option<String>,
+    pub download_url: String,
     pub original_name: String,
     pub filename: String,
     pub extension: Option<String>,
@@ -89,6 +162,69 @@ pub struct UploadRecord {
     pub uploader_id: Option<i32>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct UploadBrowserRecord {
+    pub prefixes: Vec<StoragePrefixRecord>,
+    pub objects: Vec<StorageObjectRecord>,
+    pub managed_object_keys: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct UploadContentRecord {
+    pub content: String,
+    pub size_bytes: i64,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct UpdateUploadContentParams {
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct FileApiUploadForm {
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
+    pub storage_profile_id: Option<i32>,
+    pub storage_bucket_id: Option<i32>,
+    pub prefix: Option<String>,
+    pub category: Option<String>,
+    pub tags: Option<String>,
+    pub visibility: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct FileApiUploadRecord {
+    pub id: i32,
+    pub original_name: String,
+    pub filename: String,
+    pub mime_type: Option<String>,
+    pub size_bytes: i64,
+    pub sha256: String,
+    pub storage_provider: String,
+    pub storage_profile_id: i32,
+    pub storage_bucket_id: i32,
+    pub storage_bucket: String,
+    pub prefix: Option<String>,
+    pub object_key: String,
+    pub network_url: String,
+    pub download_url: String,
+    pub public_url: Option<String>,
+    pub local_path: Option<String>,
+    pub created_at: String,
+}
+
+pub(crate) struct StoreFileApiBytesParams {
+    pub original_name: String,
+    pub mime_type: Option<String>,
+    pub bytes: Vec<u8>,
+    pub storage_bucket_id: Option<i32>,
+    pub prefix: Option<String>,
+    pub category: Option<String>,
+    pub tags: Option<String>,
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -130,6 +266,16 @@ pub struct ImportUploadObjectsRecord {
 pub struct CreateUploadFolderParams {
     pub storage_bucket_id: i32,
     pub prefix: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CreateUploadFileParams {
+    pub storage_bucket_id: i32,
+    pub prefix: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub content: String,
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -224,7 +370,9 @@ pub async fn create_task(
     }
     let max_bytes = upload_limit_bytes(&ctx).await?;
     if params.size_bytes > max_bytes {
-        return Err(ApiError::bad_request("uploaded file is too large"));
+        return Err(ApiError::bad_request(
+            system_settings::upload_limit_error_message(max_bytes),
+        ));
     }
     let extension = file_extension(&params.original_name);
     ensure_allowed_extension(&ctx, extension.as_deref()).await?;
@@ -488,104 +636,119 @@ pub async fn get(
 pub async fn create(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
-    mut multipart: Multipart,
+    multipart: Multipart,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:upload:create").await?;
-    let max_bytes = upload_limit_bytes(&ctx).await?;
-    let mut payload = UploadPayload::default();
-
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| ApiError::bad_request("invalid multipart payload"))?
-    {
-        let name = field.name().unwrap_or_default().to_string();
-        if name == "file" {
-            let original_name = field.file_name().unwrap_or("upload.bin").to_string();
-            let mime_type = field.content_type().map(str::to_string);
-            let bytes = read_upload_field(field, max_bytes).await?;
-            payload.file = Some(UploadedPart {
-                original_name,
-                mime_type,
-                bytes,
-            });
-        } else {
-            let value = field
-                .text()
-                .await
-                .map_err(|_| ApiError::bad_request("failed to read multipart field"))?;
-            payload.set_field(&name, &value)?;
-        }
-    }
-
-    let uploaded = payload
-        .file
-        .ok_or_else(|| ApiError::bad_request("file field is required"))?;
-
-    let extension = file_extension(&uploaded.original_name);
-    ensure_allowed_extension(&ctx, extension.as_deref()).await?;
-    let safe_name = sanitize_filename(&uploaded.original_name);
-    let date_path = Utc::now().format("%Y/%m").to_string();
-    let filename = format!("{}-{safe_name}", Uuid::new_v4());
-    let prefix = payload.prefix.or(Some(date_path));
-    let (profile, bucket) =
-        storage_profiles::resolve_bucket(&ctx, &user, payload.storage_bucket_id).await?;
-    if payload
-        .storage_profile_id
-        .is_some_and(|id| id != profile.id)
-    {
-        return Err(ApiError::bad_request(
-            "storage profile does not match bucket",
-        ));
-    }
-    let stored = storage::put_object(
-        &profile,
-        &bucket,
-        prefix.as_deref(),
-        &filename,
-        uploaded.bytes.clone(),
-    )
-    .await?;
-
-    let mut hasher = Sha256::new();
-    hasher.update(&uploaded.bytes);
-    let sha256 = hex::encode(hasher.finalize());
-    let file = upload_files::ActiveModel {
-        storage: Set(profile.provider.clone()),
-        storage_profile_id: Set(Some(profile.id)),
-        storage_bucket_id: Set(Some(bucket.id)),
-        bucket: Set(Some(stored.bucket)),
-        prefix: Set(stored.prefix),
-        etag: Set(stored.etag),
-        object_key: Set(stored.object_key),
-        url: Set(stored.url),
-        original_name: Set(uploaded.original_name),
-        filename: Set(filename),
-        extension: Set(extension),
-        mime_type: Set(uploaded.mime_type),
-        size_bytes: Set(i64::try_from(uploaded.bytes.len()).unwrap_or(i64::MAX)),
-        sha256: Set(sha256),
-        category: Set(payload.category),
-        tags: Set(payload.tags),
-        visibility: Set(payload.visibility.unwrap_or_else(|| "private".to_string())),
-        status: Set("active".to_string()),
-        uploader_id: Set(Some(user.id)),
-        ..Default::default()
-    }
-    .insert(&ctx.db)
-    .await?;
-
-    let file = ensure_download_url(&ctx, file).await?;
+    let payload = read_upload_payload(&ctx, multipart).await?;
+    let upload = store_upload(&ctx, &user, payload).await?;
     record_upload_log(
         &ctx,
         &user,
         "upload",
-        format!("上传素材成功：{}", file.original_name),
+        format!("上传素材成功：{}", upload.file.original_name),
         Some(200),
         None,
     )
     .await;
-    Ok(responses::ok(UploadRecord::from(file)))
+    Ok(responses::ok(UploadRecord::from(upload.file)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/file-api/uploads",
+    tag = "file-api",
+    security(("bearer_auth" = [])),
+    request_body(content = inline(FileApiUploadForm), content_type = "multipart/form-data"),
+    responses((status = 200, body = ApiResponse<FileApiUploadRecord>))
+)]
+#[debug_handler]
+pub async fn file_api_create(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:upload:create").await?;
+    let payload = read_upload_payload(&ctx, multipart).await?;
+    let upload = store_upload(&ctx, &user, payload).await?;
+    let record = file_api_upload_record(&ctx, &headers, &upload)?;
+    record_upload_log_at(
+        &ctx,
+        &user,
+        "api_upload",
+        format!("接口上传文件成功：{}", upload.file.original_name),
+        Some(200),
+        None,
+        "/api/file-api/uploads",
+    )
+    .await;
+    Ok(responses::ok(record))
+}
+
+pub(crate) async fn store_file_api_bytes(
+    ctx: &AppContext,
+    user: &crate::models::users::Model,
+    headers: &HeaderMap,
+    params: StoreFileApiBytesParams,
+) -> ApiResult<FileApiUploadRecord> {
+    validate_visibility(params.visibility.as_deref())?;
+    let upload = store_upload(
+        ctx,
+        user,
+        UploadPayload {
+            storage_profile_id: None,
+            storage_bucket_id: params.storage_bucket_id,
+            prefix: storage::normalize_prefix(params.prefix.as_deref())?,
+            category: params.category,
+            tags: params.tags,
+            visibility: params.visibility,
+            file: Some(UploadedPart {
+                original_name: params.original_name,
+                mime_type: params.mime_type,
+                bytes: params.bytes,
+            }),
+        },
+    )
+    .await?;
+    file_api_upload_record(ctx, headers, &upload)
+}
+
+fn file_api_upload_record(
+    ctx: &AppContext,
+    headers: &HeaderMap,
+    upload: &StoredUpload,
+) -> ApiResult<FileApiUploadRecord> {
+    let download_url = absolute_network_url(
+        ctx,
+        headers,
+        &format!("/api/admin/uploads/{}/download", upload.file.id),
+    );
+    let public_url = public_upload_url(&upload.file)
+        .as_deref()
+        .map(|url| absolute_network_url(ctx, headers, url));
+    let network_url = public_url.clone().unwrap_or_else(|| download_url.clone());
+    let local_path =
+        storage::object_local_path(&upload.profile, &upload.bucket, &upload.file.object_key)?
+            .map(|path| path.to_string_lossy().into_owned());
+    Ok(FileApiUploadRecord {
+        id: upload.file.id,
+        original_name: upload.file.original_name.clone(),
+        filename: upload.file.filename.clone(),
+        mime_type: upload.file.mime_type.clone(),
+        size_bytes: upload.file.size_bytes,
+        sha256: upload.file.sha256.clone(),
+        storage_provider: upload.profile.provider.clone(),
+        storage_profile_id: upload.profile.id,
+        storage_bucket_id: upload.bucket.id,
+        storage_bucket: upload.bucket.bucket.clone(),
+        prefix: upload.file.prefix.clone(),
+        object_key: upload.file.object_key.clone(),
+        network_url,
+        download_url,
+        public_url,
+        local_path,
+        created_at: upload.file.created_at.to_rfc3339(),
+    })
 }
 
 #[utoipa::path(
@@ -632,7 +795,7 @@ pub async fn import_object(
         },
     )
     .await?;
-    let file = ensure_download_url(&ctx, file).await?;
+    let file = ensure_access_url(&ctx, file).await?;
     record_upload_log(
         &ctx,
         &user,
@@ -708,7 +871,7 @@ pub async fn import_objects(
             {
                 Ok(file) => {
                     imported += 1;
-                    items.push(UploadRecord::from(ensure_download_url(&ctx, file).await?));
+                    items.push(UploadRecord::from(ensure_access_url(&ctx, file).await?));
                 }
                 Err(_) => skipped += 1,
             }
@@ -758,6 +921,64 @@ pub async fn create_folder(
     )
     .await;
     Ok(responses::ok(folder))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/uploads/files",
+    tag = "admin-uploads",
+    security(("bearer_auth" = [])),
+    request_body = CreateUploadFileParams,
+    responses((status = 200, body = ApiResponse<UploadRecord>))
+)]
+#[debug_handler]
+pub async fn create_file(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<CreateUploadFileParams>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:upload:create").await?;
+    let name = params.name.trim();
+    if name.is_empty() {
+        return Err(ApiError::bad_request("file name is required"));
+    }
+    if matches!(name, "." | "..") || name.contains('/') || name.contains('\\') {
+        return Err(ApiError::bad_request("invalid file name"));
+    }
+    validate_visibility(params.visibility.as_deref())?;
+    let normalized_prefix = storage::normalize_prefix(params.prefix.as_deref())?;
+    let mime_type = mime_guess::from_path(name)
+        .first_raw()
+        .map_or_else(|| "text/plain".to_string(), str::to_string);
+    let upload = store_upload(
+        &ctx,
+        &user,
+        UploadPayload {
+            storage_profile_id: None,
+            storage_bucket_id: Some(params.storage_bucket_id),
+            // Some("") keeps root-level files at the root instead of the dated upload prefix.
+            prefix: Some(normalized_prefix.unwrap_or_default()),
+            category: None,
+            tags: None,
+            visibility: params.visibility,
+            file: Some(UploadedPart {
+                original_name: name.to_string(),
+                mime_type: Some(mime_type),
+                bytes: params.content.into_bytes(),
+            }),
+        },
+    )
+    .await?;
+    record_upload_log(
+        &ctx,
+        &user,
+        "create_file",
+        format!("新建素材文件：{}", upload.file.original_name),
+        Some(200),
+        None,
+    )
+    .await;
+    Ok(responses::ok(UploadRecord::from(upload.file)))
 }
 
 #[utoipa::path(
@@ -819,6 +1040,7 @@ pub async fn rename(
         active.filename = Set(filename);
         active.extension = Set(extension);
         let file = active.update(&ctx.db).await?;
+        let file = ensure_access_url(&ctx, file).await?;
         record_upload_log(
             &ctx,
             &user,
@@ -835,6 +1057,7 @@ pub async fn rename(
     active.filename = Set(filename);
     active.extension = Set(extension);
     let file = active.update(&ctx.db).await?;
+    let file = ensure_access_url(&ctx, file).await?;
     record_upload_log(
         &ctx,
         &user,
@@ -882,6 +1105,7 @@ pub async fn update(
         active.status = Set(status);
     }
     let file = active.update(&ctx.db).await?;
+    let file = ensure_access_url(&ctx, file).await?;
     record_upload_log(
         &ctx,
         &user,
@@ -933,7 +1157,7 @@ pub async fn delete(
     tag = "admin-uploads",
     security(("bearer_auth" = [])),
     params(UploadBrowserParams),
-    responses((status = 200, body = ApiResponse<StorageBrowserRecord>))
+    responses((status = 200, body = ApiResponse<UploadBrowserRecord>))
 )]
 #[debug_handler]
 pub async fn browser(
@@ -945,7 +1169,27 @@ pub async fn browser(
     let (profile, bucket) =
         storage_profiles::resolve_bucket(&ctx, &user, params.storage_bucket_id).await?;
     let browser = storage::list_objects(&profile, &bucket, params.prefix.as_deref()).await?;
-    Ok(responses::ok(browser))
+    let object_keys = browser
+        .objects
+        .iter()
+        .map(|object| object.key.clone())
+        .collect::<Vec<_>>();
+    let managed_object_keys = if object_keys.is_empty() {
+        Vec::new()
+    } else {
+        upload_files::Entity::find()
+            .filter(upload_files::Column::ObjectKey.is_in(object_keys))
+            .all(&ctx.db)
+            .await?
+            .into_iter()
+            .map(|file| file.object_key)
+            .collect()
+    };
+    Ok(responses::ok(UploadBrowserRecord {
+        prefixes: browser.prefixes,
+        objects: browser.objects,
+        managed_object_keys,
+    }))
 }
 
 #[utoipa::path(
@@ -960,6 +1204,7 @@ pub async fn browser(
 pub async fn download(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:upload:download").await?;
@@ -967,7 +1212,16 @@ pub async fn download(
     if file.status != "active" {
         return Err(ApiError::bad_request("file is not active"));
     }
-    let response = file_content_response(&ctx, &actor, &file, FileDisposition::Attachment).await?;
+    let (profile, bucket) = file_storage_location(&ctx, &actor, &file).await?;
+    let response = file_content_response(
+        &profile,
+        &bucket,
+        &headers,
+        &file,
+        FileDisposition::Attachment,
+        FileResponseScope::Private,
+    )
+    .await?;
     record_upload_log(
         &ctx,
         &actor,
@@ -993,6 +1247,7 @@ pub async fn download(
 pub async fn preview(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:upload:download").await?;
@@ -1000,7 +1255,16 @@ pub async fn preview(
     if file.status != "active" {
         return Err(ApiError::bad_request("file is not active"));
     }
-    let response = file_content_response(&ctx, &actor, &file, FileDisposition::Inline).await?;
+    let (profile, bucket) = file_storage_location(&ctx, &actor, &file).await?;
+    let response = file_content_response(
+        &profile,
+        &bucket,
+        &headers,
+        &file,
+        FileDisposition::Inline,
+        FileResponseScope::Private,
+    )
+    .await?;
     record_upload_log(
         &ctx,
         &actor,
@@ -1014,10 +1278,149 @@ pub async fn preview(
     Ok(response)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/uploads/{id}",
+    tag = "uploads",
+    params(("id" = i32, Path)),
+    responses(
+        (status = 200, description = "Preview a public uploaded file inline"),
+        (status = 206, description = "Preview a byte range of a public uploaded file"),
+        (status = 403, description = "File is not public")
+    )
+)]
+#[debug_handler]
+pub async fn public_file(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> ApiResult<Response> {
+    let file = find_file(&ctx, id).await?;
+    if file.status != "active" || file.visibility != "public" {
+        return Err(ApiError::forbidden("file is not publicly available"));
+    }
+    let (profile, bucket) = public_file_storage_location(&ctx, &file).await?;
+    file_content_response(
+        &profile,
+        &bucket,
+        &headers,
+        &file,
+        FileDisposition::Inline,
+        FileResponseScope::Public,
+    )
+    .await
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/uploads/{id}/content",
+    tag = "admin-uploads",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    responses((status = 200, body = ApiResponse<UploadContentRecord>))
+)]
+#[debug_handler]
+pub async fn read_content(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:upload:update").await?;
+    let file = find_file(&ctx, id).await?;
+    ensure_editable_upload(&file)?;
+    let (profile, bucket) = file_storage_location(&ctx, &actor, &file).await?;
+    let (content, size_bytes, updated_at) =
+        read_editable_upload_text(&profile, &bucket, &file).await?;
+    Ok(responses::ok(UploadContentRecord {
+        content,
+        size_bytes,
+        updated_at: updated_at.or_else(|| Some(file.updated_at.to_rfc3339())),
+    }))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/uploads/{id}/content",
+    tag = "admin-uploads",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    request_body = UpdateUploadContentParams,
+    responses((status = 200, body = ApiResponse<UploadRecord>))
+)]
+#[debug_handler]
+pub async fn update_content(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+    Json(params): Json<UpdateUploadContentParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:upload:update").await?;
+    let file = find_file(&ctx, id).await?;
+    ensure_editable_upload(&file)?;
+    let (profile, bucket) = file_storage_location(&ctx, &actor, &file).await?;
+
+    // Read the current object first so a mislabeled binary file cannot be overwritten as text.
+    read_editable_upload_text(&profile, &bucket, &file).await?;
+    validate_editable_upload_content(&params.content)?;
+
+    let bytes = params.content.into_bytes();
+    let size_bytes = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let sha256 = hex::encode(hasher.finalize());
+    let (object_prefix, object_name) = split_object_key(&file.object_key)?;
+    let stored = storage::put_object(
+        &profile,
+        &bucket,
+        object_prefix.as_deref(),
+        &object_name,
+        bytes,
+    )
+    .await?;
+    if stored.object_key != file.object_key {
+        return Err(ApiError::internal(
+            "updated object key changed unexpectedly",
+        ));
+    }
+
+    let current_url = file.url.clone();
+    let mut active = file.into_active_model();
+    active.bucket = Set(Some(stored.bucket));
+    active.prefix = Set(stored.prefix);
+    active.etag = Set(stored.etag);
+    active.object_key = Set(stored.object_key);
+    active.url = Set(if stored.url.is_empty() {
+        current_url
+    } else {
+        stored.url
+    });
+    active.size_bytes = Set(size_bytes);
+    active.sha256 = Set(sha256);
+    active.updated_at = Set(Utc::now().into());
+    let file = active.update(&ctx.db).await?;
+    let file = ensure_access_url(&ctx, file).await?;
+    record_upload_log(
+        &ctx,
+        &actor,
+        "edit_content",
+        format!("编辑素材文本：{}", file.original_name),
+        Some(200),
+        None,
+    )
+    .await;
+    Ok(responses::ok(UploadRecord::from(file)))
+}
+
 #[derive(Clone, Copy)]
 enum FileDisposition {
     Attachment,
     Inline,
+}
+
+#[derive(Clone, Copy)]
+enum FileResponseScope {
+    Private,
+    Public,
 }
 
 impl FileDisposition {
@@ -1030,21 +1433,23 @@ impl FileDisposition {
 }
 
 async fn file_content_response(
-    ctx: &AppContext,
-    actor: &crate::models::users::Model,
+    profile: &storage_profiles_entity::Model,
+    bucket: &storage_buckets::Model,
+    request_headers: &HeaderMap,
     file: &upload_files::Model,
     disposition: FileDisposition,
+    scope: FileResponseScope,
 ) -> ApiResult<Response> {
-    let (profile, bucket) = file_storage_location(ctx, actor, file).await?;
-    let bytes = storage::get_object(&profile, &bucket, &file.object_key).await?;
+    let metadata = storage::object_metadata(profile, bucket, &file.object_key).await?;
+    let total_size = usize::try_from(metadata.size_bytes)
+        .map_err(|_| ApiError::bad_request("file is too large to stream"))?;
+    let requested_range = file_stream::requested_range(request_headers, total_size)?;
+    let content =
+        storage::stream_object(profile, bucket, &file.object_key, requested_range.clone()).await?;
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        file.mime_type
-            .as_deref()
-            .unwrap_or("application/octet-stream")
-            .parse()
-            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+        file_content_type(profile, bucket, file, total_size, scope).await?,
     );
     let disposition_header = format!(
         "{}; filename=\"{}\"",
@@ -1059,7 +1464,10 @@ async fn file_content_response(
     if matches!(disposition, FileDisposition::Inline) {
         headers.insert(
             header::CACHE_CONTROL,
-            HeaderValue::from_static("private, no-store"),
+            match scope {
+                FileResponseScope::Private => HeaderValue::from_static("private, no-store"),
+                FileResponseScope::Public => HeaderValue::from_static("public, max-age=300"),
+            },
         );
         headers.insert(
             HeaderName::from_static("x-content-type-options"),
@@ -1067,7 +1475,165 @@ async fn file_content_response(
         );
     }
 
-    Ok((headers, bytes).into_response())
+    file_stream::streaming_response(content, headers, requested_range.is_some())
+}
+
+async fn file_content_type(
+    profile: &storage_profiles_entity::Model,
+    bucket: &storage_buckets::Model,
+    file: &upload_files::Model,
+    total_size: usize,
+    scope: FileResponseScope,
+) -> ApiResult<HeaderValue> {
+    let configured = file
+        .mime_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("application/octet-stream");
+    let is_text = is_editable_upload_text(
+        file.mime_type.as_deref(),
+        file.extension.as_deref(),
+        &file.original_name,
+    );
+    if !matches!(scope, FileResponseScope::Public)
+        || !is_text
+        || configured.to_ascii_lowercase().contains("charset=")
+    {
+        return configured
+            .parse()
+            .map_err(|_| ApiError::internal("failed to build file response"));
+    }
+
+    let mime_type = if configured == "application/octet-stream" {
+        "text/plain"
+    } else {
+        configured
+    };
+    let charset = detect_stored_text_charset(profile, bucket, file, total_size).await?;
+    HeaderValue::from_str(&format!("{mime_type}; charset={charset}"))
+        .map_err(|_| ApiError::internal("failed to build file response"))
+}
+
+async fn detect_stored_text_charset(
+    profile: &storage_profiles_entity::Model,
+    bucket: &storage_buckets::Model,
+    file: &upload_files::Model,
+    total_size: usize,
+) -> ApiResult<&'static str> {
+    if total_size == 0 {
+        return Ok("utf-8");
+    }
+    let sample_end = total_size.min(TEXT_ENCODING_SAMPLE_BYTES);
+    let content =
+        storage::stream_object(profile, bucket, &file.object_key, Some(0..sample_end)).await?;
+    let sample = content
+        .stream
+        .try_fold(
+            Vec::with_capacity(sample_end),
+            |mut sample, chunk| async move {
+                sample.extend_from_slice(&chunk);
+                Ok(sample)
+            },
+        )
+        .await
+        .map_err(|_| ApiError::internal("failed to detect text encoding"))?;
+    Ok(detect_text_charset(&sample, total_size))
+}
+
+fn detect_text_charset(sample: &[u8], total_size: usize) -> &'static str {
+    if sample.starts_with(&[0xff, 0xfe]) {
+        return "utf-16le";
+    }
+    if sample.starts_with(&[0xfe, 0xff]) {
+        return "utf-16be";
+    }
+    match std::str::from_utf8(sample) {
+        Ok(_) => "utf-8",
+        Err(error) if error.error_len().is_none() && sample.len() < total_size => "utf-8",
+        Err(_) => "gb18030",
+    }
+}
+
+fn ensure_editable_upload(file: &upload_files::Model) -> ApiResult<()> {
+    if file.status != "active" {
+        return Err(ApiError::bad_request("file is not active"));
+    }
+    if is_editable_upload_text(
+        file.mime_type.as_deref(),
+        file.extension.as_deref(),
+        &file.original_name,
+    ) {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request("该素材不是可编辑的文本文件"))
+    }
+}
+
+fn is_editable_upload_text(mime_type: Option<&str>, extension: Option<&str>, name: &str) -> bool {
+    let mime_type = mime_type.unwrap_or_default().to_ascii_lowercase();
+    let extension = extension.unwrap_or_default().to_ascii_lowercase();
+    let name = name.to_ascii_lowercase();
+    mime_type.starts_with("text/")
+        || matches!(
+            mime_type.as_str(),
+            "application/json"
+                | "application/javascript"
+                | "application/toml"
+                | "application/xml"
+                | "application/x-yaml"
+                | "application/yaml"
+        )
+        || EDITABLE_UPLOAD_EXTENSIONS.contains(&extension.as_str())
+        || EDITABLE_UPLOAD_FILENAMES.contains(&name.as_str())
+}
+
+async fn read_editable_upload_text(
+    profile: &storage_profiles_entity::Model,
+    bucket: &storage_buckets::Model,
+    file: &upload_files::Model,
+) -> ApiResult<(String, i64, Option<String>)> {
+    let metadata = storage::object_metadata(profile, bucket, &file.object_key).await?;
+    let size = usize::try_from(metadata.size_bytes)
+        .map_err(|_| ApiError::bad_request("文件大小无效，无法在线编辑"))?;
+    if size > MAX_EDITABLE_UPLOAD_BYTES {
+        return Err(ApiError::bad_request("文件超过 1 MiB，暂不支持在线编辑"));
+    }
+    let bytes = storage::get_object(profile, bucket, &file.object_key).await?;
+    if bytes.len() > MAX_EDITABLE_UPLOAD_BYTES {
+        return Err(ApiError::bad_request("文件超过 1 MiB，暂不支持在线编辑"));
+    }
+    let content = decode_editable_upload_text(bytes)?;
+    Ok((content, metadata.size_bytes, metadata.updated_at))
+}
+
+fn decode_editable_upload_text(bytes: Vec<u8>) -> ApiResult<String> {
+    if bytes.contains(&0) {
+        return Err(ApiError::bad_request("文件包含二进制数据，无法在线编辑"));
+    }
+    String::from_utf8(bytes).map_err(|_| ApiError::bad_request("文件不是 UTF-8 文本，无法在线编辑"))
+}
+
+fn validate_editable_upload_content(content: &str) -> ApiResult<()> {
+    if content.len() > MAX_EDITABLE_UPLOAD_BYTES {
+        return Err(ApiError::bad_request("文件超过 1 MiB，暂不支持在线编辑"));
+    }
+    if content.contains('\0') {
+        return Err(ApiError::bad_request("文件包含二进制数据，无法在线编辑"));
+    }
+    Ok(())
+}
+
+fn split_object_key(object_key: &str) -> ApiResult<(Option<String>, String)> {
+    let (prefix, name) = object_key
+        .rsplit_once('/')
+        .map_or((None, object_key), |(prefix, name)| {
+            (Some(prefix.to_string()), name)
+        });
+    if name.is_empty() {
+        return Err(ApiError::bad_request("invalid object key"));
+    }
+    Ok((prefix, name.to_string()))
 }
 
 async fn file_storage_location(
@@ -1077,6 +1643,32 @@ async fn file_storage_location(
 ) -> ApiResult<(storage_profiles_entity::Model, storage_buckets::Model)> {
     file_storage_location_from_ids(ctx, actor, file.storage_bucket_id, file.storage_profile_id)
         .await
+}
+
+async fn public_file_storage_location(
+    ctx: &AppContext,
+    file: &upload_files::Model,
+) -> ApiResult<(storage_profiles_entity::Model, storage_buckets::Model)> {
+    let bucket_id = file
+        .storage_bucket_id
+        .ok_or_else(|| ApiError::bad_request("file storage bucket is unavailable"))?;
+    let bucket = storage_profiles::find_bucket(ctx, bucket_id).await?;
+    if !bucket.enabled {
+        return Err(ApiError::forbidden("file is not publicly available"));
+    }
+    if file
+        .storage_profile_id
+        .is_some_and(|profile_id| profile_id != bucket.storage_profile_id)
+    {
+        return Err(ApiError::bad_request(
+            "file storage profile does not match bucket",
+        ));
+    }
+    let profile = storage_profiles::find_profile(ctx, bucket.storage_profile_id).await?;
+    if !profile.enabled || profile.tenant_id != bucket.tenant_id {
+        return Err(ApiError::forbidden("file is not publicly available"));
+    }
+    Ok((profile, bucket))
 }
 
 async fn file_storage_location_from_ids(
@@ -1098,16 +1690,58 @@ async fn file_storage_location_from_ids(
     Ok((profile, bucket))
 }
 
-async fn ensure_download_url(
+async fn ensure_access_url(
     ctx: &AppContext,
     file: upload_files::Model,
 ) -> ApiResult<upload_files::Model> {
-    if !file.url.is_empty() {
+    let access_url = default_upload_access_url(&file);
+    if !file.url.trim().is_empty() && !is_internal_upload_url(&file.url, file.id) {
+        return Ok(file);
+    }
+    if file.url == access_url {
         return Ok(file);
     }
     let mut active = file.clone().into_active_model();
-    active.url = Set(format!("/api/admin/uploads/{}/download", file.id));
+    active.url = Set(access_url);
     active.update(&ctx.db).await.map_err(ApiError::from)
+}
+
+fn public_upload_path(id: i32) -> String {
+    format!("/api/uploads/{id}")
+}
+
+fn download_upload_path(id: i32) -> String {
+    format!("/api/admin/uploads/{id}/download")
+}
+
+fn default_upload_access_url(file: &upload_files::Model) -> String {
+    if file.status == "active" && file.visibility == "public" {
+        public_upload_path(file.id)
+    } else {
+        download_upload_path(file.id)
+    }
+}
+
+fn is_internal_upload_url(value: &str, id: i32) -> bool {
+    let value = value.trim();
+    let path = url::Url::parse(value).map_or_else(
+        |_| value.split(['?', '#']).next().unwrap_or(value).to_string(),
+        |url| url.path().to_string(),
+    );
+    let path = path.trim_end_matches('/');
+    path == public_upload_path(id) || path == download_upload_path(id)
+}
+
+fn public_upload_url(file: &upload_files::Model) -> Option<String> {
+    if file.status != "active" || file.visibility != "public" {
+        return None;
+    }
+    let value = file.url.trim();
+    if value.is_empty() || is_internal_upload_url(value, file.id) {
+        Some(public_upload_path(file.id))
+    } else {
+        Some(value.to_string())
+    }
 }
 
 async fn find_file(ctx: &AppContext, id: i32) -> ApiResult<upload_files::Model> {
@@ -1296,7 +1930,7 @@ async fn complete_upload_task(
     }
     .insert(&ctx.db)
     .await?;
-    let file = ensure_download_url(ctx, file).await?;
+    let file = ensure_access_url(ctx, file).await?;
     let mut active = task.clone().into_active_model();
     active.status = Set("completed".to_string());
     active.error_message = Set(None);
@@ -1316,6 +1950,27 @@ async fn record_upload_log(
     status: Option<i32>,
     error_message: Option<String>,
 ) {
+    record_upload_log_at(
+        ctx,
+        user,
+        action,
+        message,
+        status,
+        error_message,
+        "/api/admin/uploads",
+    )
+    .await;
+}
+
+async fn record_upload_log_at(
+    ctx: &AppContext,
+    user: &crate::models::users::Model,
+    action: &'static str,
+    message: impl Into<String>,
+    status: Option<i32>,
+    error_message: Option<String>,
+    path: &'static str,
+) {
     let message = message.into();
     admin_logs::record(
         &ctx.db,
@@ -1332,7 +1987,7 @@ async fn record_upload_log(
             user_id: Some(user.id),
             operator: Some(user.email.clone()),
             method: None,
-            path: Some("/api/admin/uploads"),
+            path: Some(path),
             status,
             error_message,
         },
@@ -1340,12 +1995,190 @@ async fn record_upload_log(
     .await;
 }
 
+async fn read_upload_payload(
+    ctx: &AppContext,
+    mut multipart: Multipart,
+) -> ApiResult<UploadPayload> {
+    let max_bytes = upload_limit_bytes(ctx).await?;
+    let mut payload = UploadPayload::default();
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| ApiError::bad_request("invalid multipart payload"))?
+    {
+        let name = field.name().unwrap_or_default().to_string();
+        if name == "file" {
+            let original_name = field.file_name().unwrap_or("upload.bin").to_string();
+            let mime_type = field.content_type().map(str::to_string);
+            let bytes = read_upload_field(field, max_bytes).await?;
+            payload.file = Some(UploadedPart {
+                original_name,
+                mime_type,
+                bytes,
+            });
+        } else {
+            let value = field
+                .text()
+                .await
+                .map_err(|_| ApiError::bad_request("failed to read multipart field"))?;
+            payload.set_field(&name, &value)?;
+        }
+    }
+    Ok(payload)
+}
+
+async fn store_upload(
+    ctx: &AppContext,
+    user: &crate::models::users::Model,
+    payload: UploadPayload,
+) -> ApiResult<StoredUpload> {
+    let UploadPayload {
+        storage_profile_id,
+        storage_bucket_id,
+        prefix,
+        category,
+        tags,
+        visibility,
+        file,
+    } = payload;
+    let uploaded = file.ok_or_else(|| ApiError::bad_request("file field is required"))?;
+    let size_bytes = i64::try_from(uploaded.bytes.len()).unwrap_or(i64::MAX);
+    let max_bytes = upload_limit_bytes(ctx).await?;
+    if size_bytes > max_bytes {
+        return Err(ApiError::bad_request(
+            system_settings::upload_limit_error_message(max_bytes),
+        ));
+    }
+    let extension = file_extension(&uploaded.original_name);
+    ensure_allowed_extension(ctx, extension.as_deref()).await?;
+    let safe_name = sanitize_filename(&uploaded.original_name);
+    let filename = format!("{}-{safe_name}", Uuid::new_v4());
+    let prefix = prefix.or_else(|| Some(Utc::now().format("%Y/%m").to_string()));
+    let (profile, bucket) = storage_profiles::resolve_bucket(ctx, user, storage_bucket_id).await?;
+    if storage_profile_id.is_some_and(|id| id != profile.id) {
+        return Err(ApiError::bad_request(
+            "storage profile does not match bucket",
+        ));
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(&uploaded.bytes);
+    let sha256 = hex::encode(hasher.finalize());
+    let stored = storage::put_object(
+        &profile,
+        &bucket,
+        prefix.as_deref(),
+        &filename,
+        uploaded.bytes,
+    )
+    .await?;
+    let file = upload_files::ActiveModel {
+        storage: Set(profile.provider.clone()),
+        storage_profile_id: Set(Some(profile.id)),
+        storage_bucket_id: Set(Some(bucket.id)),
+        bucket: Set(Some(stored.bucket)),
+        prefix: Set(stored.prefix),
+        etag: Set(stored.etag),
+        object_key: Set(stored.object_key),
+        url: Set(stored.url),
+        original_name: Set(uploaded.original_name),
+        filename: Set(filename),
+        extension: Set(extension),
+        mime_type: Set(uploaded.mime_type),
+        size_bytes: Set(size_bytes),
+        sha256: Set(sha256),
+        category: Set(category),
+        tags: Set(tags),
+        visibility: Set(visibility.unwrap_or_else(|| "private".to_string())),
+        status: Set("active".to_string()),
+        uploader_id: Set(Some(user.id)),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?;
+    let file = ensure_access_url(ctx, file).await?;
+    Ok(StoredUpload {
+        file,
+        profile,
+        bucket,
+    })
+}
+
+fn absolute_network_url(ctx: &AppContext, headers: &HeaderMap, value: &str) -> String {
+    let value = value.trim();
+    if value.starts_with("http://") || value.starts_with("https://") {
+        return value.to_string();
+    }
+    let origin = request_origin(ctx, headers);
+    if value.starts_with("//") {
+        let scheme = origin
+            .split_once("://")
+            .map_or("http", |(scheme, _)| scheme);
+        return format!("{scheme}:{value}");
+    }
+    format!(
+        "{}/{}",
+        origin.trim_end_matches('/'),
+        value.trim_start_matches('/')
+    )
+}
+
+fn request_origin(ctx: &AppContext, headers: &HeaderMap) -> String {
+    let forwarded_proto = first_header_value(headers, "x-forwarded-proto")
+        .or_else(|| forwarded_parameter(headers, "proto"));
+    let forwarded_host = first_header_value(headers, "x-forwarded-host")
+        .or_else(|| forwarded_parameter(headers, "host"));
+    let host = forwarded_host.or_else(|| first_header_value(headers, "host"));
+    if let Some(host) = host {
+        if host.starts_with("http://") || host.starts_with("https://") {
+            return host.trim_end_matches('/').to_string();
+        }
+        let scheme = forwarded_proto.unwrap_or_else(|| {
+            if ctx.config.server.host.starts_with("https://") {
+                "https".to_string()
+            } else {
+                "http".to_string()
+            }
+        });
+        return format!("{scheme}://{}", host.trim_end_matches('/'));
+    }
+    ctx.config
+        .server
+        .full_url()
+        .trim_end_matches('/')
+        .to_string()
+}
+
+fn first_header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)?
+        .to_str()
+        .ok()?
+        .split(',')
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn forwarded_parameter(headers: &HeaderMap, name: &str) -> Option<String> {
+    let forwarded = first_header_value(headers, "forwarded")?;
+    forwarded.split(';').find_map(|part| {
+        let (key, value) = part.split_once('=')?;
+        if key.trim().eq_ignore_ascii_case(name) {
+            Some(value.trim().trim_matches('"').to_string())
+        } else {
+            None
+        }
+    })
+}
+
 async fn upload_limit_bytes(ctx: &AppContext) -> ApiResult<i64> {
-    let max_mb = system_settings::number_i64(&ctx.db, "upload.max_size_mb", 20).await?;
-    Ok(max_mb.max(1) * 1024 * 1024)
+    Ok(system_settings::upload_limit_bytes(&ctx.db).await?)
 }
 
 async fn read_upload_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<u8>> {
+    let limit_message = system_settings::upload_limit_error_message(max_bytes);
     let max_bytes = usize::try_from(max_bytes).unwrap_or(usize::MAX);
     let mut bytes = Vec::new();
     while let Some(chunk) = field
@@ -1354,7 +2187,7 @@ async fn read_upload_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Ve
         .map_err(|_| ApiError::bad_request("failed to read uploaded file"))?
     {
         if bytes.len().saturating_add(chunk.len()) > max_bytes {
-            return Err(ApiError::bad_request("uploaded file is too large"));
+            return Err(ApiError::bad_request(limit_message));
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -1517,6 +2350,12 @@ struct UploadedPart {
     bytes: Vec<u8>,
 }
 
+struct StoredUpload {
+    file: upload_files::Model,
+    profile: storage_profiles_entity::Model,
+    bucket: storage_buckets::Model,
+}
+
 fn parse_i32(value: &str, field: &str) -> ApiResult<i32> {
     value
         .parse::<i32>()
@@ -1558,6 +2397,9 @@ impl From<upload_tasks::Model> for UploadTaskRecord {
 
 impl From<upload_files::Model> for UploadRecord {
     fn from(file: upload_files::Model) -> Self {
+        let public_url = public_upload_url(&file);
+        let download_url = download_upload_path(file.id);
+        let url = public_url.clone().unwrap_or_else(|| download_url.clone());
         Self {
             id: file.id,
             storage: file.storage,
@@ -1567,7 +2409,9 @@ impl From<upload_files::Model> for UploadRecord {
             prefix: file.prefix,
             etag: file.etag,
             object_key: file.object_key,
-            url: file.url,
+            url,
+            public_url,
+            download_url,
             original_name: file.original_name,
             filename: file.filename,
             extension: file.extension,
@@ -1582,5 +2426,75 @@ impl From<upload_files::Model> for UploadRecord {
             created_at: file.created_at.to_rfc3339(),
             updated_at: file.updated_at.to_rfc3339(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        decode_editable_upload_text, detect_text_charset, is_editable_upload_text,
+        validate_editable_upload_content, MAX_EDITABLE_UPLOAD_BYTES,
+    };
+
+    #[test]
+    fn editable_upload_detection_accepts_text_formats() {
+        assert!(is_editable_upload_text(
+            Some("text/plain"),
+            None,
+            "notes.data"
+        ));
+        assert!(is_editable_upload_text(
+            Some("application/json"),
+            None,
+            "payload.data"
+        ));
+        assert!(is_editable_upload_text(None, Some("rs"), "main.rs"));
+        assert!(is_editable_upload_text(None, None, "Dockerfile"));
+        assert!(!is_editable_upload_text(
+            Some("image/png"),
+            Some("png"),
+            "cover.png"
+        ));
+    }
+
+    #[test]
+    fn editable_upload_decoder_accepts_utf8() {
+        let decoded = decode_editable_upload_text("hello, 文本\n".as_bytes().to_vec()).unwrap();
+        assert_eq!(decoded, "hello, 文本\n");
+    }
+
+    #[test]
+    fn public_text_charset_detection_supports_common_chinese_encodings() {
+        assert_eq!(detect_text_charset("中文".as_bytes(), 6), "utf-8");
+        assert_eq!(detect_text_charset(&[0xd6, 0xd0, 0xce, 0xc4], 4), "gb18030");
+        assert_eq!(
+            detect_text_charset(&[0xff, 0xfe, 0x2d, 0x4e], 4),
+            "utf-16le"
+        );
+        assert_eq!(
+            detect_text_charset(&[0xfe, 0xff, 0x4e, 0x2d], 4),
+            "utf-16be"
+        );
+    }
+
+    #[test]
+    fn editable_upload_decoder_rejects_binary_content() {
+        let nul_error = decode_editable_upload_text(b"hello\0world".to_vec()).unwrap_err();
+        assert!(nul_error.message().contains("二进制"));
+
+        let utf8_error = decode_editable_upload_text(vec![0xff, 0xfe]).unwrap_err();
+        assert!(utf8_error.message().contains("UTF-8"));
+    }
+
+    #[test]
+    fn editable_upload_validator_enforces_content_limit() {
+        assert!(validate_editable_upload_content(&"a".repeat(MAX_EDITABLE_UPLOAD_BYTES)).is_ok());
+
+        let oversized = "a".repeat(MAX_EDITABLE_UPLOAD_BYTES + 1);
+        let size_error = validate_editable_upload_content(&oversized).unwrap_err();
+        assert!(size_error.message().contains("1 MiB"));
+
+        let nul_error = validate_editable_upload_content("hello\0world").unwrap_err();
+        assert!(nul_error.message().contains("二进制"));
     }
 }

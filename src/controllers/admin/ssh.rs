@@ -11,6 +11,7 @@ use std::{
 
 use axum::{
     extract::{ws::Message, ws::WebSocket, ws::WebSocketUpgrade, Path, Query},
+    http::{header, HeaderMap, HeaderValue},
     response::IntoResponse,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -33,6 +34,7 @@ const LOCAL_TARGET_KEY: &str = "local-shell";
 const TICKET_TTL_SECONDS: i64 = 60;
 const OUTPUT_BUFFER_CHUNKS: usize = 500;
 const OUTPUT_BROADCAST_CAPACITY: usize = 512;
+const MAX_FILE_PREVIEW_BYTES: u64 = 100 * 1024 * 1024;
 
 static SSH_TICKETS: OnceLock<Mutex<HashMap<String, SshTicket>>> = OnceLock::new();
 static SSH_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<ManagedSshSession>>>> = OnceLock::new();
@@ -367,6 +369,59 @@ pub async fn session_files(
     Ok(responses::ok(session.file_browser(params.path.as_deref())?))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/admin/ssh/sessions/{id}/files/preview",
+    tag = "admin-ssh",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path), SshFileBrowserParams),
+    responses((status = 200, description = "Preview a file from the SSH session"))
+)]
+#[debug_handler]
+pub async fn preview_session_file(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<String>,
+    Query(params): Query<SshFileBrowserParams>,
+) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:ssh:list").await?;
+    let path = params
+        .path
+        .as_deref()
+        .ok_or_else(|| ApiError::bad_request("file path is required"))?;
+    let session = find_session(&id)?;
+    let target = session.preview_file_path(path)?;
+    let metadata = target
+        .metadata()
+        .map_err(|_| ApiError::bad_request("file metadata is unavailable"))?;
+    if metadata.len() > MAX_FILE_PREVIEW_BYTES {
+        return Err(ApiError::bad_request("file is too large to preview"));
+    }
+    let bytes = fs::read(&target).map_err(|_| ApiError::bad_request("file content not found"))?;
+    let file_name = target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("preview")
+        .replace(['\r', '\n', '"'], "_");
+    let content_type = mime_guess::from_path(&target).first_or_octet_stream();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(content_type.as_ref())
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("inline; filename=\"{file_name}\""))
+            .map_err(|_| ApiError::internal("failed to build preview response"))?,
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok((headers, bytes).into_response())
+}
+
 #[debug_handler]
 pub async fn terminal_ws(Path(ticket): Path<String>, ws: WebSocketUpgrade) -> ApiResult<Response> {
     let ticket = consume_ticket(&ticket)?;
@@ -647,6 +702,23 @@ impl ManagedSshSession {
             SshTarget::Local(_) => self.local_file_browser(path),
             SshTarget::Remote(_) => Err(ApiError::bad_request(
                 "remote ssh file browser is not supported yet",
+            )),
+        }
+    }
+
+    fn preview_file_path(&self, path: &str) -> ApiResult<PathBuf> {
+        match &self.target_kind {
+            SshTarget::Local(_) => {
+                let target = resolve_local_browser_path(&self.current_directory(), Some(path))?
+                    .canonicalize()
+                    .map_err(|_| ApiError::bad_request("invalid file path"))?;
+                if !target.is_file() {
+                    return Err(ApiError::bad_request("path is not a file"));
+                }
+                Ok(target)
+            }
+            SshTarget::Remote(_) => Err(ApiError::bad_request(
+                "remote ssh file preview is not supported yet",
             )),
         }
     }

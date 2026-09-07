@@ -18,6 +18,7 @@ type LocationState = {
 
 export function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string>();
   const signIn = useAuthStore((state) => state.signIn);
   const setSession = useAuthStore((state) => state.setSession);
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ export function LoginPage() {
 
   async function handleSubmit(values: LoginForm) {
     setLoading(true);
+    setLoginError(undefined);
     try {
       const result = await login(values);
       signIn({
@@ -54,8 +56,14 @@ export function LoginPage() {
       });
       message.success("登录成功");
       navigate(from, { replace: true });
-    } catch {
-      message.error("登录失败，请确认后端已启动且账号密码正确");
+    } catch (error) {
+      const backendMessage = error instanceof Error ? error.message.trim() : "";
+      const errorMessage =
+        !backendMessage || backendMessage === "Network Error"
+          ? "无法连接后端服务，请先在项目目录运行 cargo loco start"
+          : backendMessage;
+      setLoginError(errorMessage);
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -67,21 +75,24 @@ export function LoginPage() {
         <div className="login-brand">
           <div className="admin-brand-mark">G</div>
           <div>
-            <Typography.Title level={3}>GPT Images Admin</Typography.Title>
+            <Typography.Title level={3}>后台管理 Admin</Typography.Title>
             <Typography.Text type="secondary">专业后台管理模板</Typography.Text>
           </div>
         </div>
-        <Alert
-          type="info"
-          showIcon
-          message="当前登录接口已接入 access token、refresh token 与自动刷新。"
-          className="login-tip"
-        />
         <Form<LoginForm>
           layout="vertical"
           initialValues={{ email: "admin@example.com" }}
           onFinish={handleSubmit}
+          onValuesChange={() => setLoginError(undefined)}
         >
+          {loginError ? (
+            <Alert
+              className="login-error-alert"
+              type="error"
+              showIcon
+              message={loginError}
+            />
+          ) : null}
           <Form.Item
             name="email"
             label="邮箱"

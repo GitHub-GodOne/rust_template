@@ -1000,3 +1000,66 @@
   description: 允许复制发送内容并记录复制次数
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 144
+  name: 查看静态托管
+  code: system:static_host:list
+  group_name: system:static_host
+  description: 允许查看静态站点配置和托管目录内容
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 145
+  name: 新增静态托管站点
+  code: system:static_host:create
+  group_name: system:static_host
+  description: 允许新增 URL 与服务器目录映射
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 146
+  name: 更新静态托管站点
+  code: system:static_host:update
+  group_name: system:static_host
+  description: 允许更新静态站点路径、首页和缓存配置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 147
+  name: 删除静态托管内容
+  code: system:static_host:delete
+  group_name: system:static_host
+  description: 允许删除静态站点映射、文件和目录
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 148
+  name: 上传静态托管文件
+  code: system:static_host:upload
+  group_name: system:static_host
+  description: 允许新建托管目录并上传或覆盖站点文件
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 149
+  name: 查看 API 授权
+  code: system:api_key:list
+  group_name: system:api_key
+  description: 允许查看永久 API 授权密钥
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 150
+  name: 新增 API 授权
+  code: system:api_key:create
+  group_name: system:api_key
+  description: 允许创建绑定当前用户权限的永久 API 密钥
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 151
+  name: 更新 API 授权
+  code: system:api_key:update
+  group_name: system:api_key
+  description: 允许编辑、启用或停用 API 密钥
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 152
+  name: 删除 API 授权
+  code: system:api_key:delete
+  group_name: system:api_key
+  description: 允许删除永久 API 密钥
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

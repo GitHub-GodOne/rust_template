@@ -50,6 +50,7 @@ pub mod upload_tasks;
 pub mod user_departments;
 pub mod user_roles;
 pub mod users;
+pub mod vnc_credentials;
 pub mod work_order_assignments;
 pub mod work_order_attachments;
 pub mod work_order_comments;

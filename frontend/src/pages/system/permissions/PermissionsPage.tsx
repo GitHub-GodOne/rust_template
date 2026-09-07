@@ -1,14 +1,19 @@
-import { SafetyCertificateOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  ApiOutlined,
+  MenuOutlined,
+  SafetyCertificateOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   Card,
   Checkbox,
-  Col,
+  Input,
   List,
-  Row,
   Space,
+  Tabs,
   Tag,
+  Typography,
   message,
 } from "antd";
 import type { CheckboxValueType } from "antd/es/checkbox/Group";
@@ -56,6 +61,51 @@ function emptyGrant(menuId: number): RoleMenuGrant {
   };
 }
 
+const permissionGroupLabels: Record<string, string> = {
+  dashboard: "仪表盘",
+  "system:user": "用户管理",
+  "system:role": "角色管理",
+  "system:tenant": "租户管理",
+  "system:department": "部门管理",
+  "system:menu": "菜单管理",
+  "system:permission": "权限管理",
+  "system:log": "日志审计",
+  "system:upload": "素材库",
+  "system:file": "文件管理",
+  "system:static_host": "静态托管",
+  "system:chat": "聊天管理",
+  "system:storage": "存储配置",
+  "system:setting": "系统设置",
+  "system:dict": "字典管理",
+  "system:http_client": "HTTP 客户端",
+  "system:notification": "通知中心",
+  "system:scheduled_task": "定时任务",
+  "system:backup": "数据库备份",
+  "system:docs": "接口文档",
+  "system:monitor": "系统监控",
+  "system:rate_limit": "限流规则",
+  "system:command": "命令管理",
+  "system:api_key": "API 授权",
+  "system:ssh": "SSH 管理",
+  "system:vnc": "VNC 管理",
+  "system:ai_image": "AI 图片",
+  "system:email_template": "邮箱模板",
+  "system:work_order": "工单管理",
+  "system:payment_order": "支付管理 · 订单",
+  "system:payment_channel": "支付管理 · 渠道",
+  "system:payment_refund": "支付管理 · 退款",
+  "system:content_article": "内容管理 · 文章",
+  "system:content_category": "内容管理 · 分类",
+};
+
+function permissionGroupLabel(groupName: string) {
+  return (
+    permissionGroupLabels[groupName] ??
+    groupName.split(":").at(-1)?.replaceAll("_", " ") ??
+    groupName
+  );
+}
+
 export function PermissionsPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>(
@@ -64,6 +114,7 @@ export function PermissionsPage() {
   const [menuGrants, setMenuGrants] = useState<Record<number, RoleMenuGrant>>(
     {},
   );
+  const [permissionKeyword, setPermissionKeyword] = useState("");
   const queryClient = useQueryClient();
 
   const rolesQuery = useQuery({
@@ -119,6 +170,32 @@ export function PermissionsPage() {
   const selectedRole = rolesQuery.data?.items.find(
     (role) => role.id === selectedRoleId,
   );
+  const permissionGroups = useMemo(() => {
+    const keyword = permissionKeyword.trim().toLowerCase();
+    const filtered = (permissionsQuery.data ?? []).filter(
+      (permission) =>
+        !keyword ||
+        permission.name.toLowerCase().includes(keyword) ||
+        permission.code.toLowerCase().includes(keyword) ||
+        permission.group_name.toLowerCase().includes(keyword),
+    );
+    const groups = filtered.reduce(
+      (current, permission) => {
+        const group = current[permission.group_name] ?? [];
+        group.push(permission);
+        current[permission.group_name] = group;
+        return current;
+      },
+      {} as Record<string, typeof filtered>,
+    );
+    return Object.entries(groups)
+      .map(([groupName, permissions]) => ({
+        groupName,
+        label: permissionGroupLabel(groupName),
+        permissions,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+  }, [permissionKeyword, permissionsQuery.data]);
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selectedRoleId) {
@@ -164,17 +241,44 @@ export function PermissionsPage() {
     }));
   }
 
+  function togglePermissionGroup(permissionIds: number[], checked: boolean) {
+    setSelectedPermissionIds((current) => {
+      const next = new Set(current);
+      for (const permissionId of permissionIds) {
+        if (checked) {
+          next.add(permissionId);
+        } else {
+          next.delete(permissionId);
+        }
+      }
+      return Array.from(next);
+    });
+  }
+
+  function updatePermissionGroup(
+    permissionIds: number[],
+    selectedIds: CheckboxValueType[],
+  ) {
+    setSelectedPermissionIds((current) => {
+      const groupIds = new Set(permissionIds);
+      return [
+        ...current.filter((permissionId) => !groupIds.has(permissionId)),
+        ...selectedIds.map(Number),
+      ];
+    });
+  }
+
   return (
-    <div>
+    <div className="permissions-page">
       <PageHeader
         title="权限配置"
         subtitle="左侧选择角色，右侧维护接口权限、菜单权限和按钮权限"
         breadcrumb={["系统管理", "权限配置"]}
         icon={<SafetyCertificateOutlined />}
       />
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={6}>
-          <Card title="角色" className="admin-card">
+      <div className="permissions-workspace">
+        <aside className="permissions-role-column">
+          <Card title="角色" className="admin-card permissions-role-card">
             <List
               loading={rolesQuery.isLoading}
               dataSource={rolesQuery.data?.items ?? []}
@@ -196,8 +300,8 @@ export function PermissionsPage() {
               )}
             />
           </Card>
-        </Col>
-        <Col xs={24} lg={18}>
+        </aside>
+        <main className="permissions-matrix-column">
           <Card
             title={`权限矩阵${selectedRole ? `：${selectedRole.name}` : ""}`}
             className="admin-card"
@@ -213,70 +317,159 @@ export function PermissionsPage() {
               </PermissionButton>
             }
           >
-            <div className="permission-grid">
-              <div className="permission-row">
-                <strong>接口 / 功能权限</strong>
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="接口权限和菜单可见是两套授权"
-                    description="给角色勾选 AI 图片生成相关接口权限后，还需要在下方给“AI 图片生成”菜单勾选“菜单可见”，用户登录后才会看到导航入口。"
-                  />
-                  <Checkbox.Group
-                    value={selectedPermissionIds}
-                    onChange={(values: CheckboxValueType[]) =>
-                      setSelectedPermissionIds(values.map(Number))
-                    }
-                  >
-                    <Space wrap>
-                      {(permissionsQuery.data ?? []).map((permission) => (
-                        <Checkbox key={permission.id} value={permission.id}>
-                          {permission.name}
-                        </Checkbox>
-                      ))}
+            <Tabs
+              className="permissions-tabs"
+              defaultActiveKey="api"
+              size="small"
+              items={[
+                {
+                  key: "api",
+                  label: (
+                    <Space size={6}>
+                      <ApiOutlined />
+                      接口 / 功能权限
                     </Space>
-                  </Checkbox.Group>
-                </Space>
-              </div>
-              {menus.map((menu) => {
-                const grant = menuGrants[menu.id];
-                return (
-                  <div key={menu.id} className="permission-row">
-                    <strong>{menu.title}</strong>
-                    <Space wrap>
-                      <Checkbox
-                        checked={Boolean(grant)}
-                        onChange={(event) =>
-                          toggleMenu(menu.id, event.target.checked)
-                        }
-                      >
-                        菜单可见
-                      </Checkbox>
-                      {actionOptions.map((action) => (
-                        <Checkbox
-                          key={action.key}
-                          checked={Boolean(grant?.[action.key])}
-                          disabled={!grant}
+                  ),
+                  children: (
+                    <div className="permission-api-section">
+                      <div className="permission-section-heading">
+                        <Typography.Text type="secondary">
+                          按管理模块分组，可按名称或权限代码快速筛选
+                        </Typography.Text>
+                        <Input.Search
+                          allowClear
+                          value={permissionKeyword}
+                          placeholder="搜索权限名称或代码"
                           onChange={(event) =>
-                            toggleAction(
-                              menu.id,
-                              action.key,
-                              event.target.checked,
-                            )
+                            setPermissionKeyword(event.target.value)
                           }
-                        >
-                          {action.label}
-                        </Checkbox>
-                      ))}
+                          className="permission-search"
+                        />
+                      </div>
+                      <div className="permission-module-grid">
+                        {permissionGroups.map((group) => {
+                          const permissionIds = group.permissions.map(
+                            (permission) => permission.id,
+                          );
+                          const selectedCount = permissionIds.filter((id) =>
+                            selectedPermissionIds.includes(id),
+                          ).length;
+                          return (
+                            <section
+                              key={group.groupName}
+                              className="permission-module"
+                            >
+                              <div className="permission-module-heading">
+                                <Checkbox
+                                  checked={
+                                    permissionIds.length > 0 &&
+                                    selectedCount === permissionIds.length
+                                  }
+                                  indeterminate={
+                                    selectedCount > 0 &&
+                                    selectedCount < permissionIds.length
+                                  }
+                                  onChange={(event) =>
+                                    togglePermissionGroup(
+                                      permissionIds,
+                                      event.target.checked,
+                                    )
+                                  }
+                                >
+                                  <strong>{group.label}</strong>
+                                </Checkbox>
+                                <Typography.Text type="secondary">
+                                  {selectedCount}/{permissionIds.length}
+                                </Typography.Text>
+                              </div>
+                              <Checkbox.Group
+                                value={permissionIds.filter((id) =>
+                                  selectedPermissionIds.includes(id),
+                                )}
+                                onChange={(values: CheckboxValueType[]) =>
+                                  updatePermissionGroup(permissionIds, values)
+                                }
+                                className="permission-module-options"
+                              >
+                                {group.permissions.map((permission) => (
+                                  <Checkbox
+                                    key={permission.id}
+                                    value={permission.id}
+                                  >
+                                    <span className="permission-option-label">
+                                      <span>{permission.name}</span>
+                                      <code>{permission.code}</code>
+                                    </span>
+                                  </Checkbox>
+                                ))}
+                              </Checkbox.Group>
+                            </section>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: "menu",
+                  label: (
+                    <Space size={6}>
+                      <MenuOutlined />
+                      菜单与按钮权限
                     </Space>
-                  </div>
-                );
-              })}
-            </div>
+                  ),
+                  children: (
+                    <div className="permission-menu-section">
+                      <Typography.Text
+                        type="secondary"
+                        className="permission-tab-intro"
+                      >
+                        控制导航入口是否显示，以及页面内允许使用的操作
+                      </Typography.Text>
+                      <div className="permission-grid">
+                        {menus.map((menu) => {
+                          const grant = menuGrants[menu.id];
+                          return (
+                            <div key={menu.id} className="permission-row">
+                              <strong>{menu.title}</strong>
+                              <Space wrap>
+                                <Checkbox
+                                  checked={Boolean(grant)}
+                                  onChange={(event) =>
+                                    toggleMenu(menu.id, event.target.checked)
+                                  }
+                                >
+                                  菜单可见
+                                </Checkbox>
+                                {actionOptions.map((action) => (
+                                  <Checkbox
+                                    key={action.key}
+                                    checked={Boolean(grant?.[action.key])}
+                                    disabled={!grant}
+                                    onChange={(event) =>
+                                      toggleAction(
+                                        menu.id,
+                                        action.key,
+                                        event.target.checked,
+                                      )
+                                    }
+                                  >
+                                    {action.label}
+                                  </Checkbox>
+                                ))}
+                              </Space>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </Card>
-        </Col>
-      </Row>
+        </main>
+      </div>
     </div>
   );
 }

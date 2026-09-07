@@ -48,6 +48,7 @@ pub use super::upload_tasks::Entity as UploadTasks;
 pub use super::user_departments::Entity as UserDepartments;
 pub use super::user_roles::Entity as UserRoles;
 pub use super::users::Entity as Users;
+pub use super::vnc_credentials::Entity as VncCredentials;
 pub use super::work_order_assignments::Entity as WorkOrderAssignments;
 pub use super::work_order_attachments::Entity as WorkOrderAttachments;
 pub use super::work_order_comments::Entity as WorkOrderComments;

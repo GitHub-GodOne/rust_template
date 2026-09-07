@@ -200,6 +200,7 @@ pub async fn deliver_backup(db: &DatabaseConnection, backup: Model) -> ApiResult
         db,
         HttpClientRuntimeOverrides {
             request_timeout_seconds: Some(delivery_timeout_seconds),
+            ..HttpClientRuntimeOverrides::default()
         },
     )
     .await?;

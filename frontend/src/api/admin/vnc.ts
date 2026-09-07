@@ -9,6 +9,7 @@ export type VncTargetRecord = {
   port: number;
   enabled: boolean;
   requires_password: boolean;
+  credentials_saved: boolean;
 };
 
 export type CreateVncSessionParams = {
@@ -18,7 +19,22 @@ export type CreateVncSessionParams = {
 export type VncTicketRecord = {
   ticket: string;
   expires_at: string;
+  username?: string | null;
   password?: string | null;
+  target?: string | null;
+  credentials_saved: boolean;
+};
+
+export type SaveVncCredentialsParams = {
+  target_key: string;
+  username?: string;
+  password?: string;
+  target?: string;
+};
+
+export type VncCredentialStatus = {
+  target_key: string;
+  saved: boolean;
 };
 
 export type VncSessionRecord = {
@@ -66,6 +82,22 @@ export async function closeVncSession(id: string) {
 export async function createVncSessionTicket(id: string) {
   const response = await apiClient.post<ApiResponse<VncTicketRecord>>(
     `/admin/vnc/sessions/${id}/tickets`,
+  );
+  return unwrap(response.data);
+}
+
+export async function saveVncCredentials(payload: SaveVncCredentialsParams) {
+  const response = await apiClient.put<ApiResponse<VncCredentialStatus>>(
+    "/admin/vnc/credentials",
+    payload,
+  );
+  return unwrap(response.data);
+}
+
+export async function deleteVncCredentials(targetKey: string) {
+  const response = await apiClient.delete<ApiResponse<VncCredentialStatus>>(
+    "/admin/vnc/credentials",
+    { params: { target_key: targetKey } },
   );
   return unwrap(response.data);
 }

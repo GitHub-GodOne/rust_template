@@ -12,6 +12,9 @@ export type StorageProfileRecord = {
   provider: StorageProvider;
   enabled: boolean;
   is_default: boolean;
+  storage_bucket_id?: number | null;
+  storage_bucket_name?: string | null;
+  local_root?: string | null;
   endpoint?: string | null;
   region?: string | null;
   access_key_id?: string | null;

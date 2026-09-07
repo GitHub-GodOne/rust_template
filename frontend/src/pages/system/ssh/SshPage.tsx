@@ -1,10 +1,13 @@
 import {
+  ArrowLeftOutlined,
   ClearOutlined,
   CloseOutlined,
   CodeOutlined,
+  CopyOutlined,
   DisconnectOutlined,
   FolderOpenOutlined,
   LinkOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -16,13 +19,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Button,
   Card,
+  Drawer,
   Empty,
   Modal,
   Select,
   Space,
-  Table,
+  Spin,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -37,6 +42,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   type SshFileRecord,
   buildSshSessionWebSocketUrl,
@@ -46,9 +52,12 @@ import {
   fetchSshSessionFiles,
   fetchSshSessions,
   fetchSshTargets,
+  previewSshSessionFile,
 } from "../../../api/admin/ssh";
 import { CrudPage } from "../../../components/admin/CrudPage";
+import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { createClientId } from "../../../utils/clientId";
 
 type TerminalStatus =
   | "idle"
@@ -103,6 +112,49 @@ const specialKeys: SpecialKey[] = [
   { label: "Ctrl-L", data: "\x0c" },
   { label: "Enter", data: "\r" },
 ];
+const sshTextExtensions = new Set([
+  "txt",
+  "md",
+  "markdown",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "csv",
+  "log",
+  "ini",
+  "conf",
+  "rs",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "css",
+  "html",
+  "sh",
+  "sql",
+]);
+
+function sshPreviewKind(record: SshFileRecord) {
+  const extension = record.extension?.toLowerCase() ?? "";
+  if (sshTextExtensions.has(extension)) {
+    return "text";
+  }
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(extension)) {
+    return "image";
+  }
+  if (["mp4", "webm", "mov", "m4v", "ogv"].includes(extension)) {
+    return "video";
+  }
+  if (["mp3", "wav", "ogg", "m4a", "aac", "flac"].includes(extension)) {
+    return "audio";
+  }
+  if (extension === "pdf") {
+    return "pdf";
+  }
+  return "unknown";
+}
 const sshAutoConnectKey = "gpt-images-admin-ssh-auto-connect";
 const sshTargetKeyStorageKey = "gpt-images-admin-ssh-target";
 const sshSessionsStorageKey = "gpt-images-admin-ssh-sessions";
@@ -201,7 +253,7 @@ function statusLabel(status: TerminalStatus) {
 }
 
 function sessionId() {
-  return `ssh-session-${crypto.randomUUID()}`;
+  return createClientId("ssh-session");
 }
 
 function formatBytes(value: number) {
@@ -216,6 +268,56 @@ function formatBytes(value: number) {
     unitIndex += 1;
   }
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function terminalBufferText(terminal: Terminal) {
+  const buffer = terminal.buffer.active;
+  const lines: string[] = [];
+
+  for (let index = 0; index < buffer.length; index += 1) {
+    const line = buffer.getLine(index);
+    if (!line) {
+      continue;
+    }
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length > 0) {
+      lines[lines.length - 1] += text;
+    } else {
+      lines.push(text);
+    }
+  }
+
+  while (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return lines.join("\n");
+}
+
+async function writeClipboardText(text: string) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // LAN deployments often run over HTTP, where the Clipboard API is blocked.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.readOnly = true;
+  textarea.style.position = "fixed";
+  textarea.style.inset = "0 auto auto -9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus({ preventScroll: true });
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("当前浏览器不允许读取剪贴板");
+  }
 }
 
 function parentPath(path: string) {
@@ -289,6 +391,8 @@ function loadInitialTerminalState(): InitialTerminalState {
 }
 
 export function SshPage({ visible = true }: { visible?: boolean }) {
+  const navigate = useNavigate();
+  const pageRef = useRef<HTMLDivElement | null>(null);
   const runtimeMapRef = useRef(new Map<string, SessionRuntime>());
   const hostMapRef = useRef(new Map<string, HTMLDivElement | null>());
   const autoConnectAttemptedRef = useRef(false);
@@ -301,6 +405,22 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   const [fileBrowserSession, setFileBrowserSession] =
     useState<SshSession | null>(null);
   const [fileBrowserPath, setFileBrowserPath] = useState<string>();
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const [filePreviewing, setFilePreviewing] = useState<SshFileRecord | null>(
+    null,
+  );
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string>();
+  const [filePreviewText, setFilePreviewText] = useState<string>();
+  const [filePreviewError, setFilePreviewError] = useState<string>();
+  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (filePreviewUrl) {
+        URL.revokeObjectURL(filePreviewUrl);
+      }
+    };
+  }, [filePreviewUrl]);
 
   const targetsQuery = useQuery({
     queryKey: ["admin-ssh-targets"],
@@ -577,6 +697,33 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     [],
   );
 
+  const copyTerminalContent = useCallback(async (sessionIdValue: string) => {
+    const runtime = runtimeMapRef.current.get(sessionIdValue);
+    if (!runtime) {
+      message.warning("终端尚未就绪");
+      return;
+    }
+
+    const selected = runtime.terminal.hasSelection();
+    const text = selected
+      ? runtime.terminal.getSelection()
+      : terminalBufferText(runtime.terminal);
+    if (!text) {
+      message.info("终端中暂无可复制内容");
+      runtime.terminal.focus();
+      return;
+    }
+
+    try {
+      await writeClipboardText(text);
+      message.success(selected ? "已复制选中内容" : "已复制终端内容");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "复制失败");
+    } finally {
+      runtime.terminal.focus();
+    }
+  }, []);
+
   useLayoutEffect(() => {
     for (const session of sessions) {
       if (runtimeMapRef.current.has(session.id)) {
@@ -585,6 +732,8 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       const terminal = new Terminal({
         cursorBlink: true,
         convertEol: true,
+        rightClickSelectsWord: true,
+        scrollOnUserInput: true,
         fontFamily:
           'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         fontSize: 13,
@@ -597,6 +746,19 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       });
       const fitAddon = new FitAddon();
       terminal.loadAddon(fitAddon);
+      terminal.attachCustomKeyEventHandler((event) => {
+        const isCopyShortcut =
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          event.key.toLowerCase() === "c";
+        if (!isCopyShortcut || !terminal.hasSelection()) {
+          return true;
+        }
+        if (event.type === "keydown") {
+          void copyTerminalContent(session.id);
+        }
+        return false;
+      });
       terminal.writeln("后台 SSH 终端已就绪，请选择目标并点击连接。");
       const inputDisposable = terminal.onData((data) => {
         const runtime = runtimeMapRef.current.get(session.id);
@@ -618,7 +780,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         mountTerminal(session.id, runtime, host);
       }
     }
-  }, [mountTerminal, sessions]);
+  }, [copyTerminalContent, mountTerminal, sessions]);
 
   useEffect(() => {
     return () => {
@@ -629,16 +791,44 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   }, [destroySessionRuntime]);
 
   useEffect(() => {
-    const onWindowResize = () => {
-      for (const session of sessions) {
-        fitTerminal(session.id);
-      }
+    const viewport = window.visualViewport;
+    let animationFrame = 0;
+
+    const syncViewport = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const page = pageRef.current;
+        if (page) {
+          page.style.setProperty(
+            "--ssh-viewport-height",
+            `${Math.round(viewport?.height ?? window.innerHeight)}px`,
+          );
+          page.style.setProperty(
+            "--ssh-viewport-offset-top",
+            `${Math.round(viewport?.offsetTop ?? 0)}px`,
+          );
+        }
+        if (!activeSessionId) {
+          return;
+        }
+        fitTerminal(activeSessionId);
+        runtimeMapRef.current.get(activeSessionId)?.terminal.scrollToBottom();
+      });
     };
-    window.addEventListener("resize", onWindowResize);
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    window.addEventListener("orientationchange", syncViewport);
+    viewport?.addEventListener("resize", syncViewport);
+    viewport?.addEventListener("scroll", syncViewport);
     return () => {
-      window.removeEventListener("resize", onWindowResize);
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", syncViewport);
+      window.removeEventListener("orientationchange", syncViewport);
+      viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
     };
-  }, [fitTerminal, sessions]);
+  }, [activeSessionId, fitTerminal]);
 
   useEffect(() => {
     if (!targetsQuery.data?.length) {
@@ -878,6 +1068,117 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     setFileBrowserPath(undefined);
   }, []);
 
+  const closeFilePreview = useCallback(() => {
+    setFilePreviewing(null);
+    setFilePreviewText(undefined);
+    setFilePreviewError(undefined);
+    setFilePreviewLoading(false);
+    setFilePreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return undefined;
+    });
+  }, []);
+
+  const openFilePreview = useCallback(
+    async (record: SshFileRecord) => {
+      if (!fileBrowserSession?.serverSessionId || record.is_dir) {
+        return;
+      }
+      setFilePreviewing(record);
+      setFilePreviewLoading(true);
+      setFilePreviewError(undefined);
+      setFilePreviewText(undefined);
+      setFilePreviewUrl((current) => {
+        if (current) {
+          URL.revokeObjectURL(current);
+        }
+        return undefined;
+      });
+      try {
+        const blob = await previewSshSessionFile({
+          sessionId: fileBrowserSession.serverSessionId,
+          path: record.path,
+        });
+        if (sshPreviewKind(record) === "text") {
+          setFilePreviewText(await blob.text());
+        } else {
+          setFilePreviewUrl(URL.createObjectURL(blob));
+        }
+      } catch (error) {
+        setFilePreviewError(
+          error instanceof Error ? error.message : "文件预览失败",
+        );
+      } finally {
+        setFilePreviewLoading(false);
+      }
+    },
+    [fileBrowserSession?.serverSessionId],
+  );
+
+  const renderFilePreview = () => {
+    if (filePreviewLoading) {
+      return (
+        <div className="material-preview-empty">
+          <Spin tip="正在加载预览" />
+        </div>
+      );
+    }
+    if (!filePreviewing) {
+      return <Empty description="暂无预览内容" />;
+    }
+    if (filePreviewError) {
+      return <Empty description={filePreviewError} />;
+    }
+    const kind = sshPreviewKind(filePreviewing);
+    if (kind === "text") {
+      return <pre className="material-preview-text">{filePreviewText}</pre>;
+    }
+    if (!filePreviewUrl) {
+      return <Empty description="暂无预览内容" />;
+    }
+    if (kind === "image") {
+      return (
+        <img
+          className="material-preview-image"
+          src={filePreviewUrl}
+          alt={filePreviewing.name}
+        />
+      );
+    }
+    if (kind === "video") {
+      return (
+        <video className="material-preview-frame" src={filePreviewUrl} controls>
+          <track kind="captions" />
+        </video>
+      );
+    }
+    if (kind === "audio") {
+      return (
+        <div className="material-preview-empty">
+          <audio
+            className="material-preview-audio"
+            src={filePreviewUrl}
+            controls
+          >
+            <track kind="captions" />
+          </audio>
+        </div>
+      );
+    }
+    if (kind === "pdf") {
+      return (
+        <iframe
+          className="material-preview-frame"
+          src={filePreviewUrl}
+          title={filePreviewing.name}
+        />
+      );
+    }
+    return <Empty description="该文件类型暂不支持在线预览" />;
+  };
+
   const sshFileColumns: ColumnsType<SshFileRecord> = useMemo(
     () => [
       {
@@ -961,67 +1262,224 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   });
 
   return (
-    <CrudPage
-      title="SSH 管理"
-      subtitle="后台免二次登录的本机 Shell 与远程 SSH 交互式终端"
-      breadcrumb={["系统管理", "SSH 管理"]}
-      icon={<CodeOutlined />}
-      toolbar={
-        <Space wrap className="ssh-page-actions">
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => targetsQuery.refetch()}
-          >
-            刷新目标
-          </Button>
-          <PermissionButton
-            type="primary"
-            icon={<PlusOutlined />}
-            permission="system:ssh:connect"
-            onClick={() => createSession()}
-          >
-            新建终端
-          </PermissionButton>
-        </Space>
-      }
-    >
-      <Card className="ssh-terminal-card">
-        <Tabs
-          type="editable-card"
-          hideAdd
-          activeKey={activeSessionId}
-          items={sessionTabs}
-          destroyInactiveTabPane={false}
-          onChange={setActiveSessionId}
-          onEdit={(targetKey, action) => {
-            if (action === "remove" && typeof targetKey === "string") {
-              closeSession(targetKey);
-            }
-          }}
-          className="ssh-session-tabs"
-        />
-        {activeSession ? (
-          <div className="ssh-session-panel">
-            <div className="ssh-terminal-toolbar">
-              <Space wrap className="ssh-toolbar-group">
-                <Select
-                  loading={targetsQuery.isLoading}
-                  value={activeSession.targetKey}
-                  style={{ width: 280 }}
-                  onChange={(value) => {
-                    updateSession(activeSession.id, (current) => ({
-                      ...current,
-                      targetKey: value,
-                    }));
-                  }}
-                  options={(targetsQuery.data ?? []).map((targetOption) => ({
-                    value: targetOption.key,
-                    label:
-                      targetOption.target_type === "local"
-                        ? targetOption.name
-                        : `${targetOption.name} (${targetOption.username}@${targetOption.host}:${targetOption.port ?? 22})`,
-                  }))}
+    <div ref={pageRef} className="ssh-page">
+      <CrudPage
+        title="SSH 管理"
+        subtitle="后台免二次登录的本机 Shell 与远程 SSH 交互式终端"
+        breadcrumb={["系统管理", "SSH 管理"]}
+        icon={<CodeOutlined />}
+        toolbar={
+          <Space wrap className="ssh-page-actions">
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => targetsQuery.refetch()}
+            >
+              刷新目标
+            </Button>
+            <PermissionButton
+              type="primary"
+              icon={<PlusOutlined />}
+              permission="system:ssh:connect"
+              onClick={() => createSession()}
+            >
+              新建终端
+            </PermissionButton>
+          </Space>
+        }
+      >
+        <Card className="ssh-terminal-card">
+          <div className="ssh-mobile-terminal-header">
+            <Button
+              type="text"
+              icon={<ArrowLeftOutlined />}
+              aria-label="退出终端"
+              onClick={() => navigate("/admin/dashboard")}
+            />
+            <div className="ssh-mobile-terminal-title">
+              <Typography.Text strong>
+                {selectedTarget?.name ?? "SSH 终端"}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                {activeSession ? statusLabel(activeSession.status) : "无会话"}
+              </Typography.Text>
+            </div>
+            <Space size={2}>
+              <Tooltip title="复制选中内容；未选择时复制全部终端内容">
+                <Button
+                  type="text"
+                  icon={<CopyOutlined />}
+                  aria-label="复制终端内容"
+                  onClick={() =>
+                    activeSession && copyTerminalContent(activeSession.id)
+                  }
                 />
+              </Tooltip>
+              <PermissionButton
+                type="text"
+                icon={<PlusOutlined />}
+                permission="system:ssh:connect"
+                aria-label="新建终端"
+                onClick={() => createSession()}
+              />
+              <Button
+                type="text"
+                icon={<MoreOutlined />}
+                aria-label="终端控制"
+                onClick={() => setMobileControlsOpen(true)}
+              />
+            </Space>
+          </div>
+          <Tabs
+            type="editable-card"
+            hideAdd
+            activeKey={activeSessionId}
+            items={sessionTabs}
+            destroyInactiveTabPane={false}
+            onChange={setActiveSessionId}
+            onEdit={(targetKey, action) => {
+              if (action === "remove" && typeof targetKey === "string") {
+                closeSession(targetKey);
+              }
+            }}
+            className="ssh-session-tabs"
+          />
+          {activeSession ? (
+            <div className="ssh-session-panel">
+              <div className="ssh-terminal-toolbar">
+                <Space wrap className="ssh-toolbar-group">
+                  <Select
+                    loading={targetsQuery.isLoading}
+                    value={activeSession.targetKey}
+                    style={{ width: 280 }}
+                    onChange={(value) => {
+                      updateSession(activeSession.id, (current) => ({
+                        ...current,
+                        targetKey: value,
+                      }));
+                    }}
+                    options={(targetsQuery.data ?? []).map((targetOption) => ({
+                      value: targetOption.key,
+                      label:
+                        targetOption.target_type === "local"
+                          ? targetOption.name
+                          : `${targetOption.name} (${targetOption.username}@${targetOption.host}:${targetOption.port ?? 22})`,
+                    }))}
+                  />
+                  <PermissionButton
+                    type="primary"
+                    icon={<LinkOutlined />}
+                    permission="system:ssh:connect"
+                    loading={
+                      ticketMutation.isPending ||
+                      createSessionMutation.isPending
+                    }
+                    onClick={() => connectSession(activeSession.id)}
+                  >
+                    连接
+                  </PermissionButton>
+                  <Button
+                    icon={<DisconnectOutlined />}
+                    onClick={() => disconnectSession(activeSession.id)}
+                  >
+                    断开
+                  </Button>
+                  <Button
+                    icon={<ClearOutlined />}
+                    onClick={() =>
+                      runtimeMapRef.current
+                        .get(activeSession.id)
+                        ?.terminal.clear()
+                    }
+                  >
+                    清屏
+                  </Button>
+                  <Button
+                    icon={<CopyOutlined />}
+                    onClick={() => copyTerminalContent(activeSession.id)}
+                  >
+                    复制
+                  </Button>
+                  <Tag color={statusColor(activeSession.status)}>
+                    {statusLabel(activeSession.status)}
+                  </Tag>
+                  <Typography.Text type="secondary">
+                    {activeSession.terminalSize.cols} ×{" "}
+                    {activeSession.terminalSize.rows}
+                  </Typography.Text>
+                </Space>
+                <Space wrap className="ssh-toolbar-group">
+                  <Typography.Text type="secondary">
+                    {selectedTarget?.target_type === "local"
+                      ? "当前目标：本机 Shell"
+                      : selectedTarget
+                        ? `当前目标：${selectedTarget.username}@${selectedTarget.host}`
+                        : "未选择目标"}
+                  </Typography.Text>
+                  <Button
+                    icon={<CloseOutlined />}
+                    loading={closeSessionMutation.isPending}
+                    onClick={() => void closeSharedSession(activeSession)}
+                  >
+                    关闭会话
+                  </Button>
+                </Space>
+              </div>
+              <div className="ssh-mobile-keybar">
+                {specialKeys.map((key) => (
+                  <Button
+                    key={key.label}
+                    size="small"
+                    onClick={() =>
+                      sendTerminalInput(activeSession.id, key.data)
+                    }
+                  >
+                    {key.label}
+                  </Button>
+                ))}
+              </div>
+              <div className="ssh-terminal-stage">
+                {sessions.map((session) => (
+                  <SshTerminalHost
+                    key={session.id}
+                    sessionId={session.id}
+                    active={activeSessionId === session.id}
+                    onBind={bindHost}
+                    onFocus={focusTerminal}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </Card>
+        <Drawer
+          title="终端控制"
+          open={mobileControlsOpen}
+          placement="bottom"
+          height="auto"
+          className="ssh-mobile-controls-drawer"
+          onClose={() => setMobileControlsOpen(false)}
+        >
+          {activeSession ? (
+            <Space direction="vertical" size={12} className="admin-full-width">
+              <Select
+                loading={targetsQuery.isLoading}
+                value={activeSession.targetKey}
+                className="admin-full-width"
+                onChange={(value) => {
+                  updateSession(activeSession.id, (current) => ({
+                    ...current,
+                    targetKey: value,
+                  }));
+                }}
+                options={(targetsQuery.data ?? []).map((targetOption) => ({
+                  value: targetOption.key,
+                  label:
+                    targetOption.target_type === "local"
+                      ? targetOption.name
+                      : `${targetOption.name} (${targetOption.username}@${targetOption.host}:${targetOption.port ?? 22})`,
+                }))}
+              />
+              <div className="ssh-mobile-control-grid">
                 <PermissionButton
                   type="primary"
                   icon={<LinkOutlined />}
@@ -1029,138 +1487,153 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   loading={
                     ticketMutation.isPending || createSessionMutation.isPending
                   }
-                  onClick={() => connectSession(activeSession.id)}
+                  onClick={() => {
+                    setMobileControlsOpen(false);
+                    connectSession(activeSession.id);
+                  }}
                 >
                   连接
                 </PermissionButton>
                 <Button
                   icon={<DisconnectOutlined />}
-                  onClick={() => disconnectSession(activeSession.id)}
+                  onClick={() => {
+                    setMobileControlsOpen(false);
+                    disconnectSession(activeSession.id);
+                  }}
                 >
                   断开
                 </Button>
                 <Button
                   icon={<ClearOutlined />}
-                  onClick={() =>
+                  onClick={() => {
                     runtimeMapRef.current
                       .get(activeSession.id)
-                      ?.terminal.clear()
-                  }
+                      ?.terminal.clear();
+                    setMobileControlsOpen(false);
+                  }}
                 >
                   清屏
                 </Button>
-                <Tag color={statusColor(activeSession.status)}>
-                  {statusLabel(activeSession.status)}
-                </Tag>
-                <Typography.Text type="secondary">
-                  {activeSession.terminalSize.cols} ×{" "}
-                  {activeSession.terminalSize.rows}
-                </Typography.Text>
-              </Space>
-              <Space wrap className="ssh-toolbar-group">
-                <Typography.Text type="secondary">
-                  {selectedTarget?.target_type === "local"
-                    ? "当前目标：本机 Shell"
-                    : selectedTarget
-                      ? `当前目标：${selectedTarget.username}@${selectedTarget.host}`
-                      : "未选择目标"}
-                </Typography.Text>
                 <Button
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    setMobileControlsOpen(false);
+                    void copyTerminalContent(activeSession.id);
+                  }}
+                >
+                  复制
+                </Button>
+                <Button
+                  icon={<FolderOpenOutlined />}
+                  disabled={!activeSession.serverSessionId}
+                  onClick={() => {
+                    setMobileControlsOpen(false);
+                    openFileBrowser(activeSession);
+                  }}
+                >
+                  文件
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => targetsQuery.refetch()}
+                >
+                  刷新目标
+                </Button>
+                <Button
+                  danger
                   icon={<CloseOutlined />}
                   loading={closeSessionMutation.isPending}
-                  onClick={() => void closeSharedSession(activeSession)}
+                  onClick={() => {
+                    setMobileControlsOpen(false);
+                    void closeSharedSession(activeSession);
+                  }}
                 >
                   关闭会话
                 </Button>
-              </Space>
-            </div>
-            <div className="ssh-mobile-keybar">
-              {specialKeys.map((key) => (
-                <Button
-                  key={key.label}
-                  size="small"
-                  onClick={() => sendTerminalInput(activeSession.id, key.data)}
-                >
-                  {key.label}
-                </Button>
-              ))}
-            </div>
-            <div className="ssh-terminal-stage">
-              {sessions.map((session) => (
-                <SshTerminalHost
-                  key={session.id}
-                  sessionId={session.id}
-                  active={activeSessionId === session.id}
-                  onBind={bindHost}
-                  onFocus={focusTerminal}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </Card>
-      <Modal
-        title="SSH 文件管理"
-        open={Boolean(fileBrowserSession)}
-        width={900}
-        footer={null}
-        onCancel={() => {
-          setFileBrowserSession(null);
-          setFileBrowserPath(undefined);
-        }}
-        className="ssh-file-modal"
-      >
-        <Space direction="vertical" size={12} className="admin-full-width">
-          <Space wrap className="ssh-file-toolbar">
-            <Typography.Text type="secondary">当前目录</Typography.Text>
-            <Typography.Text code copyable>
-              {sshFilesQuery.data?.path ?? fileBrowserPath ?? "加载中..."}
-            </Typography.Text>
-            <Button
-              size="small"
-              disabled={
-                !sshFilesQuery.data?.path || sshFilesQuery.data.path === "/"
-              }
-              onClick={() =>
-                setFileBrowserPath(parentPath(sshFilesQuery.data?.path ?? "/"))
-              }
-            >
-              上级目录
-            </Button>
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              loading={sshFilesQuery.isFetching}
-              onClick={() => sshFilesQuery.refetch()}
-            >
-              刷新
-            </Button>
+              </div>
+            </Space>
+          ) : null}
+        </Drawer>
+        <Modal
+          title="SSH 文件管理"
+          open={Boolean(fileBrowserSession)}
+          width={900}
+          footer={null}
+          onCancel={() => {
+            setFileBrowserSession(null);
+            setFileBrowserPath(undefined);
+          }}
+          className="ssh-file-modal"
+        >
+          <Space direction="vertical" size={12} className="admin-full-width">
+            <Space wrap className="ssh-file-toolbar">
+              <Typography.Text type="secondary">当前目录</Typography.Text>
+              <Typography.Text code copyable>
+                {sshFilesQuery.data?.path ?? fileBrowserPath ?? "加载中..."}
+              </Typography.Text>
+              <Button
+                size="small"
+                disabled={
+                  !sshFilesQuery.data?.path || sshFilesQuery.data.path === "/"
+                }
+                onClick={() =>
+                  setFileBrowserPath(
+                    parentPath(sshFilesQuery.data?.path ?? "/"),
+                  )
+                }
+              >
+                上级目录
+              </Button>
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={sshFilesQuery.isFetching}
+                onClick={() => sshFilesQuery.refetch()}
+              >
+                刷新
+              </Button>
+            </Space>
+            {sshFilesQuery.isError ? (
+              <Empty
+                description={
+                  sshFilesQuery.error instanceof Error
+                    ? sshFilesQuery.error.message
+                    : "目录加载失败"
+                }
+              />
+            ) : (
+              <DataTable<SshFileRecord>
+                rowKey="path"
+                loading={sshFilesQuery.isFetching}
+                columns={sshFileColumns}
+                dataSource={[
+                  ...(sshFilesQuery.data?.directories ?? []),
+                  ...(sshFilesQuery.data?.files ?? []),
+                ]}
+                onRow={(record) => ({
+                  onDoubleClick: () =>
+                    record.is_dir
+                      ? setFileBrowserPath(record.path)
+                      : void openFilePreview(record),
+                })}
+                pagination={false}
+                scroll={{ x: 680, y: 460 }}
+                className="ssh-file-table"
+              />
+            )}
           </Space>
-          {sshFilesQuery.isError ? (
-            <Empty
-              description={
-                sshFilesQuery.error instanceof Error
-                  ? sshFilesQuery.error.message
-                  : "目录加载失败"
-              }
-            />
-          ) : (
-            <Table<SshFileRecord>
-              rowKey="path"
-              size="small"
-              loading={sshFilesQuery.isFetching}
-              columns={sshFileColumns}
-              dataSource={[
-                ...(sshFilesQuery.data?.directories ?? []),
-                ...(sshFilesQuery.data?.files ?? []),
-              ]}
-              pagination={false}
-              scroll={{ x: 680, y: 460 }}
-              className="ssh-file-table"
-            />
-          )}
-        </Space>
-      </Modal>
-    </CrudPage>
+        </Modal>
+        <Modal
+          title={filePreviewing?.name ?? "文件预览"}
+          open={Boolean(filePreviewing)}
+          footer={null}
+          width="min(980px, 96vw)"
+          className="material-preview-modal ssh-file-preview-modal"
+          onCancel={closeFilePreview}
+        >
+          <div className="material-preview-body">{renderFilePreview()}</div>
+        </Modal>
+      </CrudPage>
+    </div>
   );
 }

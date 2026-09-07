@@ -1,0 +1,183 @@
+{
+  "name": "后台管理 文件接口 - 单文件上传",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gpt-images-upload-single",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ad1c63aa-29c7-46f0-9a59-5fe901f94be2",
+      "name": "接收单文件",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "bcb46368-564c-4561-b665-b12ca7bd4af4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5ad83bfe-6d80-411c-b5a4-53b02cf3dbf8",
+              "name": "api_base_url",
+              "value": "http://host.docker.internal:5150",
+              "type": "string"
+            },
+            {
+              "id": "37a44c73-5e20-4645-b4f0-5a6333976930",
+              "name": "bearer_token",
+              "value": "eyJ0_REPLACE_WITH_YOUR_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "11d8bce6-7795-4d62-878b-a6c91699c454",
+              "name": "storage_bucket_id",
+              "value": "={{ $json.body?.storage_bucket_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "2b686b6d-0b4b-4ef4-ac1a-7e37e713d27a",
+              "name": "prefix",
+              "value": "={{ $json.body?.prefix || 'n8n/single' }}",
+              "type": "string"
+            },
+            {
+              "id": "35b009e7-86ce-44db-9836-c0436f3f3329",
+              "name": "visibility",
+              "value": "={{ $json.body?.visibility || 'private' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "9a5d461e-409b-40d7-97d6-2bf9405775e4",
+      "name": "配置接口",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.first();\n\nif (!item.binary?.file) {\n  const received = Object.keys(item.binary || {});\n  throw new Error(\n    `没有收到名为 file 的二进制字段。当前字段：${received.join(', ') || '无'}`,\n  );\n}\n\nreturn [item];"
+      },
+      "id": "7c3fc82d-c0ef-43e4-a251-a78b129a54f4",
+      "name": "校验文件字段",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.api_base_url + '/api/file-api/uploads' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.bearer_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            },
+            {
+              "parameterType": "formData",
+              "name": "storage_bucket_id",
+              "value": "={{ $json.storage_bucket_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "prefix",
+              "value": "={{ $json.prefix }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "visibility",
+              "value": "={{ $json.visibility }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "bc773ff9-fb72-4f0c-808c-722bb547b239",
+      "name": "上传到文件接口",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const response = $input.first().json;\n\nif (response.success && response.data) {\n  return [{\n    json: {\n      success: true,\n      file: response.data,\n    },\n  }];\n}\n\nconst rawError = response.error;\nconst message =\n  typeof rawError === 'string'\n    ? rawError\n    : rawError?.message || response.message || '文件上传失败';\n\nreturn [{\n  json: {\n    success: false,\n    message,\n  },\n}];"
+      },
+      "id": "0363ec8a-020a-4dff-8656-d1890f6486f6",
+      "name": "整理单文件结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b9d2f041-5bd3-4a7c-acf2-c4e3f41477eb",
+      "name": "返回上传结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1440, 300]
+    }
+  ],
+  "connections": {
+    "接收单文件": {
+      "main": [[{"node": "配置接口", "type": "main", "index": 0}]]
+    },
+    "配置接口": {
+      "main": [[{"node": "校验文件字段", "type": "main", "index": 0}]]
+    },
+    "校验文件字段": {
+      "main": [[{"node": "上传到文件接口", "type": "main", "index": 0}]]
+    },
+    "上传到文件接口": {
+      "main": [[{"node": "整理单文件结果", "type": "main", "index": 0}]]
+    },
+    "整理单文件结果": {
+      "main": [[{"node": "返回上传结果", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

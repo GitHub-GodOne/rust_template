@@ -5,7 +5,14 @@ use std::{
     time::Duration,
 };
 
-use axum::http::{HeaderName, HeaderValue};
+use axum::{
+    extract::{Json, Multipart},
+    http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode},
+    response::IntoResponse,
+    routing::post,
+    Router,
+};
+use base64::{engine::general_purpose, Engine as _};
 use gpt_images::{
     app::App,
     models::_entities::{database_backups, payment_channels, system_settings, upload_files},
@@ -15,11 +22,14 @@ use gpt_images::{
 use loco_rs::{testing::prelude::*, TestServer};
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serial_test::serial;
-use tokio::time::sleep;
+use sha2::{Digest, Sha256};
+use tokio::{net::TcpListener, time::sleep};
 
 use super::prepare_data;
 
 static LOGIN_IP_COUNTER: AtomicUsize = AtomicUsize::new(10);
+const TEST_IMAGE_B64: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
 
 async fn admin_token(request: &TestServer) -> String {
     let ip_suffix = LOGIN_IP_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -119,6 +129,7 @@ async fn admin_extensions_require_auth() {
             "/api/admin/http-client/config",
             "/api/admin/ai-images/configs",
             "/api/admin/ai-images/generations",
+            "/api/image-api/generations",
             "/api/admin/ssh/targets",
             "/api/admin/vnc/targets",
             "/api/admin/email-templates",
@@ -130,6 +141,7 @@ async fn admin_extensions_require_auth() {
             "/api/admin/files/roots",
             "/api/admin/files/browser?root_key=public-assets",
             "/api/admin/files/preview?root_key=public-assets&path=hello.txt",
+            "/api/admin/static-sites",
             "/api/admin/storage-profiles",
             "/api/admin/tenants",
             "/api/admin/departments",
@@ -143,6 +155,7 @@ async fn admin_extensions_require_auth() {
             "/api/admin/monitoring/overview",
             "/api/admin/monitoring/server",
             "/api/admin/monitoring/processes",
+            "/api/admin/api-keys",
             "/api/admin/commands",
             "/api/admin/command-workflows",
             "/api/admin/command-workflow-runs",
@@ -479,6 +492,7 @@ async fn super_admin_can_manage_configured_local_files() {
         fs::create_dir_all(root.join("docs")).unwrap();
         fs::write(root.join("docs/hello.txt"), b"hello files").unwrap();
         fs::write(root.join("docs/duplicate.txt"), b"duplicate").unwrap();
+        fs::write(root.join("docs/binary.bin"), [0_u8, 159, 146, 150]).unwrap();
 
         system_settings::ActiveModel {
             id: Set(18),
@@ -527,6 +541,22 @@ async fn super_admin_can_manage_configured_local_files() {
             .unwrap()
             .contains("inline"));
 
+        let range_preview = request
+            .get("/api/admin/files/preview?root_key=request-root&path=docs/hello.txt")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .add_header(header::RANGE, "bytes=6-")
+            .await;
+        assert_eq!(range_preview.status_code(), 206);
+        assert_eq!(range_preview.as_bytes().as_ref(), b"files");
+        assert_eq!(
+            range_preview.header("content-range").to_str().unwrap(),
+            "bytes 6-10/11"
+        );
+        assert_eq!(
+            range_preview.header("accept-ranges").to_str().unwrap(),
+            "bytes"
+        );
+
         let download = request
             .get("/api/admin/files/download?root_key=request-root&path=docs/hello.txt")
             .add_header(auth_key.clone(), auth_value.clone())
@@ -538,6 +568,35 @@ async fn super_admin_can_manage_configured_local_files() {
             .unwrap()
             .contains("attachment"));
 
+        let content = request
+            .get("/api/admin/files/content?root_key=request-root&path=docs/hello.txt")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(content.status_code(), 200);
+        let content_body: serde_json::Value = serde_json::from_str(&content.text()).unwrap();
+        assert_eq!(content_body["data"]["content"], "hello files");
+
+        let update_content = request
+            .put("/api/admin/files/content")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "root_key": "request-root",
+                "path": "docs/hello.txt",
+                "content": "hello edited files\n"
+            }))
+            .await;
+        assert_eq!(update_content.status_code(), 200);
+        assert_eq!(
+            fs::read_to_string(root.join("docs/hello.txt")).unwrap(),
+            "hello edited files\n"
+        );
+
+        let binary_content = request
+            .get("/api/admin/files/content?root_key=request-root&path=docs/binary.bin")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(binary_content.status_code(), 400);
+
         let create_folder = request
             .post("/api/admin/files/folders")
             .add_header(auth_key.clone(), auth_value.clone())
@@ -548,6 +607,31 @@ async fn super_admin_can_manage_configured_local_files() {
             .await;
         assert_eq!(create_folder.status_code(), 200);
         assert!(root.join("docs/nested").is_dir());
+
+        let create_file = request
+            .post("/api/admin/files")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "root_key": "request-root",
+                "path": "docs/created.txt",
+                "content": "created through file manager\n"
+            }))
+            .await;
+        assert_eq!(create_file.status_code(), 200);
+        assert_eq!(
+            fs::read_to_string(root.join("docs/created.txt")).unwrap(),
+            "created through file manager\n"
+        );
+
+        let duplicate_file = request
+            .post("/api/admin/files")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "root_key": "request-root",
+                "path": "docs/created.txt"
+            }))
+            .await;
+        assert_eq!(duplicate_file.status_code(), 400);
 
         let rename = request
             .put("/api/admin/files/rename")
@@ -605,6 +689,111 @@ async fn super_admin_can_manage_configured_local_files() {
 
 #[tokio::test]
 #[serial]
+async fn super_admin_can_manage_and_serve_static_site() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+        let root = PathBuf::from("storage/static-hosting/request-tests");
+        if root.exists() {
+            fs::remove_dir_all(&root).unwrap();
+        }
+
+        let create = request
+            .post("/api/admin/static-sites")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "key": "request-site",
+                "name": "请求测试站点",
+                "url_path": "/request-static",
+                "local_root": "storage/static-hosting/request-tests",
+                "index_file": "index.html",
+                "spa_fallback": false,
+                "enabled": true,
+                "cache_seconds": 60
+            }))
+            .await;
+        assert_eq!(create.status_code(), 200);
+        assert!(root.is_dir());
+
+        fs::write(root.join("index.html"), b"<h1>request static</h1>").unwrap();
+        fs::create_dir_all(root.join("assets")).unwrap();
+        fs::write(root.join("assets/app.js"), b"console.log('static');").unwrap();
+
+        let browser = request
+            .get("/api/admin/static-sites/browser?site_key=request-site")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(browser.status_code(), 200);
+        let browser_text = browser.text();
+        assert!(browser_text.contains("index.html"));
+        assert!(browser_text.contains("/request-static/index.html"));
+
+        let public_index = request.get("/request-static/").await;
+        assert_eq!(public_index.status_code(), 200);
+        assert_eq!(public_index.as_bytes().as_ref(), b"<h1>request static</h1>");
+        assert!(public_index.content_type().contains("text/html"));
+
+        let public_asset = request.get("/request-static/assets/app.js").await;
+        assert_eq!(public_asset.status_code(), 200);
+        assert_eq!(public_asset.as_bytes().as_ref(), b"console.log('static');");
+
+        let create_folder = request
+            .post("/api/admin/static-sites/folders")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "site_key": "request-site",
+                "path": "nested/content"
+            }))
+            .await;
+        assert_eq!(create_folder.status_code(), 200);
+        assert!(root.join("nested/content").is_dir());
+
+        let update = request
+            .put("/api/admin/static-sites/request-site")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "key": "request-site",
+                "name": "请求测试站点",
+                "url_path": "/request-static",
+                "local_root": "storage/static-hosting/request-tests",
+                "index_file": "index.html",
+                "spa_fallback": true,
+                "enabled": true,
+                "cache_seconds": 60
+            }))
+            .await;
+        assert_eq!(update.status_code(), 200);
+
+        let spa_fallback = request
+            .get("/request-static/dashboard/report")
+            .add_header("accept", "text/html")
+            .await;
+        assert_eq!(spa_fallback.status_code(), 200);
+        assert_eq!(spa_fallback.as_bytes().as_ref(), b"<h1>request static</h1>");
+
+        let delete_folder = request
+            .delete("/api/admin/static-sites/files?site_key=request-site&path=nested")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(delete_folder.status_code(), 200);
+        assert!(!root.join("nested").exists());
+
+        let delete_site = request
+            .delete("/api/admin/static-sites/request-site")
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(delete_site.status_code(), 200);
+        assert!(root.join("index.html").exists());
+
+        fs::remove_dir_all(root).unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
     request::<App, _, _>(|request, ctx| async move {
         seed::<App>(&ctx).await.unwrap();
@@ -618,6 +807,7 @@ async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
             .await;
         assert_eq!(profiles.status_code(), 200);
         assert!(profiles.text().contains("local-default"));
+        assert!(profiles.text().contains("storage/uploads/platform-assets"));
 
         let create_profile = request
             .post("/api/admin/storage-profiles")
@@ -658,6 +848,19 @@ async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
         let bucket_body: serde_json::Value = serde_json::from_str(&create_bucket.text()).unwrap();
         let bucket_id = bucket_body["data"]["id"].as_i64().unwrap();
 
+        let profile_detail = request
+            .get(&format!("/api/admin/storage-profiles/{profile_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(profile_detail.status_code(), 200);
+        let profile_detail_body: serde_json::Value =
+            serde_json::from_str(&profile_detail.text()).unwrap();
+        assert_eq!(profile_detail_body["data"]["local_root"], root);
+        assert_eq!(
+            profile_detail_body["data"]["storage_bucket_name"],
+            "请求测试桶"
+        );
+
         let test_profile = request
             .post(&format!("/api/admin/storage-profiles/{profile_id}/test"))
             .add_header(auth_key.clone(), auth_value.clone())
@@ -692,6 +895,52 @@ async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
         .await
         .unwrap();
 
+        let private_public_access = request.get(&format!("/api/uploads/{}", file.id)).await;
+        assert_eq!(private_public_access.status_code(), 403);
+
+        let anonymous_admin_download = request
+            .get(&format!("/api/admin/uploads/{}/download", file.id))
+            .await;
+        assert_eq!(anonymous_admin_download.status_code(), 401);
+
+        let publish = request
+            .put(&format!("/api/admin/uploads/{}", file.id))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "visibility": "public" }))
+            .await;
+        assert_eq!(publish.status_code(), 200, "{}", publish.text());
+        let publish_body: serde_json::Value = serde_json::from_str(&publish.text()).unwrap();
+        let expected_public_url = format!("/api/uploads/{}", file.id);
+        let expected_download_url = format!("/api/admin/uploads/{}/download", file.id);
+        assert_eq!(publish_body["data"]["url"], expected_public_url);
+        assert_eq!(publish_body["data"]["public_url"], expected_public_url);
+        assert_eq!(publish_body["data"]["download_url"], expected_download_url);
+
+        let public_access = request.get(&format!("/api/uploads/{}", file.id)).await;
+        assert_eq!(public_access.status_code(), 200);
+        assert_eq!(public_access.as_bytes().as_ref(), b"hello storage");
+        assert_eq!(public_access.content_type(), "text/plain; charset=utf-8");
+        assert!(public_access
+            .header("content-disposition")
+            .to_str()
+            .unwrap()
+            .contains("inline"));
+        assert_eq!(
+            public_access.header("cache-control").to_str().unwrap(),
+            "public, max-age=300"
+        );
+
+        let public_range = request
+            .get(&format!("/api/uploads/{}", file.id))
+            .add_header(header::RANGE, "bytes=6-")
+            .await;
+        assert_eq!(public_range.status_code(), 206);
+        assert_eq!(public_range.as_bytes().as_ref(), b"storage");
+        assert_eq!(
+            public_range.header("content-range").to_str().unwrap(),
+            "bytes 6-12/13"
+        );
+
         let browser = request
             .get(&format!(
                 "/api/admin/uploads/browser?storage_bucket_id={bucket_id}&prefix=docs"
@@ -699,7 +948,12 @@ async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
             .add_header(auth_key.clone(), auth_value.clone())
             .await;
         assert_eq!(browser.status_code(), 200);
-        assert!(browser.text().contains("hello.txt"));
+        let browser_body: serde_json::Value = serde_json::from_str(&browser.text()).unwrap();
+        assert!(browser_body["data"]["managed_object_keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|key| key == "docs/hello.txt"));
 
         let uploads = request
             .get(&format!(
@@ -735,6 +989,22 @@ async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
             .unwrap()
             .contains("inline"));
 
+        let range_preview = request
+            .get(&format!("/api/admin/uploads/{}/preview", file.id))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .add_header(header::RANGE, "bytes=6-")
+            .await;
+        assert_eq!(range_preview.status_code(), 206);
+        assert_eq!(range_preview.as_bytes().as_ref(), b"storage");
+        assert_eq!(
+            range_preview.header("content-range").to_str().unwrap(),
+            "bytes 6-12/13"
+        );
+        assert_eq!(
+            range_preview.header("accept-ranges").to_str().unwrap(),
+            "bytes"
+        );
+
         let create_folder = request
             .post("/api/admin/uploads/folders")
             .add_header(auth_key.clone(), auth_value.clone())
@@ -745,6 +1015,81 @@ async fn super_admin_can_manage_storage_profiles_and_browse_local_bucket() {
             .await;
         assert_eq!(create_folder.status_code(), 200);
         assert!(create_folder.text().contains("docs/nested/"));
+
+        let create_file = request
+            .post("/api/admin/uploads/files")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "storage_bucket_id": bucket_id,
+                "prefix": "docs",
+                "name": "created.txt",
+                "content": "created through material library\n",
+                "visibility": "private"
+            }))
+            .await;
+        assert_eq!(create_file.status_code(), 200);
+        let create_file_body: serde_json::Value =
+            serde_json::from_str(&create_file.text()).unwrap();
+        let created_file_id = create_file_body["data"]["id"].as_i64().unwrap();
+        assert_eq!(create_file_body["data"]["original_name"], "created.txt");
+        assert_eq!(create_file_body["data"]["prefix"], "docs/");
+        let created_object_key = create_file_body["data"]["object_key"].as_str().unwrap();
+        assert_eq!(
+            fs::read(root_path.join(created_object_key)).unwrap(),
+            b"created through material library\n"
+        );
+
+        let read_content = request
+            .get(&format!("/api/admin/uploads/{created_file_id}/content"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(read_content.status_code(), 200);
+        let read_content_body: serde_json::Value =
+            serde_json::from_str(&read_content.text()).unwrap();
+        assert_eq!(
+            read_content_body["data"]["content"],
+            "created through material library\n"
+        );
+
+        let updated_content = "updated through material editor\n";
+        let update_content = request
+            .put(&format!("/api/admin/uploads/{created_file_id}/content"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({ "content": updated_content }))
+            .await;
+        assert_eq!(update_content.status_code(), 200);
+        let update_content_body: serde_json::Value =
+            serde_json::from_str(&update_content.text()).unwrap();
+        let expected_sha256 = hex::encode(Sha256::digest(updated_content.as_bytes()));
+        assert_eq!(
+            update_content_body["data"]["size_bytes"],
+            updated_content.len()
+        );
+        assert_eq!(update_content_body["data"]["sha256"], expected_sha256);
+        assert_eq!(
+            fs::read(root_path.join(created_object_key)).unwrap(),
+            updated_content.as_bytes()
+        );
+
+        let reread_content = request
+            .get(&format!("/api/admin/uploads/{created_file_id}/content"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .await;
+        assert_eq!(reread_content.status_code(), 200);
+        let reread_content_body: serde_json::Value =
+            serde_json::from_str(&reread_content.text()).unwrap();
+        assert_eq!(reread_content_body["data"]["content"], updated_content);
+
+        let invalid_file_name = request
+            .post("/api/admin/uploads/files")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "storage_bucket_id": bucket_id,
+                "prefix": "docs",
+                "name": "nested/invalid.txt"
+            }))
+            .await;
+        assert_eq!(invalid_file_name.status_code(), 400);
 
         let nested_browser = request
             .get(&format!(
@@ -1386,6 +1731,7 @@ async fn super_admin_can_access_operations_infrastructure() {
             "/api/admin/monitoring/overview",
             "/api/admin/monitoring/server",
             "/api/admin/monitoring/processes",
+            "/api/admin/api-keys",
             "/api/admin/commands",
             "/api/admin/command-workflows",
             "/api/admin/command-workflow-runs",
@@ -1442,6 +1788,419 @@ async fn super_admin_can_view_server_monitoring() {
         assert!(processes_body["data"]["total"].is_number());
     })
     .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn permanent_api_key_authenticates_as_its_owner() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+
+        let create = request
+            .post("/api/admin/api-keys")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "全局接口测试密钥",
+                "description": "用于验证普通 API 的永久 Bearer 授权",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(create.status_code(), 200);
+        let create_body: serde_json::Value = serde_json::from_str(&create.text()).unwrap();
+        let api_key_id = create_body["data"]["id"].as_i64().unwrap();
+        let api_key = create_body["data"]["token"].as_str().unwrap();
+        assert!(api_key.starts_with("eyJ0_"));
+        assert!(create_body["data"]["created_by"].as_i64().is_some());
+
+        let (api_auth_key, api_auth_value) = prepare_data::auth_header(api_key);
+        let current = request
+            .get("/api/auth/current")
+            .add_header(api_auth_key.clone(), api_auth_value.clone())
+            .await;
+        assert_eq!(current.status_code(), 200);
+        let current_body: serde_json::Value = serde_json::from_str(&current.text()).unwrap();
+        assert_eq!(current_body["data"]["email"], "admin@example.com");
+
+        let list = request
+            .get("/api/admin/api-keys")
+            .add_header(api_auth_key.clone(), api_auth_value.clone())
+            .await;
+        assert_eq!(list.status_code(), 200);
+        assert!(list.text().contains("全局接口测试密钥"));
+
+        let disable = request
+            .put(&format!("/api/admin/api-keys/{api_key_id}"))
+            .add_header(auth_key.clone(), auth_value.clone())
+            .json(&serde_json::json!({
+                "name": "全局接口测试密钥",
+                "token": api_key,
+                "description": "已停用",
+                "enabled": false
+            }))
+            .await;
+        assert_eq!(disable.status_code(), 200);
+
+        let disabled_current = request
+            .get("/api/auth/current")
+            .add_header(api_auth_key, api_auth_value)
+            .await;
+        assert_eq!(disabled_current.status_code(), 401);
+
+        let delete = request
+            .delete(&format!("/api/admin/api-keys/{api_key_id}"))
+            .add_header(auth_key, auth_value)
+            .await;
+        assert_eq!(delete.status_code(), 200);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn permanent_api_key_uploads_to_the_default_local_bucket() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+        let create = request
+            .post("/api/admin/api-keys")
+            .add_header(auth_key, auth_value)
+            .json(&serde_json::json!({
+                "name": "文件上传接口测试密钥",
+                "description": "验证默认本地存储上传",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(create.status_code(), 200);
+        let create_body: serde_json::Value = serde_json::from_str(&create.text()).unwrap();
+        let api_key_id = create_body["data"]["id"].as_i64().unwrap();
+        let api_key = create_body["data"]["token"].as_str().unwrap();
+        let (api_auth_key, api_auth_value) = prepare_data::auth_header(api_key);
+
+        let boundary = "file-api-request-test-boundary";
+        let prefix = format!("file-api-tests-{api_key_id}");
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prefix\"\r\n\r\n{prefix}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"api-upload.txt\"\r\nContent-Type: text/plain\r\n\r\nuploaded through file api\r\n--{boundary}--\r\n"
+        );
+        let upload = request
+            .post("/api/file-api/uploads")
+            .add_header(api_auth_key, api_auth_value)
+            .add_header("x-forwarded-proto", "https")
+            .add_header("x-forwarded-host", "uploads.example.test")
+            .content_type(&format!("multipart/form-data; boundary={boundary}"))
+            .bytes(axum::body::Bytes::from(body))
+            .await;
+        assert_eq!(upload.status_code(), 200, "{}", upload.text());
+        let upload_body: serde_json::Value = serde_json::from_str(&upload.text()).unwrap();
+        let data = &upload_body["data"];
+        assert_eq!(data["storage_provider"], "local");
+        assert_eq!(data["storage_bucket"], "platform-assets");
+        assert_eq!(data["original_name"], "api-upload.txt");
+        assert!(data["object_key"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("{prefix}/")));
+        assert!(data["network_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://uploads.example.test/api/admin/uploads/"));
+        assert_eq!(data["network_url"], data["download_url"]);
+        assert!(data["public_url"].is_null());
+
+        let local_path = PathBuf::from(data["local_path"].as_str().unwrap());
+        assert!(local_path.is_absolute());
+        assert_eq!(fs::read(&local_path).unwrap(), b"uploaded through file api");
+        fs::remove_file(&local_path).unwrap();
+        if let Some(parent) = local_path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn permanent_api_key_generates_and_stores_an_image() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mock_server = tokio::spawn(async move {
+        let app = Router::new().route(
+            "/v1/responses",
+            post(|headers: HeaderMap, Json(payload): Json<serde_json::Value>| async move {
+                if headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok())
+                    != Some("Bearer mock-cpamc-key")
+                {
+                    return (StatusCode::UNAUTHORIZED, "invalid upstream authorization")
+                        .into_response();
+                }
+                if payload["model"] != "gpt-5.4-mini"
+                    || payload["stream"] != true
+                    || payload["tools"][0]["model"] != "gpt-image-2"
+                    || payload["tools"][0]["size"] != "1024x1024"
+                    || payload["tools"][0]["quality"] != "medium"
+                    || payload["tools"][0]["output_format"] != "png"
+                {
+                    return (StatusCode::BAD_REQUEST, "invalid responses payload").into_response();
+                }
+                let body = format!(
+                    "event: response.output_item.done\ndata: {{\"type\":\"response.output_item.done\",\"item\":{{\"type\":\"image_generation_call\",\"result\":\"{TEST_IMAGE_B64}\"}}}}\n\ndata: [DONE]\n\n"
+                );
+                ([(header::CONTENT_TYPE, "text/event-stream")], body).into_response()
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+        let create_key = request
+            .post("/api/admin/api-keys")
+            .add_header(auth_key, auth_value)
+            .json(&serde_json::json!({
+                "name": "图片生成接口测试密钥",
+                "description": "验证 CPAMC 生图后进入默认存储",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(create_key.status_code(), 200);
+        let create_key_body: serde_json::Value = serde_json::from_str(&create_key.text()).unwrap();
+        let api_key = create_key_body["data"]["token"].as_str().unwrap();
+        let (api_auth_key, api_auth_value) = prepare_data::auth_header(api_key);
+
+        let generation = request
+            .post("/api/image-api/generations")
+            .add_header(api_auth_key, api_auth_value)
+            .add_header("x-forwarded-proto", "https")
+            .add_header("x-forwarded-host", "images.example.test")
+            .json(&serde_json::json!({
+                "prompt": "generate a one pixel test image",
+                "api_url": format!("http://{address}/v1"),
+                "api_key": "mock-cpamc-key",
+                "base_model": "gpt-5.4-mini",
+                "image_model": "gpt-image-2",
+                "size": "1024x1024",
+                "quality": "medium",
+                "output_format": "png",
+                "partial_images": 0,
+                "prefix": "image-api-tests"
+            }))
+            .await;
+        assert_eq!(generation.status_code(), 200, "{}", generation.text());
+        let generation_body: serde_json::Value = serde_json::from_str(&generation.text()).unwrap();
+        let data = &generation_body["data"];
+        assert_eq!(data["provider_key"], "request");
+        assert_eq!(data["image_model"], "gpt-image-2");
+        assert_eq!(data["size"], "1024x1024");
+        assert_eq!(data["quality"], "medium");
+        assert_eq!(data["file"]["storage_provider"], "local");
+        assert!(data["file"]["network_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://images.example.test/api/admin/uploads/"));
+
+        let local_path = PathBuf::from(data["file"]["local_path"].as_str().unwrap());
+        let expected = general_purpose::STANDARD.decode(TEST_IMAGE_B64).unwrap();
+        assert_eq!(fs::read(&local_path).unwrap(), expected);
+        fs::remove_file(&local_path).unwrap();
+        if let Some(parent) = local_path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+    })
+    .await;
+
+    mock_server.abort();
+}
+
+#[tokio::test]
+#[serial]
+async fn permanent_api_key_uses_direct_image_generation_and_edit_endpoints() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mock_server = tokio::spawn(async move {
+        let app = Router::new()
+            .route(
+                "/v1/images/generations",
+                post(
+                    |headers: HeaderMap, Json(payload): Json<serde_json::Value>| async move {
+                        if headers
+                            .get(header::AUTHORIZATION)
+                            .and_then(|value| value.to_str().ok())
+                            != Some("Bearer mock-direct-image-key")
+                        {
+                            return (StatusCode::UNAUTHORIZED, "invalid upstream authorization")
+                                .into_response();
+                        }
+                        if payload.get("base_model").is_some()
+                            || payload["model"] != "gpt-image-2"
+                            || payload["prompt"] != "generate a direct test image"
+                            || payload["size"] != "1024x1024"
+                            || payload["quality"] != "medium"
+                            || payload["output_format"] != "png"
+                            || payload["n"] != 1
+                        {
+                            return (StatusCode::BAD_REQUEST, "invalid direct image payload")
+                                .into_response();
+                        }
+                        Json(serde_json::json!({
+                            "data": [{"b64_json": TEST_IMAGE_B64}]
+                        }))
+                        .into_response()
+                    },
+                ),
+            )
+            .route(
+                "/v1/images/edits",
+                post(|headers: HeaderMap, mut multipart: Multipart| async move {
+                    if headers
+                        .get(header::AUTHORIZATION)
+                        .and_then(|value| value.to_str().ok())
+                        != Some("Bearer mock-direct-image-key")
+                    {
+                        return (StatusCode::UNAUTHORIZED, "invalid upstream authorization")
+                            .into_response();
+                    }
+                    let mut prompt = None;
+                    let mut model = None;
+                    let mut image_count = 0;
+                    while let Ok(Some(field)) = multipart.next_field().await {
+                        match field.name().unwrap_or_default() {
+                            "prompt" => prompt = field.text().await.ok(),
+                            "model" => model = field.text().await.ok(),
+                            "image" | "image[]" => {
+                                if field.bytes().await.is_ok() {
+                                    image_count += 1;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    if prompt.as_deref() != Some("turn this into a watercolor image")
+                        || model.as_deref() != Some("gpt-image-2")
+                        || image_count != 1
+                    {
+                        return (StatusCode::BAD_REQUEST, "invalid direct edit payload")
+                            .into_response();
+                    }
+                    Json(serde_json::json!({
+                        "data": [{"b64_json": TEST_IMAGE_B64}]
+                    }))
+                    .into_response()
+                }),
+            );
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+
+        let token = admin_token(&request).await;
+        let (auth_key, auth_value) = prepare_data::auth_header(&token);
+        let create_key = request
+            .post("/api/admin/api-keys")
+            .add_header(auth_key, auth_value)
+            .json(&serde_json::json!({
+                "name": "纯生图与编辑接口测试密钥",
+                "description": "验证 direct images API",
+                "enabled": true
+            }))
+            .await;
+        assert_eq!(create_key.status_code(), 200);
+        let create_key_body: serde_json::Value = serde_json::from_str(&create_key.text()).unwrap();
+        let api_key = create_key_body["data"]["token"].as_str().unwrap();
+        let (api_auth_key, api_auth_value) = prepare_data::auth_header(api_key);
+
+        let generation = request
+            .post("/api/image-api/images/generations")
+            .add_header(api_auth_key.clone(), api_auth_value.clone())
+            .add_header("x-forwarded-proto", "https")
+            .add_header("x-forwarded-host", "images.example.test")
+            .json(&serde_json::json!({
+                "prompt": "generate a direct test image",
+                "api_url": format!("http://{address}/v1"),
+                "api_key": "mock-direct-image-key",
+                "model": "gpt-image-2",
+                "size": "1024x1024",
+                "quality": "medium",
+                "output_format": "png",
+                "n": 1,
+                "prefix": "direct-image-api-tests"
+            }))
+            .await;
+        assert_eq!(generation.status_code(), 200, "{}", generation.text());
+        let generation_body: serde_json::Value = serde_json::from_str(&generation.text()).unwrap();
+        let generation_data = &generation_body["data"];
+        assert_eq!(generation_data["operation"], "generation");
+        assert_eq!(generation_data["model"], "gpt-image-2");
+        assert_eq!(generation_data["files"].as_array().unwrap().len(), 1);
+
+        let input_image = general_purpose::STANDARD.decode(TEST_IMAGE_B64).unwrap();
+        let boundary = "direct-image-edit-test-boundary";
+        let mut body = Vec::new();
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nturn this into a watercolor image\r\n"
+            )
+            .as_bytes(),
+        );
+        for (name, value) in [
+            ("api_url", format!("http://{address}/v1")),
+            ("api_key", "mock-direct-image-key".to_string()),
+            ("model", "gpt-image-2".to_string()),
+            ("size", "1024x1024".to_string()),
+            ("quality", "high".to_string()),
+            ("output_format", "png".to_string()),
+            ("prefix", "direct-image-edit-tests".to_string()),
+        ] {
+            body.extend_from_slice(
+                format!(
+                    "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+                )
+                .as_bytes(),
+            );
+        }
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"input.png\"\r\nContent-Type: image/png\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(&input_image);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+        let edit = request
+            .post("/api/image-api/images/edits")
+            .add_header(api_auth_key, api_auth_value)
+            .add_header("x-forwarded-proto", "https")
+            .add_header("x-forwarded-host", "images.example.test")
+            .content_type(&format!("multipart/form-data; boundary={boundary}"))
+            .bytes(axum::body::Bytes::from(body))
+            .await;
+        assert_eq!(edit.status_code(), 200, "{}", edit.text());
+        let edit_body: serde_json::Value = serde_json::from_str(&edit.text()).unwrap();
+        let edit_data = &edit_body["data"];
+        assert_eq!(edit_data["operation"], "edit");
+        assert_eq!(edit_data["files"].as_array().unwrap().len(), 1);
+
+        for data in [generation_data, edit_data] {
+            let local_path = PathBuf::from(data["files"][0]["local_path"].as_str().unwrap());
+            let expected = general_purpose::STANDARD.decode(TEST_IMAGE_B64).unwrap();
+            assert_eq!(fs::read(&local_path).unwrap(), expected);
+            fs::remove_file(&local_path).unwrap();
+            if let Some(parent) = local_path.parent() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+    })
+    .await;
+
+    mock_server.abort();
 }
 
 #[tokio::test]

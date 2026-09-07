@@ -1,5 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
+use std::collections::HashMap;
+
 use loco_rs::prelude::*;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel, PaginatorTrait,
@@ -29,6 +31,9 @@ pub struct StorageProfileRecord {
     pub provider: String,
     pub enabled: bool,
     pub is_default: bool,
+    pub storage_bucket_id: Option<i32>,
+    pub storage_bucket_name: Option<String>,
+    pub local_root: Option<String>,
     pub endpoint: Option<String>,
     pub region: Option<String>,
     pub access_key_id: Option<String>,
@@ -124,12 +129,21 @@ pub async fn list(
     }
 
     let total = query.clone().count(&ctx.db).await?;
-    let items = query
+    let profiles = query
         .paginate(&ctx.db, page_size)
         .fetch_page(page - 1)
-        .await?
+        .await?;
+    let profile_ids = profiles
+        .iter()
+        .map(|profile| profile.id)
+        .collect::<Vec<_>>();
+    let mut buckets = preferred_buckets_for_profiles(&ctx, &profile_ids).await?;
+    let items = profiles
         .into_iter()
-        .map(StorageProfileRecord::from)
+        .map(|profile| {
+            let bucket = buckets.remove(&profile.id);
+            StorageProfileRecord::from_profile_and_bucket(profile, bucket)
+        })
         .collect();
 
     Ok(responses::ok(PageResponse {
@@ -157,7 +171,7 @@ pub async fn get(
     let actor = authorize(&ctx, &auth, "system:storage:list").await?;
     let profile = find_profile(&ctx, id).await?;
     assert_profile_visible(&ctx, &actor, &profile).await?;
-    Ok(responses::ok(StorageProfileRecord::from(profile)))
+    Ok(responses::ok(profile_record(&ctx, profile).await?))
 }
 
 #[utoipa::path(
@@ -200,7 +214,7 @@ pub async fn create(
     .insert(&ctx.db)
     .await?;
 
-    Ok(responses::ok(StorageProfileRecord::from(profile)))
+    Ok(responses::ok(profile_record(&ctx, profile).await?))
 }
 
 #[utoipa::path(
@@ -252,7 +266,7 @@ pub async fn update(
     active.description = Set(params.description);
     let profile = active.update(&ctx.db).await?;
 
-    Ok(responses::ok(StorageProfileRecord::from(profile)))
+    Ok(responses::ok(profile_record(&ctx, profile).await?))
 }
 
 #[utoipa::path(
@@ -695,14 +709,55 @@ async fn default_bucket_for_profile(
     ctx: &AppContext,
     profile_id: i32,
 ) -> ApiResult<storage_buckets::Model> {
+    preferred_bucket_for_profile(ctx, profile_id)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("storage bucket not found"))
+}
+
+async fn profile_record(
+    ctx: &AppContext,
+    profile: storage_profiles::Model,
+) -> ApiResult<StorageProfileRecord> {
+    let bucket = preferred_bucket_for_profile(ctx, profile.id).await?;
+    Ok(StorageProfileRecord::from_profile_and_bucket(
+        profile, bucket,
+    ))
+}
+
+async fn preferred_bucket_for_profile(
+    ctx: &AppContext,
+    profile_id: i32,
+) -> ApiResult<Option<storage_buckets::Model>> {
     storage_buckets::Entity::find()
         .filter(storage_buckets::Column::StorageProfileId.eq(profile_id))
         .filter(storage_buckets::Column::Enabled.eq(true))
         .order_by_desc(storage_buckets::Column::IsDefault)
         .order_by_asc(storage_buckets::Column::Id)
         .one(&ctx.db)
-        .await?
-        .ok_or_else(|| ApiError::bad_request("storage bucket not found"))
+        .await
+        .map_err(ApiError::from)
+}
+
+async fn preferred_buckets_for_profiles(
+    ctx: &AppContext,
+    profile_ids: &[i32],
+) -> ApiResult<HashMap<i32, storage_buckets::Model>> {
+    if profile_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let buckets = storage_buckets::Entity::find()
+        .filter(storage_buckets::Column::StorageProfileId.is_in(profile_ids.iter().copied()))
+        .filter(storage_buckets::Column::Enabled.eq(true))
+        .order_by_asc(storage_buckets::Column::StorageProfileId)
+        .order_by_desc(storage_buckets::Column::IsDefault)
+        .order_by_asc(storage_buckets::Column::Id)
+        .all(&ctx.db)
+        .await?;
+    let mut preferred = HashMap::new();
+    for bucket in buckets {
+        preferred.entry(bucket.storage_profile_id).or_insert(bucket);
+    }
+    Ok(preferred)
 }
 
 pub async fn find_profile(ctx: &AppContext, id: i32) -> ApiResult<storage_profiles::Model> {
@@ -744,6 +799,9 @@ impl From<storage_profiles::Model> for StorageProfileRecord {
             provider: profile.provider,
             enabled: profile.enabled,
             is_default: profile.is_default,
+            storage_bucket_id: None,
+            storage_bucket_name: None,
+            local_root: None,
             endpoint: profile.endpoint,
             region: profile.region,
             access_key_id: profile.access_key_id,
@@ -754,6 +812,21 @@ impl From<storage_profiles::Model> for StorageProfileRecord {
             created_at: profile.created_at.to_rfc3339(),
             updated_at: profile.updated_at.to_rfc3339(),
         }
+    }
+}
+
+impl StorageProfileRecord {
+    fn from_profile_and_bucket(
+        profile: storage_profiles::Model,
+        bucket: Option<storage_buckets::Model>,
+    ) -> Self {
+        let mut record = Self::from(profile);
+        if let Some(bucket) = bucket {
+            record.storage_bucket_id = Some(bucket.id);
+            record.storage_bucket_name = Some(bucket.name);
+            record.local_root = bucket.local_root;
+        }
+        record
     }
 }
 

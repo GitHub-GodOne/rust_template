@@ -22,11 +22,13 @@ tokio = { version = "1.45", default-features = false, features = [
   "macros",
   "sync",
   "process",
+  "fs",
   "io-util",
   "time",
   "net",
 ] }
 async-trait = { version = "0.1" }
+clap = { version = "4", features = ["derive"] }
 axum = { version = "0.8", features = ["multipart", "ws"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -46,13 +48,15 @@ axum-extra = { version = "0.10", features = ["form"] }
 sha2 = { version = "0.10" }
 hex = { version = "0.4" }
 base64 = { version = "0.22" }
+ring = { version = "0.17" }
 utoipa = { version = "5", features = ["chrono", "uuid"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "socks"] }
+reqwest = { version = "0.12", default-features = false, features = ["http2", "json", "multipart", "rustls-tls", "socks"] }
 object_store = { version = "0.11", features = ["aws"] }
 sysinfo = { version = "0.33" }
 portable-pty = { version = "0.8" }
 futures-util = { version = "0.3" }
 mime_guess = { version = "2.0" }
+url = { version = "2.5" }
 
 [[bin]]
 name = "gpt_images-cli"

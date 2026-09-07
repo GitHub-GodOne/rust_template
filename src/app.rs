@@ -67,6 +67,7 @@ impl Hooks for App {
             .add_route(controllers::auth::routes())
             .add_route(controllers::admin::routes())
             .add_route(controllers::admin::public_routes())
+            .add_route(controllers::setup::routes())
             .add_route(controllers::docs::routes())
             .add_route(controllers::frontend::routes())
     }
@@ -74,7 +75,13 @@ impl Hooks for App {
     fn middlewares(ctx: &AppContext) -> Vec<Box<dyn loco_middleware::MiddlewareLayer>> {
         let mut stack = loco_middleware::default_middleware_stack(ctx);
         stack.push(Box::new(
+            crate::middleware::api_key_auth::ApiKeyAuthMiddleware::new(ctx),
+        ));
+        stack.push(Box::new(
             crate::middleware::rate_limit::RateLimitMiddleware::new(ctx),
+        ));
+        stack.push(Box::new(
+            crate::middleware::static_hosting::StaticHostingMiddleware::new(ctx),
         ));
         stack
     }
@@ -87,6 +94,7 @@ impl Hooks for App {
     #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
         tasks.register(crate::tasks::admin::RecoverAdmin);
+        tasks.register(crate::tasks::admin::UnlockAdmin);
         tasks.register(crate::tasks::admin::SyncFixtureBaseline);
         tasks.register(crate::tasks::operations::RunDueScheduledTasks);
         // tasks-inject (do not remove)

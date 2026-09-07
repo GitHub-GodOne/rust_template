@@ -107,6 +107,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:file:list",
       },
       {
+        key: "system-static-hosting",
+        label: "静态托管",
+        path: "/admin/system/static-hosting",
+        icon: "global",
+        permission: "system:static_host:list",
+      },
+      {
         key: "system-chat-messages",
         label: "聊天管理",
         path: "/admin/system/chat-messages",
@@ -177,6 +184,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:command:list",
       },
       {
+        key: "system-api-keys",
+        label: "API 授权",
+        path: "/admin/system/api-keys",
+        icon: "key",
+        permission: "system:api_key:list",
+      },
+      {
         key: "system-ssh",
         label: "SSH 管理",
         path: "/admin/system/ssh",
@@ -240,30 +254,60 @@ export function cloneMenuItem(item: AdminMenuItem): AdminMenuItem {
   };
 }
 
+function collectMenuIdentities(
+  items: AdminMenuItem[],
+  identities = new Set<string>(),
+) {
+  for (const item of items) {
+    identities.add(menuIdentity(item));
+    collectMenuIdentities(item.children ?? [], identities);
+  }
+  return identities;
+}
+
 export function mergeMenuItems(
   sourceMenus: AdminMenuItem[],
   fallbackMenus: AdminMenuItem[],
 ): AdminMenuItem[] {
-  const merged = sourceMenus.map(cloneMenuItem);
+  const sourceIdentities = collectMenuIdentities(sourceMenus);
 
-  for (const fallback of fallbackMenus) {
-    const existing = merged.find(
-      (item) => menuIdentity(item) === menuIdentity(fallback),
-    );
-    if (!existing) {
-      merged.push(cloneMenuItem(fallback));
-      continue;
+  const mergeLevel = (
+    sourceLevel: AdminMenuItem[],
+    fallbackLevel: AdminMenuItem[],
+  ): AdminMenuItem[] => {
+    const merged = sourceLevel.map(cloneMenuItem);
+
+    for (const fallback of fallbackLevel) {
+      const identity = menuIdentity(fallback);
+      const existing = merged.find((item) => menuIdentity(item) === identity);
+      if (existing) {
+        if (fallback.children?.length) {
+          existing.children = mergeLevel(
+            existing.children ?? [],
+            fallback.children,
+          );
+        }
+        continue;
+      }
+
+      // The API may have moved this item under another parent. Do not restore
+      // a second copy at its default location.
+      if (sourceIdentities.has(identity)) {
+        continue;
+      }
+
+      merged.push({
+        ...fallback,
+        children: fallback.children
+          ? mergeLevel([], fallback.children)
+          : undefined,
+      });
     }
 
-    if (fallback.children?.length) {
-      existing.children = mergeMenuItems(
-        existing.children ?? [],
-        fallback.children,
-      );
-    }
-  }
+    return merged;
+  };
 
-  return merged;
+  return mergeLevel(sourceMenus, fallbackMenus);
 }
 
 export function findMenuByPath(pathname: string, items = defaultAdminMenus) {

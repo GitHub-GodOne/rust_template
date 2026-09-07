@@ -12,6 +12,8 @@ export type UploadRecord = {
   etag?: string | null;
   object_key: string;
   url: string;
+  public_url?: string | null;
+  download_url?: string;
   original_name: string;
   filename: string;
   extension?: string | null;
@@ -25,6 +27,16 @@ export type UploadRecord = {
   uploader_id?: number | null;
   created_at: string;
   updated_at: string;
+};
+
+export type UploadContentRecord = {
+  content: string;
+  size_bytes: number;
+  updated_at?: string | null;
+};
+
+export type UpdateUploadContentParams = {
+  content: string;
 };
 
 export type StoragePrefixRecord = {
@@ -45,6 +57,7 @@ export type StorageObjectRecord = {
 export type StorageBrowserRecord = {
   prefixes: StoragePrefixRecord[];
   objects: StorageObjectRecord[];
+  managed_object_keys?: string[];
 };
 
 export type UpdateUploadParams = {
@@ -91,6 +104,14 @@ export type ImportUploadObjectsRecord = {
 export type CreateUploadFolderParams = {
   storage_bucket_id: number;
   prefix: string;
+};
+
+export type CreateUploadFileParams = {
+  storage_bucket_id: number;
+  prefix?: string | null;
+  name: string;
+  content?: string;
+  visibility?: "private" | "public";
 };
 
 export type RenameUploadParams = {
@@ -220,6 +241,14 @@ export async function createUploadFolder(payload: CreateUploadFolderParams) {
   return unwrap(response.data);
 }
 
+export async function createUploadFile(payload: CreateUploadFileParams) {
+  const response = await apiClient.post<ApiResponse<UploadRecord>>(
+    "/admin/uploads/files",
+    payload,
+  );
+  return unwrap(response.data);
+}
+
 export async function renameUpload(id: number, payload: RenameUploadParams) {
   const response = await apiClient.put<ApiResponse<UploadRecord>>(
     `/admin/uploads/${id}/rename`,
@@ -281,6 +310,24 @@ export async function updateUpload(id: number, payload: UpdateUploadParams) {
   return unwrap(response.data);
 }
 
+export async function fetchUploadContent(id: number) {
+  const response = await apiClient.get<ApiResponse<UploadContentRecord>>(
+    `/admin/uploads/${id}/content`,
+  );
+  return unwrap(response.data);
+}
+
+export async function updateUploadContent(
+  id: number,
+  payload: UpdateUploadContentParams,
+) {
+  const response = await apiClient.put<ApiResponse<UploadRecord>>(
+    `/admin/uploads/${id}/content`,
+    payload,
+  );
+  return unwrap(response.data);
+}
+
 export async function deleteUpload(id: number) {
   await apiClient.delete(`/admin/uploads/${id}`);
 }
@@ -288,6 +335,7 @@ export async function deleteUpload(id: number) {
 export async function downloadUpload(id: number) {
   const response = await apiClient.get(`/admin/uploads/${id}/download`, {
     responseType: "blob",
+    timeout: 0,
   });
   return response.data as Blob;
 }
@@ -295,6 +343,7 @@ export async function downloadUpload(id: number) {
 export async function previewUpload(id: number) {
   const response = await apiClient.get(`/admin/uploads/${id}/preview`, {
     responseType: "blob",
+    timeout: 0,
   });
   return response.data as Blob;
 }

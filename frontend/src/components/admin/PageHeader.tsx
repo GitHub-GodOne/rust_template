@@ -23,7 +23,7 @@ export function PageHeader({
             items={breadcrumb.map((item) => ({ title: item }))}
           />
         )}
-        <Space align="center">
+        <Space align="center" size={12}>
           {icon && <span className="page-header-icon">{icon}</span>}
           <div>
             <Typography.Title level={3} className="page-title">
@@ -35,7 +35,7 @@ export function PageHeader({
           </div>
         </Space>
       </div>
-      {extra && <div>{extra}</div>}
+      {extra && <div className="page-header-extra">{extra}</div>}
     </div>
   );
 }

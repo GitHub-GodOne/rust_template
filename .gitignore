@@ -6,7 +6,7 @@
 # will have compiled files and executables
 debug/
 target/
-storage/
+/storage/
 
 # include cargo lock
 !Cargo.lock

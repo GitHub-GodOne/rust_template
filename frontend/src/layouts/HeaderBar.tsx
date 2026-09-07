@@ -4,6 +4,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  SearchOutlined,
   SettingOutlined,
   UserOutlined,
   ZoomInOutlined,
@@ -16,6 +17,7 @@ import {
   Layout,
   Select,
   Space,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -31,9 +33,11 @@ const { Header } = Layout;
 export function HeaderBar({
   collapsed,
   onToggle,
+  onOpenMenuSearch,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  onOpenMenuSearch: () => void;
 }) {
   const user = useAuthStore((state) => state.user);
   const tenant = useAuthStore((state) => state.tenant);
@@ -92,6 +96,25 @@ export function HeaderBar({
       label: "系统设置",
       onClick: () => navigate("/admin/system/settings"),
     },
+    ...(showDepartmentSwitch
+      ? [
+          {
+            type: "group" as const,
+            label: "切换部门",
+            children: departments.map((department) => ({
+              key: `department-${department.id}`,
+              icon: <BranchesOutlined />,
+              label:
+                department.id === currentDepartment?.id
+                  ? `${department.name}（当前）`
+                  : department.name,
+              disabled:
+                switchingDepartment || department.id === currentDepartment?.id,
+              onClick: () => handleDepartmentChange(department.id),
+            })),
+          },
+        ]
+      : []),
     {
       type: "divider",
     },
@@ -109,25 +132,41 @@ export function HeaderBar({
 
   return (
     <Header className="admin-header">
-      <Space size={16}>
-        <Button
-          type="text"
-          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-          onClick={onToggle}
-        />
-        <div>
-          <Typography.Text strong>后台管理模板</Typography.Text>
+      <Space size={12} className="admin-header-leading">
+        <Tooltip title={collapsed ? "展开导航" : "收起导航"}>
+          <Button
+            type="text"
+            className="admin-icon-button"
+            aria-label={collapsed ? "展开导航" : "收起导航"}
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={onToggle}
+          />
+        </Tooltip>
+        <div className="admin-header-title-wrap">
+          <Typography.Text strong className="admin-header-title">
+            后台管理
+          </Typography.Text>
           <Typography.Text type="secondary" className="admin-header-subtitle">
-            专业、组件化、可扩展
+            管理平台
           </Typography.Text>
         </div>
       </Space>
       <Space size={12} className="admin-header-actions">
+        <Tooltip title="搜索菜单">
+          <Button
+            type="text"
+            className="admin-icon-button admin-menu-search-trigger"
+            aria-label="搜索菜单"
+            icon={<SearchOutlined />}
+            onClick={onOpenMenuSearch}
+          />
+        </Tooltip>
         <Space.Compact className="admin-zoom-control">
           <Button
             type="text"
             aria-label="缩小页面"
             icon={<ZoomOutOutlined />}
+            disabled={contentZoom <= 0.7}
             onClick={zoomOut}
           />
           <Button
@@ -142,6 +181,7 @@ export function HeaderBar({
             type="text"
             aria-label="放大页面"
             icon={<ZoomInOutlined />}
+            disabled={contentZoom >= 1}
             onClick={zoomIn}
           />
         </Space.Compact>
@@ -160,11 +200,19 @@ export function HeaderBar({
             onChange={handleDepartmentChange}
           />
         ) : null}
-        <Dropdown menu={{ items: menuItems }} placement="bottomRight">
-          <Button type="text" className="admin-user-button">
+        <Dropdown
+          menu={{ items: menuItems }}
+          placement="bottomRight"
+          trigger={["click"]}
+        >
+          <Button
+            type="text"
+            className="admin-user-button"
+            aria-label="账户菜单"
+          >
             <Space>
-              <Avatar size="small" icon={<UserOutlined />} />
-              <span>{user?.name ?? "管理员"}</span>
+              <Avatar size={30} icon={<UserOutlined />} />
+              <span className="admin-user-name">{user?.name ?? "管理员"}</span>
             </Space>
           </Button>
         </Dropdown>

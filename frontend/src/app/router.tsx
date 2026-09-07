@@ -3,10 +3,13 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { current } from "../api/auth";
+import { getSetupStatus } from "../api/setup";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
-import { DashboardPage } from "../pages/dashboard/DashboardPage";
+import { DashboardPage } from "../pages/auth/dashboard/DashboardPage";
+import { SetupPage } from "../pages/setup/SetupPage";
 import { AiImagesPage } from "../pages/system/ai-images/AiImagesPage";
+import { ApiKeysPage } from "../pages/system/api-keys/ApiKeysPage";
 import { BackupsPage } from "../pages/system/backups/BackupsPage";
 import { ChatMessagesPage } from "../pages/system/chat-messages/ChatMessagesPage";
 import { CommandsPage } from "../pages/system/commands/CommandsPage";
@@ -25,6 +28,7 @@ import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
 import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
 import { SettingsPage } from "../pages/system/settings/SettingsPage";
+import { StaticHostingPage } from "../pages/system/static-hosting/StaticHostingPage";
 import { StorageProfilesPage } from "../pages/system/storage/StorageProfilesPage";
 import { TenantsPage } from "../pages/system/tenants/TenantsPage";
 import { UploadTasksPage } from "../pages/system/upload-tasks/UploadTasksPage";
@@ -32,6 +36,44 @@ import { UploadsPage } from "../pages/system/uploads/UploadsPage";
 import { UsersPage } from "../pages/system/users/UsersPage";
 import { WorkOrdersPage } from "../pages/system/work-orders/WorkOrdersPage";
 import { useAuthStore } from "../stores/auth";
+
+function SetupBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const [configured, setConfigured] = useState<boolean>();
+
+  useEffect(() => {
+    let mounted = true;
+    getSetupStatus()
+      .then((status) => {
+        if (mounted) {
+          setConfigured(status.configured);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setConfigured(location.pathname !== "/setup");
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [location.pathname]);
+
+  if (configured === undefined) {
+    return (
+      <div className="route-loading">
+        <Spin />
+      </div>
+    );
+  }
+  if (!configured && location.pathname !== "/setup") {
+    return <Navigate replace to="/setup" />;
+  }
+  if (configured && location.pathname === "/setup") {
+    return <Navigate replace to="/login" />;
+  }
+  return children;
+}
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((state) => state.accessToken);
@@ -118,243 +160,262 @@ function RequirePermission({
 
 export function AppRouter() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/admin"
-        element={
-          <RequireAuth>
-            <AdminLayout />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<Navigate replace to="/admin/dashboard" />} />
+    <SetupBoundary>
+      <Routes>
+        <Route path="/setup" element={<SetupPage />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route
-          path="dashboard"
+          path="/admin"
           element={
-            <RequirePermission permission="dashboard:view">
-              <DashboardPage />
-            </RequirePermission>
+            <RequireAuth>
+              <AdminLayout />
+            </RequireAuth>
           }
-        />
-        <Route
-          path="system/users"
-          element={
-            <RequirePermission permission="system:user:list">
-              <UsersPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/roles"
-          element={
-            <RequirePermission permission="system:role:list">
-              <RolesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/tenants"
-          element={
-            <RequirePermission permission="system:tenant:list">
-              <TenantsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/departments"
-          element={
-            <RequirePermission permission="system:department:list">
-              <DepartmentsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/menus"
-          element={
-            <RequirePermission permission="system:menu:list">
-              <MenusPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/permissions"
-          element={
-            <RequirePermission permission="system:permission:list">
-              <PermissionsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/logs"
-          element={
-            <RequirePermission permission="system:log:list">
-              <LogsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/uploads"
-          element={
-            <RequirePermission permission="system:upload:list">
-              <UploadsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/upload-tasks"
-          element={
-            <RequirePermission permission="system:upload:list">
-              <UploadTasksPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/files"
-          element={
-            <RequirePermission permission="system:file:list">
-              <FilesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/chat-messages"
-          element={
-            <RequirePermission permission="system:chat:list">
-              <ChatMessagesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/storage"
-          element={
-            <RequirePermission permission="system:storage:list">
-              <StorageProfilesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/settings"
-          element={
-            <RequirePermission permission="system:setting:list">
-              <SettingsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/http-client"
-          element={
-            <RequirePermission permission="system:http_client:config">
-              <HttpClientPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/notifications"
-          element={
-            <RequirePermission permission="system:notification:list">
-              <NotificationsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/scheduled-tasks"
-          element={
-            <RequirePermission permission="system:scheduled_task:list">
-              <ScheduledTasksPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/backups"
-          element={
-            <RequirePermission permission="system:backup:list">
-              <BackupsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/docs"
-          element={
-            <RequirePermission permission="system:docs:view">
-              <DocsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/monitoring"
-          element={
-            <RequirePermission permission="system:monitor:view">
-              <MonitoringPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/commands"
-          element={
-            <RequirePermission permission="system:command:list">
-              <CommandsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/ssh"
-          element={
-            <RequirePermission permission="system:ssh:list">
-              {null}
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/vnc"
-          element={
-            <RequirePermission permission="system:vnc:list">
-              {null}
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/ai-images"
-          element={
-            <RequirePermission permission="system:ai_image:list">
-              <AiImagesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/email-templates"
-          element={
-            <RequirePermission permission="system:email_template:list">
-              <EmailTemplatesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/work-orders"
-          element={
-            <RequirePermission permission="system:work_order:list">
-              <WorkOrdersPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/payments"
-          element={
-            <RequirePermission permission="system:payment_order:list">
-              <PaymentsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="system/content"
-          element={
-            <RequirePermission permission="system:content_article:list">
-              <ContentPage />
-            </RequirePermission>
-          }
-        />
-      </Route>
-      <Route path="*" element={<Navigate replace to="/admin/dashboard" />} />
-    </Routes>
+        >
+          <Route index element={<Navigate replace to="/admin/dashboard" />} />
+          <Route
+            path="dashboard"
+            element={
+              <RequirePermission permission="dashboard:view">
+                <DashboardPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/users"
+            element={
+              <RequirePermission permission="system:user:list">
+                <UsersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/roles"
+            element={
+              <RequirePermission permission="system:role:list">
+                <RolesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/tenants"
+            element={
+              <RequirePermission permission="system:tenant:list">
+                <TenantsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/departments"
+            element={
+              <RequirePermission permission="system:department:list">
+                <DepartmentsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/menus"
+            element={
+              <RequirePermission permission="system:menu:list">
+                <MenusPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/permissions"
+            element={
+              <RequirePermission permission="system:permission:list">
+                <PermissionsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/logs"
+            element={
+              <RequirePermission permission="system:log:list">
+                <LogsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/uploads"
+            element={
+              <RequirePermission permission="system:upload:list">
+                <UploadsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/upload-tasks"
+            element={
+              <RequirePermission permission="system:upload:list">
+                <UploadTasksPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/files"
+            element={
+              <RequirePermission permission="system:file:list">
+                <FilesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/static-hosting"
+            element={
+              <RequirePermission permission="system:static_host:list">
+                <StaticHostingPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/chat-messages"
+            element={
+              <RequirePermission permission="system:chat:list">
+                <ChatMessagesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/storage"
+            element={
+              <RequirePermission permission="system:storage:list">
+                <StorageProfilesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/settings"
+            element={
+              <RequirePermission permission="system:setting:list">
+                <SettingsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/http-client"
+            element={
+              <RequirePermission permission="system:http_client:config">
+                <HttpClientPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/notifications"
+            element={
+              <RequirePermission permission="system:notification:list">
+                <NotificationsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/scheduled-tasks"
+            element={
+              <RequirePermission permission="system:scheduled_task:list">
+                <ScheduledTasksPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/backups"
+            element={
+              <RequirePermission permission="system:backup:list">
+                <BackupsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/docs"
+            element={
+              <RequirePermission permission="system:docs:view">
+                <DocsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/monitoring"
+            element={
+              <RequirePermission permission="system:monitor:view">
+                <MonitoringPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/commands"
+            element={
+              <RequirePermission permission="system:command:list">
+                <CommandsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/api-keys"
+            element={
+              <RequirePermission permission="system:api_key:list">
+                <ApiKeysPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/ssh"
+            element={
+              <RequirePermission permission="system:ssh:list">
+                {null}
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/vnc"
+            element={
+              <RequirePermission permission="system:vnc:list">
+                {null}
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/ai-images"
+            element={
+              <RequirePermission permission="system:ai_image:list">
+                <AiImagesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/email-templates"
+            element={
+              <RequirePermission permission="system:email_template:list">
+                <EmailTemplatesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/work-orders"
+            element={
+              <RequirePermission permission="system:work_order:list">
+                <WorkOrdersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/payments"
+            element={
+              <RequirePermission permission="system:payment_order:list">
+                <PaymentsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/content"
+            element={
+              <RequirePermission permission="system:content_article:list">
+                <ContentPage />
+              </RequirePermission>
+            }
+          />
+        </Route>
+        <Route path="*" element={<Navigate replace to="/admin/dashboard" />} />
+      </Routes>
+    </SetupBoundary>
   );
 }

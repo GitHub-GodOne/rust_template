@@ -8,6 +8,7 @@ import {
   mergeMenuItems,
 } from "../app/menu";
 import { useAuthStore } from "../stores/auth";
+import { useUiStore } from "../stores/ui";
 import { renderMenuIcon } from "./icons";
 
 const { Sider } = Layout;
@@ -17,7 +18,7 @@ function buildMenuItems(
   hasPermission: (permission?: AdminMenuItem["permission"]) => boolean,
 ): MenuProps["items"] {
   return menus
-    .filter((item) => hasPermission(item.permission))
+    .filter((item) => hasPermission(item.permission ?? item.permission_code))
     .map((item) => {
       const children = item.children?.length
         ? buildMenuItems(item.children, hasPermission)
@@ -32,16 +33,24 @@ function buildMenuItems(
     });
 }
 
-function findOpenKeys(pathname: string, menus: AdminMenuItem[]) {
-  const keys: string[] = [];
-
+function findOpenKeys(
+  pathname: string,
+  menus: AdminMenuItem[],
+): string[] | undefined {
   for (const item of menus) {
-    if (item.children?.some((child) => child.path === pathname)) {
-      keys.push(item.path ?? item.key);
+    if (item.path === pathname) {
+      return [];
+    }
+
+    if (item.children?.length) {
+      const childKeys = findOpenKeys(pathname, item.children);
+      if (childKeys) {
+        return [item.path ?? item.key, ...childKeys];
+      }
     }
   }
 
-  return keys;
+  return undefined;
 }
 
 function SidebarContent({
@@ -52,7 +61,12 @@ function SidebarContent({
   onNavigate?: () => void;
 }) {
   const menus = useAuthStore((state) => state.menus);
+  const userId = useAuthStore((state) => state.user?.pid ?? "anonymous");
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const storedOpenKeys = useUiStore(
+    (state) => state.sidebarOpenKeysByUser[userId],
+  );
+  const setSidebarOpenKeys = useUiStore((state) => state.setSidebarOpenKeys);
   const navigate = useNavigate();
   const location = useLocation();
   const visibleMenus = useMemo(
@@ -66,6 +80,8 @@ function SidebarContent({
     () => buildMenuItems(visibleMenus, hasPermission),
     [visibleMenus, hasPermission],
   );
+  const openKeys =
+    storedOpenKeys ?? findOpenKeys(location.pathname, visibleMenus);
 
   return (
     <>
@@ -73,7 +89,7 @@ function SidebarContent({
         <div className="admin-brand-mark">G</div>
         {!collapsed && (
           <div>
-            <div className="admin-brand-title">GPT Images</div>
+            <div className="admin-brand-title">后台管理</div>
             <div className="admin-brand-subtitle">Admin Template</div>
           </div>
         )}
@@ -82,8 +98,9 @@ function SidebarContent({
         theme="dark"
         mode="inline"
         selectedKeys={[location.pathname]}
-        defaultOpenKeys={findOpenKeys(location.pathname, visibleMenus)}
+        openKeys={openKeys}
         items={items}
+        onOpenChange={(keys) => setSidebarOpenKeys(userId, keys)}
         onClick={({ key }) => {
           if (key.startsWith("/")) {
             navigate(key);
@@ -115,7 +132,7 @@ export function Sidebar({
         width={282}
         closable={false}
         className="admin-mobile-drawer"
-        styles={{ body: { padding: 0, background: "#001529" } }}
+        styles={{ body: { padding: 0, background: "#282623" } }}
       >
         <div className="admin-mobile-sidebar">
           <SidebarContent collapsed={false} onNavigate={onClose} />
@@ -125,7 +142,12 @@ export function Sidebar({
   }
 
   return (
-    <Sider collapsed={collapsed} width={256} className="admin-sidebar">
+    <Sider
+      collapsed={collapsed}
+      collapsedWidth={72}
+      width={248}
+      className="admin-sidebar"
+    >
       <SidebarContent collapsed={collapsed} />
     </Sider>
   );

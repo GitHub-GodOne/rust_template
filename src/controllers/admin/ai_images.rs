@@ -58,6 +58,19 @@ struct AiImageConfig {
     description: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ImageApiProviderConfig {
+    pub key: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub image_model: String,
+    pub size: String,
+    pub quality: String,
+    pub storage_bucket_id: Option<i32>,
+    pub storage_prefix: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct AiImageConfigRecord {
     pub key: String,
@@ -645,6 +658,7 @@ async fn read_reference_image(
 }
 
 async fn read_file_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<u8>> {
+    let limit_message = system_settings_model::upload_limit_error_message(max_bytes);
     let max_bytes = usize::try_from(max_bytes).unwrap_or(usize::MAX);
     let mut bytes = Vec::new();
     while let Some(chunk) = field
@@ -653,7 +667,7 @@ async fn read_file_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<
         .map_err(|_| ApiError::bad_request("failed to read uploaded file"))?
     {
         if bytes.len().saturating_add(chunk.len()) > max_bytes {
-            return Err(ApiError::bad_request("uploaded file is too large"));
+            return Err(ApiError::bad_request(limit_message));
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -1021,6 +1035,47 @@ async fn load_configs(ctx: &AppContext) -> ApiResult<Vec<AiImageConfig>> {
         .map_err(|_| ApiError::bad_request("invalid ai image config setting"))
 }
 
+pub(crate) async fn resolve_image_api_provider(
+    ctx: &AppContext,
+    config_key: Option<&str>,
+) -> ApiResult<Option<ImageApiProviderConfig>> {
+    let configs = load_configs(ctx).await?;
+    let selected = if let Some(config_key) = config_key
+        .map(str::trim)
+        .filter(|config_key| !config_key.is_empty())
+    {
+        let config = configs
+            .into_iter()
+            .find(|config| config.key == config_key)
+            .ok_or_else(|| ApiError::bad_request("ai image config not found"))?;
+        if !config.enabled {
+            return Err(ApiError::bad_request("ai image config is disabled"));
+        }
+        Some(config)
+    } else {
+        configs.into_iter().find(|config| config.enabled)
+    };
+
+    selected
+        .map(|config| {
+            if config.api_key.trim().is_empty() {
+                return Err(ApiError::bad_request("ai image config api_key is required"));
+            }
+            Ok(ImageApiProviderConfig {
+                key: config.key,
+                name: config.name,
+                base_url: config.base_url,
+                api_key: config.api_key,
+                image_model: config.model,
+                size: config.size,
+                quality: config.quality,
+                storage_bucket_id: config.storage_bucket_id,
+                storage_prefix: config.storage_prefix,
+            })
+        })
+        .transpose()
+}
+
 async fn save_configs(ctx: &AppContext, user_id: i32, configs: &[AiImageConfig]) -> ApiResult<()> {
     let value = serde_json::to_string(configs)
         .map_err(|_| ApiError::internal("failed to serialize ai image configs"))?;
@@ -1319,9 +1374,7 @@ fn sanitize_filename(file_name: &str) -> String {
 }
 
 async fn upload_limit_bytes(ctx: &AppContext) -> ApiResult<i64> {
-    let max_mb =
-        crate::models::system_settings::number_i64(&ctx.db, "upload.max_size_mb", 20).await?;
-    Ok(max_mb.max(1) * 1024 * 1024)
+    Ok(system_settings_model::upload_limit_bytes(&ctx.db).await?)
 }
 
 fn parse_i32(value: &str, field: &str) -> ApiResult<i32> {

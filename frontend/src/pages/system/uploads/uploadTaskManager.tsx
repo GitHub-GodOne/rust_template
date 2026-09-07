@@ -174,6 +174,16 @@ type UseUploadTaskManagerOptions = {
   visibility: "private" | "public";
 };
 
+export type ChunkUploadStage = "preparing" | "uploading" | "finishing";
+
+export type ChunkUploadLifecycle = {
+  onStageChange?: (stage: ChunkUploadStage) => void;
+  onProgress?: (percent: number) => void;
+  onComplete?: (task: UploadTaskRecord) => void;
+  onPaused?: (task: UploadTaskRecord) => void;
+  onError?: (error: unknown) => void;
+};
+
 export function useUploadTaskManager({
   bucketId,
   prefix,
@@ -187,12 +197,17 @@ export function useUploadTaskManager({
   const startChunkUpload = async (
     file: File,
     existingTask?: UploadTaskRecord,
+    lifecycle?: ChunkUploadLifecycle,
   ) => {
     if (!bucketId && !existingTask?.storage_bucket_id) {
-      message.warning("请先选择存储桶");
+      const error = new Error("请先选择存储桶");
+      message.warning(error.message);
+      lifecycle?.onError?.(error);
       return;
     }
     let task = existingTask;
+    lifecycle?.onStageChange?.(existingTask ? "uploading" : "preparing");
+    lifecycle?.onProgress?.(0);
     try {
       task ??= await createUploadTask({
         storage_bucket_id: bucketId ?? 0,
@@ -204,6 +219,7 @@ export function useUploadTaskManager({
         prefix,
         visibility,
       });
+      lifecycle?.onStageChange?.("uploading");
       setTaskRunning(task.id, { file, paused: false });
       queryClient.setQueryData<UploadTaskRecord[]>(
         ["admin-upload-tasks"],
@@ -216,6 +232,12 @@ export function useUploadTaskManager({
         },
       );
       const uploaded = new Set(task.uploaded_chunks);
+      const totalChunks = task.total_chunks;
+      lifecycle?.onProgress?.(
+        totalChunks === 0
+          ? 99
+          : Math.min(99, Math.round((uploaded.size / totalChunks) * 100)),
+      );
       for (let index = 0; index < task.total_chunks; index += 1) {
         const running = useUploadTasksStore.getState().runningUploads[task.id];
         if (!running || running.paused) {
@@ -229,8 +251,21 @@ export function useUploadTaskManager({
           start,
           Math.min(file.size, start + task.chunk_size),
         );
-        task = await uploadTaskChunk(task.id, index, chunk);
+        task = await uploadTaskChunk(task.id, index, chunk, (chunkPercent) => {
+          const overallPercent =
+            totalChunks === 0
+              ? 99
+              : ((uploaded.size + chunkPercent / 100) / totalChunks) * 100;
+          lifecycle?.onProgress?.(
+            Math.min(99, Math.max(0, Math.round(overallPercent))),
+          );
+        });
         uploaded.add(index);
+        lifecycle?.onProgress?.(
+          totalChunks === 0
+            ? 99
+            : Math.min(99, Math.round((uploaded.size / totalChunks) * 100)),
+        );
         queryClient.setQueryData<UploadTaskRecord[]>(
           ["admin-upload-tasks"],
           (tasks) =>
@@ -240,9 +275,12 @@ export function useUploadTaskManager({
       const running = useUploadTasksStore.getState().runningUploads[task.id];
       if (running?.paused) {
         message.info("上传已暂停，可在上传任务页面继续");
+        lifecycle?.onPaused?.(task);
         return;
       }
       if (isTaskFullyUploaded(task)) {
+        lifecycle?.onStageChange?.("finishing");
+        lifecycle?.onProgress?.(100);
         task = await completeUploadTask(task.id);
         message.success(
           `${task.original_name} 已提交入库，上传任务页面会自动更新结果`,
@@ -251,12 +289,14 @@ export function useUploadTaskManager({
         queryClient.invalidateQueries({ queryKey: ["admin-upload-tasks"] });
         queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
         queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
+        lifecycle?.onComplete?.(task);
       }
     } catch (error) {
       if (task) {
         setTaskRunning(task.id);
       }
       message.error(error instanceof Error ? error.message : "分片上传失败");
+      lifecycle?.onError?.(error);
       queryClient.invalidateQueries({ queryKey: ["admin-upload-tasks"] });
     }
   };

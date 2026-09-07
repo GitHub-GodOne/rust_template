@@ -323,7 +323,10 @@ pub async fn login(
                 "账号已因登录失败次数过多被锁定，请明天再试",
             ));
         }
-        return Err(ApiError::unauthorized("unauthorized!"));
+        return Err(ApiError::unauthorized(format!(
+            "账号或密码错误，还可尝试 {} 次",
+            3 - attempts
+        )));
     }
 
     let user = reset_login_failures(&ctx, &user).await?;

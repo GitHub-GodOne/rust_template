@@ -6,7 +6,6 @@ import {
   EditOutlined,
   EyeOutlined,
   FileSearchOutlined,
-  KeyOutlined,
   MinusCircleOutlined,
   NumberOutlined,
   PlayCircleOutlined,
@@ -35,27 +34,23 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchApiKeys } from "../../../api/admin/apiKeys";
 import {
-  type CommandApiKeyRecord,
   type CommandRunLogRecord,
   type CommandRunRecord,
   type CommandTemplateRecord,
   type CommandWorkflowRecord,
   type CommandWorkflowRunRecord,
   type RunCommandParams,
-  type SaveCommandApiKeyParams,
   type SaveCommandTemplateParams,
   type SaveCommandWorkflowParams,
   buildCommandRunLogWebSocketUrl,
   cancelCommandRun,
-  createCommandApiKey,
   createCommandRunLogTicket,
   createCommandTemplate,
   createCommandWorkflow,
-  deleteCommandApiKey,
   deleteCommandTemplate,
   deleteCommandWorkflow,
-  fetchCommandApiKeys,
   fetchCommandRun,
   fetchCommandRunLogs,
   fetchCommandRuns,
@@ -67,7 +62,6 @@ import {
   runAdHocCommand,
   runCommandTemplate,
   runCommandWorkflow,
-  updateCommandApiKey,
   updateCommandTemplate,
   updateCommandWorkflow,
 } from "../../../api/admin/commands";
@@ -76,6 +70,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { useAuthStore } from "../../../stores/auth";
 import { fileKind, mimeFromExtension } from "../uploads/uploadTaskManager";
 
 const statusColor: Record<string, string> = {
@@ -296,17 +291,13 @@ function parseCommandLineForEdit(
 
 export function CommandsPage() {
   const [templatePage, setTemplatePage] = useState(1);
-  const [apiKeyPage, setApiKeyPage] = useState(1);
   const [runPage, setRunPage] = useState(1);
   const [workflowPage, setWorkflowPage] = useState(1);
   const [workflowRunPage, setWorkflowRunPage] = useState(1);
   const [editing, setEditing] = useState<CommandTemplateRecord | null>(null);
-  const [editingApiKey, setEditingApiKey] =
-    useState<CommandApiKeyRecord | null>(null);
   const [editingWorkflow, setEditingWorkflow] =
     useState<CommandWorkflowRecord | null>(null);
   const [templateOpen, setTemplateOpen] = useState(false);
-  const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
   const [detailRunId, setDetailRunId] = useState<number | null>(null);
@@ -322,7 +313,6 @@ export function CommandsPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [logs, setLogs] = useState<CommandRunLogRecord[]>([]);
   const [templateForm] = Form.useForm<SaveCommandTemplateParams>();
-  const [apiKeyForm] = Form.useForm<SaveCommandApiKeyParams>();
   const [workflowForm] = Form.useForm<WorkflowFormValues>();
   const [runForm] = Form.useForm<RunFormValues>();
   const runArgRefs = useRef<Record<number, InputElementRef | null>>({});
@@ -330,7 +320,12 @@ export function CommandsPage() {
     {},
   );
   const lastSeqRef = useRef(0);
+  const logViewerRef = useRef<HTMLPreElement | null>(null);
+  const shouldFollowLogsRef = useRef(true);
   const queryClient = useQueryClient();
+  const canListApiKeys = useAuthStore((state) =>
+    state.hasPermission("system:api_key:list"),
+  );
 
   const templatesQuery = useQuery({
     queryKey: ["admin-command-templates", templatePage],
@@ -341,8 +336,10 @@ export function CommandsPage() {
     queryFn: () => fetchCommandTemplates({ page: 1, page_size: 100 }),
   });
   const apiKeysQuery = useQuery({
-    queryKey: ["admin-command-api-keys", apiKeyPage],
-    queryFn: () => fetchCommandApiKeys({ page: apiKeyPage, page_size: 10 }),
+    queryKey: ["admin-api-keys", "command-curl"],
+    queryFn: () => fetchApiKeys({ page: 1, page_size: 100, enabled: true }),
+    enabled: canListApiKeys,
+    staleTime: 30_000,
   });
   const runsQuery = useQuery({
     queryKey: ["admin-command-runs", runPage],
@@ -428,38 +425,6 @@ export function CommandsPage() {
     },
     onError: (error) => {
       message.error(error.message || "命令模板删除失败");
-    },
-  });
-  const saveApiKeyMutation = useMutation({
-    mutationFn: (values: SaveCommandApiKeyParams) => {
-      const payload = {
-        ...values,
-        token: normalizeEmpty(values.token),
-        description: normalizeEmpty(values.description),
-        enabled: values.enabled ?? true,
-      };
-      return editingApiKey
-        ? updateCommandApiKey(editingApiKey.id, payload)
-        : createCommandApiKey(payload);
-    },
-    onSuccess: () => {
-      message.success("API 授权密钥已保存");
-      setApiKeyOpen(false);
-      setEditingApiKey(null);
-      queryClient.invalidateQueries({ queryKey: ["admin-command-api-keys"] });
-    },
-    onError: (error) => {
-      message.error(error.message || "API 授权密钥保存失败");
-    },
-  });
-  const deleteApiKeyMutation = useMutation({
-    mutationFn: deleteCommandApiKey,
-    onSuccess: () => {
-      message.success("API 授权密钥已删除");
-      queryClient.invalidateQueries({ queryKey: ["admin-command-api-keys"] });
-    },
-    onError: (error) => {
-      message.error(error.message || "API 授权密钥删除失败");
     },
   });
   const saveWorkflowMutation = useMutation({
@@ -554,6 +519,7 @@ export function CommandsPage() {
     setDetailRunId(runId);
     setLogs([]);
     lastSeqRef.current = 0;
+    shouldFollowLogsRef.current = true;
   }, []);
 
   const closePreview = () => {
@@ -660,6 +626,34 @@ export function CommandsPage() {
         .join(""),
     [logs],
   );
+
+  useEffect(() => {
+    const viewer = logViewerRef.current;
+    const hasLogContent = Boolean(logText || detailQuery.data?.output_tail);
+    if (
+      !detailRunId ||
+      !viewer ||
+      !hasLogContent ||
+      !shouldFollowLogsRef.current
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      viewer.scrollTop = viewer.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detailQuery.data?.output_tail, detailRunId, logText]);
+
+  const handleLogViewerScroll = useCallback(() => {
+    const viewer = logViewerRef.current;
+    if (!viewer) {
+      return;
+    }
+    const distanceFromBottom =
+      viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight;
+    shouldFollowLogsRef.current = distanceFromBottom <= 48;
+  }, []);
+
   const activeApiKey = useMemo(
     () => apiKeysQuery.data?.items.find((key) => key.enabled) ?? null,
     [apiKeysQuery.data?.items],
@@ -672,7 +666,7 @@ export function CommandsPage() {
 
   const copyRunCurl = async (run: CommandRunRecord) => {
     if (!activeApiKey) {
-      message.warning("请先在 API 授权中添加并启用密钥");
+      message.warning("请先在 API 授权管理中添加并启用密钥");
       return;
     }
     await copyText(
@@ -683,7 +677,7 @@ export function CommandsPage() {
 
   const copyRunStatusCurl = async (runId: number) => {
     if (!activeApiKey) {
-      message.warning("请先在 API 授权中添加并启用密钥");
+      message.warning("请先在 API 授权管理中添加并启用密钥");
       return;
     }
     await copyText(
@@ -694,7 +688,7 @@ export function CommandsPage() {
 
   const copyTemplateCurl = async (template: CommandTemplateRecord) => {
     if (!activeApiKey) {
-      message.warning("请先在 API 授权中添加并启用密钥");
+      message.warning("请先在 API 授权管理中添加并启用密钥");
       return;
     }
     await copyText(
@@ -716,17 +710,6 @@ export function CommandsPage() {
       },
     );
     setTemplateOpen(true);
-  };
-
-  const openApiKeyEditor = (record?: CommandApiKeyRecord) => {
-    setEditingApiKey(record ?? null);
-    apiKeyForm.resetFields();
-    apiKeyForm.setFieldsValue(
-      record ?? {
-        enabled: true,
-      },
-    );
-    setApiKeyOpen(true);
   };
 
   const cloneTemplate = (record: CommandTemplateRecord) => {
@@ -911,13 +894,14 @@ export function CommandsPage() {
           >
             运行
           </PermissionButton>
-          <Button
+          <PermissionButton
             size="small"
             icon={<CopyOutlined />}
+            permission="system:api_key:list"
             onClick={() => copyTemplateCurl(record)}
           >
             curl
-          </Button>
+          </PermissionButton>
           <PermissionButton
             size="small"
             icon={<EditOutlined />}
@@ -937,80 +921,6 @@ export function CommandsPage() {
           <Popconfirm
             title="确认删除命令模板？"
             onConfirm={() => deleteMutation.mutate(record.id)}
-          >
-            <PermissionButton
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              permission="system:command:delete"
-            >
-              删除
-            </PermissionButton>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  const apiKeyColumns: ColumnsType<CommandApiKeyRecord> = [
-    { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 160 },
-    {
-      title: "Bearer Token",
-      dataIndex: "token",
-      width: 340,
-      ellipsis: true,
-      render: (value) => (
-        <Typography.Text copyable={{ text: String(value) }} code>
-          {String(value)}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: "启用",
-      dataIndex: "enabled",
-      width: 90,
-      render: (value) => <StatusTag active={value} />,
-    },
-    {
-      title: "最近调用",
-      dataIndex: "last_used_at",
-      width: 220,
-      render: (value) => value ?? "-",
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 320,
-      fixed: "right",
-      render: (_, record) => (
-        <Space>
-          <Button
-            size="small"
-            icon={<CopyOutlined />}
-            onClick={() =>
-              copyText(
-                buildRunCurl(record.token, {
-                  template_code: "your-template-code",
-                  name: "来自第三方应用",
-                }),
-                "执行示例 curl 已复制",
-              )
-            }
-          >
-            执行 curl
-          </Button>
-          <PermissionButton
-            size="small"
-            icon={<EditOutlined />}
-            permission="system:command:update"
-            onClick={() => openApiKeyEditor(record)}
-          >
-            编辑
-          </PermissionButton>
-          <Popconfirm
-            title="确认删除 API 授权密钥？"
-            onConfirm={() => deleteApiKeyMutation.mutate(record.id)}
           >
             <PermissionButton
               size="small"
@@ -1257,20 +1167,22 @@ export function CommandsPage() {
           <Button size="small" onClick={() => openRunDetail(record.id)}>
             日志
           </Button>
-          <Button
+          <PermissionButton
             size="small"
             icon={<CopyOutlined />}
+            permission="system:api_key:list"
             onClick={() => copyRunCurl(record)}
           >
             执行 curl
-          </Button>
-          <Button
+          </PermissionButton>
+          <PermissionButton
             size="small"
             icon={<CopyOutlined />}
+            permission="system:api_key:list"
             onClick={() => copyRunStatusCurl(record.id)}
           >
             查询 curl
-          </Button>
+          </PermissionButton>
           {record.preview_path ? (
             <Button
               size="small"
@@ -1331,13 +1243,6 @@ export function CommandsPage() {
               onClick: () => openWorkflowEditor(),
             },
             {
-              key: "api-key",
-              label: "新增授权",
-              icon: <KeyOutlined />,
-              permission: "system:command:create",
-              onClick: () => openApiKeyEditor(),
-            },
-            {
               key: "adhoc",
               label: "临时执行",
               icon: <PlayCircleOutlined />,
@@ -1350,7 +1255,9 @@ export function CommandsPage() {
               icon: <ReloadOutlined />,
               onClick: () => {
                 templatesQuery.refetch();
-                apiKeysQuery.refetch();
+                if (canListApiKeys) {
+                  apiKeysQuery.refetch();
+                }
                 runsQuery.refetch();
                 workflowsQuery.refetch();
                 workflowRunsQuery.refetch();
@@ -1395,22 +1302,6 @@ export function CommandsPage() {
                   current: workflowPage,
                   total: workflowsQuery.data?.total ?? 0,
                   onChange: setWorkflowPage,
-                }}
-              />
-            ),
-          },
-          {
-            key: "api-keys",
-            label: "API 授权",
-            children: (
-              <DataTable<CommandApiKeyRecord>
-                columns={apiKeyColumns}
-                dataSource={apiKeysQuery.data?.items ?? []}
-                loading={apiKeysQuery.isLoading}
-                pagination={{
-                  current: apiKeyPage,
-                  total: apiKeysQuery.data?.total ?? 0,
-                  onChange: setApiKeyPage,
                 }}
               />
             ),
@@ -1508,42 +1399,6 @@ export function CommandsPage() {
           </Form.Item>
           <Form.Item name="timeout_seconds" label="超时时间（秒）">
             <Input type="number" min={1} />
-          </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
-      <Modal
-        title={editingApiKey ? "编辑 API 授权" : "新增 API 授权"}
-        open={apiKeyOpen}
-        onCancel={() => setApiKeyOpen(false)}
-        onOk={() => apiKeyForm.submit()}
-        confirmLoading={saveApiKeyMutation.isPending}
-        width={680}
-      >
-        <Alert
-          type="info"
-          showIcon
-          message="Bearer 密钥永久有效；留空 Token 会自动生成 eyJ0_ 开头的密钥。"
-          className="command-api-key-alert"
-        />
-        <Form
-          form={apiKeyForm}
-          layout="vertical"
-          onFinish={(values) => saveApiKeyMutation.mutate(values)}
-        >
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-            <Input placeholder="例如 n8n 自动化" />
-          </Form.Item>
-          <Form.Item name="token" label="Bearer Token">
-            <Input.TextArea
-              rows={3}
-              placeholder="留空自动生成，或粘贴已有 eyJ0... 授权密钥"
-            />
-          </Form.Item>
-          <Form.Item name="description" label="备注">
-            <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked">
             <Switch />
@@ -1880,7 +1735,11 @@ export function CommandsPage() {
             {detailRun.error_message ? (
               <Alert type="error" showIcon message={detailRun.error_message} />
             ) : null}
-            <pre className="command-log-viewer">
+            <pre
+              ref={logViewerRef}
+              className="command-log-viewer"
+              onScroll={handleLogViewerScroll}
+            >
               {logText || detailRun.output_tail || "暂无输出"}
             </pre>
           </Space>

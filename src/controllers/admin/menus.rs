@@ -27,7 +27,7 @@ pub struct MenuRecord {
     pub visible: bool,
     pub enabled: bool,
     #[schema(no_recursion)]
-    pub children: Vec<MenuRecord>,
+    pub children: Vec<Self>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]

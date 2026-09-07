@@ -6,11 +6,15 @@ import {
   EditOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
+  FileAddOutlined,
+  FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
   LinkOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SaveOutlined,
   TableOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,11 +22,15 @@ import {
   Breadcrumb,
   Button,
   Card,
+  Drawer,
+  Dropdown,
   Empty,
   Form,
+  Grid,
   Input,
   Modal,
   Popconfirm,
+  Popover,
   Segmented,
   Select,
   Space,
@@ -34,30 +42,51 @@ import {
   Upload,
   message,
 } from "antd";
+import type { MenuProps } from "antd";
 import type { UploadProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
-import { type Key, useEffect, useMemo, useState } from "react";
+import {
+  type Key,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   type FileRootRecord,
   type ManagedFileRecord,
   createFileFolder,
+  createManagedFile,
   deleteManagedFile,
   downloadManagedFile,
   fetchFileBrowser,
   fetchFileRoots,
+  fetchManagedFileContent,
   previewManagedFile,
   renameManagedFile,
   updateManagedFileAccess,
+  updateManagedFileContent,
   uploadManagedFile,
 } from "../../../api/admin/files";
 import { CrudPage } from "../../../components/admin/CrudPage";
 import { DataTable } from "../../../components/admin/DataTable";
+import { FinderWorkspace } from "../../../components/admin/FinderWorkspace";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { StandardTablePagination } from "../../../components/admin/StandardTablePagination";
+import { TableScrollArea } from "../../../components/admin/TableScrollArea";
+import { useAuthStore } from "../../../stores/auth";
+import { decodeTextBlob } from "../../../utils/textEncoding";
 import { fileIcon, fileKind, formatBytes } from "../uploads/uploadTaskManager";
 
 type FolderFormValues = {
   name: string;
+};
+
+type FileFormValues = {
+  name: string;
+  content?: string;
 };
 
 type RenameFormValues = {
@@ -72,6 +101,87 @@ type AccessFormValues = {
 };
 
 type FileViewMode = "table" | "card";
+
+const FILE_TABLE_SCROLL_X = 1680;
+const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
+const EDITABLE_TEXT_EXTENSIONS = new Set([
+  "bash",
+  "c",
+  "cc",
+  "cfg",
+  "cjs",
+  "conf",
+  "config",
+  "cpp",
+  "cs",
+  "css",
+  "csv",
+  "cts",
+  "cxx",
+  "dockerignore",
+  "editorconfig",
+  "env",
+  "eslintrc",
+  "fish",
+  "gitignore",
+  "go",
+  "h",
+  "hpp",
+  "htm",
+  "html",
+  "ini",
+  "java",
+  "js",
+  "json",
+  "jsx",
+  "kt",
+  "kts",
+  "less",
+  "lock",
+  "log",
+  "lua",
+  "markdown",
+  "md",
+  "mjs",
+  "mts",
+  "npmrc",
+  "php",
+  "prettierrc",
+  "properties",
+  "py",
+  "rb",
+  "rs",
+  "sass",
+  "scss",
+  "sh",
+  "sql",
+  "svelte",
+  "svg",
+  "toml",
+  "ts",
+  "tsx",
+  "txt",
+  "vue",
+  "xml",
+  "yaml",
+  "yml",
+  "zsh",
+]);
+const EDITABLE_TEXT_FILENAMES = new Set([
+  "dockerfile",
+  "license",
+  "makefile",
+  "procfile",
+  "readme",
+]);
+const EDITABLE_TEXT_MIME_TYPES = new Set([
+  "application/javascript",
+  "application/json",
+  "application/toml",
+  "application/xml",
+  "application/x-yaml",
+  "application/yaml",
+]);
 
 function joinRelativePath(prefix: string, name: string) {
   const cleanName = name.trim().replace(/^\/+|\/+$/g, "");
@@ -130,11 +240,28 @@ function isTextFile(record: ManagedFileRecord) {
   );
 }
 
+function isEditableTextFile(record: ManagedFileRecord) {
+  if (record.is_dir) {
+    return false;
+  }
+  const mimeType = record.mime_type?.toLowerCase() ?? "";
+  const extension = record.extension?.toLowerCase() ?? "";
+  return (
+    mimeType.startsWith("text/") ||
+    EDITABLE_TEXT_MIME_TYPES.has(mimeType) ||
+    EDITABLE_TEXT_EXTENSIONS.has(extension) ||
+    EDITABLE_TEXT_FILENAMES.has(record.name.toLowerCase())
+  );
+}
+
 export function FilesPage() {
   const [rootKey, setRootKey] = useState<string>();
   const [currentPath, setCurrentPath] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(10);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [fileModalOpen, setFileModalOpen] = useState(false);
   const [renaming, setRenaming] = useState<ManagedFileRecord | null>(null);
   const [accessEditing, setAccessEditing] = useState<ManagedFileRecord | null>(
     null,
@@ -144,17 +271,37 @@ export function FilesPage() {
   const [previewText, setPreviewText] = useState<string>();
   const [previewError, setPreviewError] = useState<string>();
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [contentEditing, setContentEditing] =
+    useState<ManagedFileRecord | null>(null);
+  const [editorContent, setEditorContent] = useState("");
+  const [editorOriginalContent, setEditorOriginalContent] = useState("");
+  const [editorUpdatedAt, setEditorUpdatedAt] = useState<string>();
+  const [editorLoading, setEditorLoading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadingName, setUploadingName] = useState<string>();
-  const [viewMode, setViewMode] = useState<FileViewMode>("table");
+  const [viewMode, setViewMode] = useState<FileViewMode>("card");
+  const [mobileActionRecord, setMobileActionRecord] =
+    useState<ManagedFileRecord | null>(null);
   const [treeData, setTreeData] = useState<DataNode[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>([""]);
   const [folderForm] = Form.useForm<FolderFormValues>();
+  const [fileForm] = Form.useForm<FileFormValues>();
   const [renameForm] = Form.useForm<RenameFormValues>();
   const [accessForm] = Form.useForm<AccessFormValues>();
+  const editorRequestId = useRef(0);
   const accessPasswordEnabled = Form.useWatch("password_enabled", accessForm);
   const accessVisibility = Form.useWatch("visibility", accessForm);
   const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const screens = Grid.useBreakpoint();
+  const effectiveViewMode: FileViewMode =
+    screens.md === false ? "card" : viewMode;
+  const editorByteSize = useMemo(
+    () => new TextEncoder().encode(editorContent).length,
+    [editorContent],
+  );
+  const editorDirty = editorContent !== editorOriginalContent;
+  const editorOverLimit = editorByteSize > MAX_EDITABLE_FILE_BYTES;
 
   useEffect(() => {
     return () => {
@@ -266,6 +413,41 @@ export function FilesPage() {
     },
   });
 
+  const createFileMutation = useMutation({
+    mutationFn: (values: FileFormValues) => {
+      if (!rootKey) {
+        throw new Error("请先选择文件根目录");
+      }
+      const path = joinRelativePath(currentPath, values.name);
+      if (!path) {
+        throw new Error("请输入文件名称");
+      }
+      return createManagedFile({
+        root_key: rootKey,
+        path,
+        content: values.content ?? "",
+      });
+    },
+    onSuccess: (record, values) => {
+      const content = values.content ?? "";
+      message.success("文件已创建");
+      setFileModalOpen(false);
+      fileForm.resetFields();
+      refreshFiles();
+      if (isEditableTextFile(record)) {
+        editorRequestId.current += 1;
+        setContentEditing(record);
+        setEditorContent(content);
+        setEditorOriginalContent(content);
+        setEditorUpdatedAt(record.updated_at ?? undefined);
+        setEditorLoading(false);
+      }
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : "创建文件失败");
+    },
+  });
+
   const renameMutation = useMutation({
     mutationFn: (values: RenameFormValues) => {
       if (!rootKey || !renaming) {
@@ -325,6 +507,34 @@ export function FilesPage() {
     onError: (error) => {
       message.error(
         error instanceof Error ? error.message : "访问设置保存失败",
+      );
+    },
+  });
+
+  const updateContentMutation = useMutation({
+    mutationFn: (variables: {
+      rootKey: string;
+      record: ManagedFileRecord;
+      content: string;
+    }) =>
+      updateManagedFileContent({
+        root_key: variables.rootKey,
+        path: variables.record.path,
+        content: variables.content,
+      }),
+    onSuccess: (record, variables) => {
+      message.success("文件内容已保存");
+      setContentEditing(record);
+      setEditorOriginalContent(variables.content);
+      setEditorUpdatedAt(record.updated_at ?? undefined);
+      refreshFiles();
+      if (previewing?.path === record.path) {
+        closePreview();
+      }
+    },
+    onError: (error) => {
+      message.error(
+        error instanceof Error ? error.message : "文件内容保存失败",
       );
     },
   });
@@ -418,6 +628,113 @@ export function FilesPage() {
     setPreviewLoading(false);
   };
 
+  const dismissContentEditor = () => {
+    editorRequestId.current += 1;
+    setContentEditing(null);
+    setEditorContent("");
+    setEditorOriginalContent("");
+    setEditorUpdatedAt(undefined);
+    setEditorLoading(false);
+  };
+
+  const closeContentEditor = () => {
+    if (!editorDirty) {
+      dismissContentEditor();
+      return;
+    }
+    Modal.confirm({
+      title: "放弃未保存的修改？",
+      content: "关闭编辑器后，本次修改将不会保留。",
+      okText: "放弃修改",
+      okButtonProps: { danger: true },
+      cancelText: "继续编辑",
+      onOk: dismissContentEditor,
+    });
+  };
+
+  const openContentEditor = async (record: ManagedFileRecord) => {
+    if (!rootKey || !isEditableTextFile(record)) {
+      return;
+    }
+    const requestId = editorRequestId.current + 1;
+    editorRequestId.current = requestId;
+    setMobileActionRecord(null);
+    setContentEditing(record);
+    setEditorContent("");
+    setEditorOriginalContent("");
+    setEditorUpdatedAt(record.updated_at ?? undefined);
+    setEditorLoading(true);
+    try {
+      const data = await fetchManagedFileContent({
+        root_key: rootKey,
+        path: record.path,
+      });
+      if (editorRequestId.current !== requestId) {
+        return;
+      }
+      setEditorContent(data.content);
+      setEditorOriginalContent(data.content);
+      setEditorUpdatedAt(data.updated_at ?? undefined);
+    } catch (error) {
+      if (editorRequestId.current !== requestId) {
+        return;
+      }
+      setContentEditing(null);
+      const reason =
+        error instanceof Error ? error.message : "文件内容加载失败";
+      message.error(reason);
+    } finally {
+      if (editorRequestId.current === requestId) {
+        setEditorLoading(false);
+      }
+    }
+  };
+
+  const saveContent = () => {
+    if (!rootKey || !contentEditing) {
+      message.error("请选择要编辑的文件");
+      return;
+    }
+    if (editorOverLimit) {
+      message.error("文件超过 1 MiB，无法保存");
+      return;
+    }
+    updateContentMutation.mutate({
+      rootKey,
+      record: contentEditing,
+      content: editorContent,
+    });
+  };
+
+  const handleEditorKeyDown = (
+    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      if (editorDirty && !editorOverLimit && !updateContentMutation.isPending) {
+        saveContent();
+      }
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+    event.preventDefault();
+    const target = event.currentTarget;
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    const indentation = "  ";
+    setEditorContent(
+      `${target.value.slice(0, start)}${indentation}${target.value.slice(end)}`,
+    );
+    requestAnimationFrame(() => {
+      target.setSelectionRange(
+        start + indentation.length,
+        start + indentation.length,
+      );
+    });
+  };
+
   const openPreview = async (record: ManagedFileRecord) => {
     if (!rootKey || record.is_dir) {
       return;
@@ -433,7 +750,7 @@ export function FilesPage() {
         path: record.path,
       });
       if (isTextFile(record)) {
-        setPreviewText(await blob.text());
+        setPreviewText(await decodeTextBlob(blob));
       } else {
         setPreviewObjectUrl(URL.createObjectURL(blob));
       }
@@ -481,10 +798,11 @@ export function FilesPage() {
 
   const openPath = (path: string) => {
     setCurrentPath(path);
+    setTablePage(1);
   };
 
   const renderActions = (record: ManagedFileRecord) => (
-    <Space wrap size={6}>
+    <Space wrap size={6} className="material-table-actions">
       {record.is_dir ? (
         <Button
           size="small"
@@ -493,6 +811,15 @@ export function FilesPage() {
         >
           打开
         </Button>
+      ) : isEditableTextFile(record) ? (
+        <PermissionButton
+          size="small"
+          icon={<FileTextOutlined />}
+          permission="system:file:update"
+          onClick={() => openContentEditor(record)}
+        >
+          编辑文本
+        </PermissionButton>
       ) : (
         <PermissionButton
           size="small"
@@ -503,6 +830,16 @@ export function FilesPage() {
           预览
         </PermissionButton>
       )}
+      {!record.is_dir && isEditableTextFile(record) ? (
+        <PermissionButton
+          size="small"
+          icon={<EyeOutlined />}
+          permission="system:file:download"
+          onClick={() => openPreview(record)}
+        >
+          预览
+        </PermissionButton>
+      ) : null}
       <Button
         size="small"
         icon={<LinkOutlined />}
@@ -555,6 +892,108 @@ export function FilesPage() {
     </Space>
   );
 
+  const renderTableActions = (record: ManagedFileRecord) => {
+    const items: MenuProps["items"] = [
+      !record.is_dir &&
+      isEditableTextFile(record) &&
+      hasPermission("system:file:download")
+        ? {
+            key: "preview",
+            icon: <EyeOutlined />,
+            label: "预览",
+            onClick: () => openPreview(record),
+          }
+        : null,
+      {
+        key: "copy-url",
+        icon: <LinkOutlined />,
+        label: "复制 URL",
+        onClick: () => copyUrl(record),
+      },
+      !record.is_dir && hasPermission("system:file:download")
+        ? {
+            key: "download",
+            icon: <CloudDownloadOutlined />,
+            label: "下载",
+            onClick: () => downloadMutation.mutate(record),
+          }
+        : null,
+      !record.is_dir && hasPermission("system:file:update")
+        ? {
+            key: "access",
+            icon: <LinkOutlined />,
+            label: "访问设置",
+            onClick: () => openAccessEditor(record),
+          }
+        : null,
+      hasPermission("system:file:update")
+        ? {
+            key: "rename",
+            icon: <EditOutlined />,
+            label: "重命名",
+            onClick: () => openRename(record),
+          }
+        : null,
+      hasPermission("system:file:delete") ? { type: "divider" } : null,
+      hasPermission("system:file:delete")
+        ? {
+            key: "delete",
+            icon: <DeleteOutlined />,
+            label: "删除",
+            danger: true,
+            onClick: () =>
+              Modal.confirm({
+                title: record.is_dir ? "确认删除空文件夹？" : "确认删除文件？",
+                okText: "删除",
+                okButtonProps: { danger: true },
+                cancelText: "取消",
+                onOk: () => deleteMutation.mutateAsync(record),
+              }),
+          }
+        : null,
+    ];
+
+    return (
+      <Space size={4} className="material-table-compact-actions">
+        {record.is_dir ? (
+          <Button
+            size="small"
+            icon={<FolderOpenOutlined />}
+            onClick={() => openPath(record.path)}
+          >
+            打开
+          </Button>
+        ) : isEditableTextFile(record) &&
+          hasPermission("system:file:update") ? (
+          <PermissionButton
+            size="small"
+            icon={<FileTextOutlined />}
+            permission="system:file:update"
+            onClick={() => openContentEditor(record)}
+          >
+            编辑文本
+          </PermissionButton>
+        ) : (
+          <PermissionButton
+            size="small"
+            icon={<EyeOutlined />}
+            permission="system:file:download"
+            onClick={() => openPreview(record)}
+          >
+            预览
+          </PermissionButton>
+        )}
+        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
+          <Button
+            size="small"
+            icon={<MoreOutlined />}
+            aria-label="更多文件操作"
+          />
+        </Dropdown>
+      </Space>
+    );
+  };
+
   const renderVisibilityTag = (record: ManagedFileRecord) => {
     if (record.is_dir) {
       return <Tag>目录</Tag>;
@@ -570,8 +1009,17 @@ export function FilesPage() {
   };
 
   const renderFileCard = (record: ManagedFileRecord) => {
-    const openRecord = () =>
-      record.is_dir ? openPath(record.path) : openPreview(record);
+    const opensEditor =
+      isEditableTextFile(record) && hasPermission("system:file:update");
+    const openRecord = () => {
+      if (record.is_dir) {
+        openPath(record.path);
+      } else if (opensEditor) {
+        openContentEditor(record);
+      } else {
+        openPreview(record);
+      }
+    };
 
     return (
       <Card
@@ -592,7 +1040,29 @@ export function FilesPage() {
         >
           {record.is_dir ? <FolderOutlined /> : fileIcon(record)}
         </button>
-        <Space direction="vertical" size={8} className="full-width">
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={
+            <div className="finder-popover-actions">
+              {renderActions(record)}
+            </div>
+          }
+        >
+          <Button
+            type="text"
+            className="finder-item-more"
+            icon={<MoreOutlined />}
+            aria-label={`更多操作：${record.name}`}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          />
+        </Popover>
+        <Space
+          direction="vertical"
+          size={8}
+          className="full-width material-card-details"
+        >
           <Typography.Text strong ellipsis title={record.name}>
             {record.name}
           </Typography.Text>
@@ -602,11 +1072,49 @@ export function FilesPage() {
             </span>
             <span>{record.is_dir ? "-" : formatBytes(record.size_bytes)}</span>
           </div>
-          {renderVisibilityTag(record)}
-          <Typography.Text type="secondary" ellipsis title={record.path}>
+          <div className="material-card-visibility-row">
+            {renderVisibilityTag(record)}
+          </div>
+          <Typography.Text
+            type="secondary"
+            ellipsis
+            title={record.path}
+            className="material-card-path"
+          >
             {record.path || "根目录"}
           </Typography.Text>
-          <div className="material-card-actions">{renderActions(record)}</div>
+          <div className="material-card-actions material-card-actions-desktop">
+            {renderActions(record)}
+          </div>
+          <div className="material-card-actions-mobile">
+            <Button
+              type="primary"
+              size="small"
+              aria-label={
+                record.is_dir ? "打开" : opensEditor ? "编辑文本" : "预览"
+              }
+              icon={
+                record.is_dir ? (
+                  <FolderOpenOutlined />
+                ) : opensEditor ? (
+                  <FileTextOutlined />
+                ) : (
+                  <EyeOutlined />
+                )
+              }
+              onClick={openRecord}
+            >
+              {record.is_dir ? "打开" : opensEditor ? "编辑文本" : "预览"}
+            </Button>
+            <Button
+              size="small"
+              icon={<MoreOutlined />}
+              aria-label={`更多操作：${record.name}`}
+              onClick={() => setMobileActionRecord(record)}
+            >
+              更多
+            </Button>
+          </div>
         </Space>
       </Card>
     );
@@ -676,9 +1184,8 @@ export function FilesPage() {
     {
       title: "操作",
       key: "actions",
-      width: 360,
-      fixed: "right",
-      render: (_, record) => renderActions(record),
+      width: 150,
+      render: (_, record) => renderTableActions(record),
     },
   ];
 
@@ -696,6 +1203,18 @@ export function FilesPage() {
         row.path.toLowerCase().includes(normalizedKeyword),
     );
   }, [browserQuery.data, keyword]);
+
+  useEffect(() => {
+    const lastPage = Math.max(1, Math.ceil(rows.length / tablePageSize));
+    if (tablePage > lastPage) {
+      setTablePage(lastPage);
+    }
+  }, [rows.length, tablePage, tablePageSize]);
+
+  const pagedRows = useMemo(() => {
+    const start = (tablePage - 1) * tablePageSize;
+    return rows.slice(start, start + tablePageSize);
+  }, [rows, tablePage, tablePageSize]);
 
   const currentPathSegments = pathSegments(currentPath);
 
@@ -785,6 +1304,7 @@ export function FilesPage() {
 
   return (
     <CrudPage
+      className="finder-page finder-files-page"
       title="文件管理"
       subtitle="管理系统设置中声明的本地 URL 映射目录"
       breadcrumb={["系统管理", "文件管理"]}
@@ -798,6 +1318,7 @@ export function FilesPage() {
             onChange={(value) => {
               setRootKey(value);
               setCurrentPath("");
+              setTablePage(1);
             }}
             options={roots.map((root) => ({
               value: root.key,
@@ -808,7 +1329,10 @@ export function FilesPage() {
           <Input.Search
             allowClear
             placeholder="搜索名称、路径"
-            onSearch={setKeyword}
+            onSearch={(value) => {
+              setKeyword(value);
+              setTablePage(1);
+            }}
             className="admin-search-input"
           />
           <Button icon={<ReloadOutlined />} onClick={refreshFiles}>
@@ -817,12 +1341,19 @@ export function FilesPage() {
         </Space>
       }
     >
-      <div className="resource-library-layout">
-        <div className="resource-tree-panel">
-          <Space direction="vertical" size="small" className="full-width">
-            {selectedRoot ? (
-              <Card size="small" className="admin-card">
-                <Space direction="vertical" size={4} className="full-width">
+      <FinderWorkspace
+        title="文件管理"
+        icon={<FolderOpenOutlined />}
+        meta={`${selectedRoot?.name ?? "未选择根目录"} · ${currentPath || "根目录"}`}
+        status={`${rows.filter((record) => record.is_dir).length} 个文件夹 · ${rows.filter((record) => !record.is_dir).length} 个文件`}
+        statusAside={selectedRoot?.url_path ?? "未配置 URL"}
+      >
+        <div className="resource-library-layout">
+          <aside className="resource-tree-panel">
+            <Space direction="vertical" size="small" className="full-width">
+              <div className="finder-sidebar-label">位置</div>
+              {selectedRoot ? (
+                <div className="finder-location-summary">
                   <Typography.Text strong>{selectedRoot.name}</Typography.Text>
                   <Typography.Text type="secondary" copyable>
                     {selectedRoot.url_path}
@@ -830,129 +1361,184 @@ export function FilesPage() {
                   <Typography.Text type="secondary" ellipsis>
                     {selectedRoot.local_root}
                   </Typography.Text>
-                </Space>
-              </Card>
-            ) : null}
-            <Tree
-              showIcon
-              selectedKeys={[currentPath]}
-              expandedKeys={expandedTreeKeys}
-              treeData={treeData}
-              loadData={(node) => loadTreeChildren(String(node.key))}
-              onExpand={(keys) => setExpandedTreeKeys(keys)}
-              onSelect={(keys) => openPath(String(keys[0] ?? ""))}
-            />
-          </Space>
-        </div>
-        <Space direction="vertical" size="middle" className="full-width">
-          <div className="material-path-bar">
-            <Space direction="vertical" size={4} className="full-width">
-              <Typography.Text type="secondary">
-                当前根目录：{selectedRoot?.name ?? "未选择"}
-              </Typography.Text>
-              <Breadcrumb
-                items={[
-                  {
-                    title: (
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => openPath("")}
-                      >
-                        根目录
-                      </Button>
-                    ),
-                  },
-                  ...currentPathSegments.map((segment) => ({
-                    title: (
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => openPath(segment.path)}
-                      >
-                        {segment.name}
-                      </Button>
-                    ),
-                  })),
-                ]}
-              />
-            </Space>
-            <Space wrap className="material-upload-inline-actions">
-              <PermissionButton
-                icon={<PlusOutlined />}
-                permission="system:file:create"
-                disabled={!rootKey}
-                onClick={() => setFolderModalOpen(true)}
-              >
-                新建文件夹
-              </PermissionButton>
-              <Upload
-                {...uploadProps}
-                disabled={!rootKey || uploadMutation.isPending}
-              >
-                <PermissionButton
-                  icon={<CloudUploadOutlined />}
-                  permission="system:file:create"
-                  disabled={!rootKey || uploadMutation.isPending}
-                  hideWhenDenied={false}
-                >
-                  上传文件
-                </PermissionButton>
-              </Upload>
-              <Segmented<FileViewMode>
-                value={viewMode}
-                onChange={(value) => setViewMode(value)}
-                options={[
-                  { label: "表格", value: "table", icon: <TableOutlined /> },
-                  { label: "文件", value: "card", icon: <AppstoreOutlined /> },
-                ]}
-              />
-              {selectedRoot ? (
-                <Button
-                  icon={<LinkOutlined />}
-                  onClick={() => copyUrl(selectedRoot)}
-                >
-                  复制根URL
-                </Button>
+                </div>
               ) : null}
-            </Space>
-          </div>
-          {uploadingName ? (
-            <div className="upload-progress-panel">
-              <Typography.Text ellipsis>{uploadingName}</Typography.Text>
-              <Typography.Text type="secondary">
-                {uploadPercent}%
-              </Typography.Text>
-            </div>
-          ) : null}
-          <Upload.Dragger
-            {...uploadProps}
-            className="material-drop-zone"
-            disabled={!rootKey || uploadMutation.isPending}
-            openFileDialogOnClick={false}
-          >
-            <div className="material-drop-zone-hint">
-              <CloudUploadOutlined />
-              <Typography.Text type="secondary">
-                拖拽文件到这里上传到 {currentPath || "根目录"}
-              </Typography.Text>
-            </div>
-            {viewMode === "table" ? (
-              <div className="material-file-table-scroll">
-                <DataTable<ManagedFileRecord>
-                  rowKey="path"
-                  columns={columns}
-                  dataSource={rows}
-                  loading={browserQuery.isLoading}
-                  pagination={false}
-                  onRow={(record) => ({
-                    onDoubleClick: () =>
-                      record.is_dir
-                        ? openPath(record.path)
-                        : openPreview(record),
-                  })}
-                />
+              <div className="finder-sidebar-label finder-sidebar-label-secondary">
+                目录
               </div>
+              <Tree
+                showIcon
+                selectedKeys={[currentPath]}
+                expandedKeys={expandedTreeKeys}
+                treeData={treeData}
+                loadData={(node) => loadTreeChildren(String(node.key))}
+                onExpand={(keys) => setExpandedTreeKeys(keys)}
+                onSelect={(keys) => openPath(String(keys[0] ?? ""))}
+              />
+            </Space>
+          </aside>
+          <Space
+            direction="vertical"
+            size="middle"
+            className="full-width resource-content-panel"
+          >
+            <div className="material-path-bar">
+              <Space direction="vertical" size={4} className="full-width">
+                <Typography.Text type="secondary">
+                  当前根目录：{selectedRoot?.name ?? "未选择"}
+                </Typography.Text>
+                <Breadcrumb
+                  items={[
+                    {
+                      title: (
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() => openPath("")}
+                        >
+                          根目录
+                        </Button>
+                      ),
+                    },
+                    ...currentPathSegments.map((segment) => ({
+                      title: (
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() => openPath(segment.path)}
+                        >
+                          {segment.name}
+                        </Button>
+                      ),
+                    })),
+                  ]}
+                />
+              </Space>
+              <Space wrap className="material-upload-inline-actions">
+                <PermissionButton
+                  icon={<PlusOutlined />}
+                  permission="system:file:create"
+                  disabled={!rootKey}
+                  onClick={() => setFolderModalOpen(true)}
+                >
+                  新建文件夹
+                </PermissionButton>
+                <PermissionButton
+                  icon={<FileAddOutlined />}
+                  permission="system:file:create"
+                  disabled={!rootKey}
+                  onClick={() => {
+                    fileForm.setFieldsValue({
+                      name: "新建文件.txt",
+                      content: "",
+                    });
+                    setFileModalOpen(true);
+                  }}
+                >
+                  新建文件
+                </PermissionButton>
+                <Upload
+                  {...uploadProps}
+                  disabled={!rootKey || uploadMutation.isPending}
+                >
+                  <PermissionButton
+                    icon={<CloudUploadOutlined />}
+                    permission="system:file:create"
+                    disabled={!rootKey || uploadMutation.isPending}
+                    hideWhenDenied={false}
+                  >
+                    上传文件
+                  </PermissionButton>
+                </Upload>
+                <Segmented<FileViewMode>
+                  className="material-view-toggle"
+                  value={viewMode}
+                  onChange={(value) => setViewMode(value)}
+                  options={[
+                    { label: "表格", value: "table", icon: <TableOutlined /> },
+                    {
+                      label: "文件",
+                      value: "card",
+                      icon: <AppstoreOutlined />,
+                    },
+                  ]}
+                />
+                {selectedRoot ? (
+                  <Button
+                    className="material-secondary-mobile-action"
+                    icon={<LinkOutlined />}
+                    onClick={() => copyUrl(selectedRoot)}
+                  >
+                    复制根URL
+                  </Button>
+                ) : null}
+              </Space>
+            </div>
+            {uploadingName ? (
+              <div className="upload-progress-panel">
+                <Typography.Text ellipsis>{uploadingName}</Typography.Text>
+                <Typography.Text type="secondary">
+                  {uploadPercent}%
+                </Typography.Text>
+              </div>
+            ) : null}
+            <Upload.Dragger
+              {...uploadProps}
+              className="material-drop-zone"
+              disabled={!rootKey || uploadMutation.isPending}
+              openFileDialogOnClick={false}
+            >
+              <div className="material-drop-zone-hint">
+                <CloudUploadOutlined />
+                <Typography.Text type="secondary">
+                  拖拽文件到这里上传到 {currentPath || "根目录"}
+                </Typography.Text>
+              </div>
+            </Upload.Dragger>
+            {effectiveViewMode === "table" ? (
+              <TableScrollArea
+                contentWidth={FILE_TABLE_SCROLL_X}
+                className="files-table-scroll-area"
+                label="文件管理表格"
+                footer={
+                  <StandardTablePagination
+                    current={tablePage}
+                    pageSize={tablePageSize}
+                    total={rows.length}
+                    onChange={(nextPage, nextPageSize) => {
+                      const sizeChanged = nextPageSize !== tablePageSize;
+                      setTablePageSize(nextPageSize);
+                      setTablePage(sizeChanged ? 1 : nextPage);
+                    }}
+                  />
+                }
+              >
+                <div className="files-material-table">
+                  <DataTable<ManagedFileRecord>
+                    rowKey="path"
+                    columns={columns}
+                    dataSource={pagedRows}
+                    loading={browserQuery.isLoading}
+                    pagination={false}
+                    tableLayout="fixed"
+                    scroll={{ x: FILE_TABLE_SCROLL_X }}
+                    onRow={(record) => ({
+                      onDoubleClick: () => {
+                        if (record.is_dir) {
+                          openPath(record.path);
+                        } else if (
+                          isEditableTextFile(record) &&
+                          hasPermission("system:file:update")
+                        ) {
+                          openContentEditor(record);
+                        } else {
+                          openPreview(record);
+                        }
+                      },
+                    })}
+                  />
+                </div>
+              </TableScrollArea>
             ) : (
               <Spin spinning={browserQuery.isLoading}>
                 {rows.length > 0 ? (
@@ -964,9 +1550,63 @@ export function FilesPage() {
                 )}
               </Spin>
             )}
-          </Upload.Dragger>
-        </Space>
-      </div>
+          </Space>
+        </div>
+      </FinderWorkspace>
+      <Drawer
+        title={mobileActionRecord?.name ?? "文件操作"}
+        open={Boolean(mobileActionRecord)}
+        placement="bottom"
+        height="auto"
+        className="material-mobile-action-drawer"
+        onClose={() => setMobileActionRecord(null)}
+      >
+        {mobileActionRecord ? (
+          <div className="material-mobile-action-sheet">
+            {renderActions(mobileActionRecord)}
+          </div>
+        ) : null}
+      </Drawer>
+      <Modal
+        title="新建文件"
+        open={fileModalOpen}
+        onCancel={() => {
+          setFileModalOpen(false);
+          fileForm.resetFields();
+        }}
+        onOk={() => fileForm.submit()}
+        confirmLoading={createFileMutation.isPending}
+      >
+        <Form
+          form={fileForm}
+          layout="vertical"
+          onFinish={(values) => createFileMutation.mutate(values)}
+        >
+          <Form.Item label="当前目录">
+            <Typography.Text>{currentPath || "根目录"}</Typography.Text>
+          </Form.Item>
+          <Form.Item
+            name="name"
+            label="文件名称"
+            rules={[
+              { required: true, message: "请输入文件名称" },
+              {
+                pattern: /^[^/\\]+$/,
+                message: "文件名称不能包含 / 或 \\",
+              },
+            ]}
+          >
+            <Input placeholder="例如 notes.txt" autoFocus />
+          </Form.Item>
+          <Form.Item name="content" label="初始内容（可选）">
+            <Input.TextArea
+              rows={8}
+              placeholder="可留空，创建后可以继续编辑"
+              spellCheck={false}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
       <Modal
         title="新建文件夹"
         open={folderModalOpen}
@@ -1085,6 +1725,75 @@ export function FilesPage() {
         </Form>
       </Modal>
       <Modal
+        title={contentEditing ? `编辑文本：${contentEditing.name}` : "编辑文本"}
+        open={Boolean(contentEditing)}
+        onCancel={closeContentEditor}
+        maskClosable={false}
+        width="min(1120px, 96vw)"
+        className="managed-file-editor-modal"
+        footer={
+          <div className="managed-file-editor-footer">
+            <Typography.Text
+              type={editorOverLimit ? "danger" : "secondary"}
+              className="managed-file-editor-size"
+            >
+              {formatBytes(editorByteSize)} / 1 MiB
+            </Typography.Text>
+            <Space>
+              <Button onClick={closeContentEditor}>关闭</Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={updateContentMutation.isPending}
+                disabled={
+                  editorLoading ||
+                  !editorDirty ||
+                  editorOverLimit ||
+                  updateContentMutation.isPending
+                }
+                onClick={saveContent}
+              >
+                保存
+              </Button>
+            </Space>
+          </div>
+        }
+      >
+        <Spin spinning={editorLoading} tip="正在读取文件">
+          <div className="managed-file-editor-shell">
+            <div className="managed-file-editor-meta">
+              <Space wrap size={6}>
+                <Tag>UTF-8</Tag>
+                <Typography.Text type="secondary" ellipsis>
+                  {contentEditing?.path ?? "-"}
+                </Typography.Text>
+              </Space>
+              <Typography.Text type="secondary">
+                {editorUpdatedAt
+                  ? `更新于 ${new Date(editorUpdatedAt).toLocaleString("zh-CN")}`
+                  : "尚无更新时间"}
+              </Typography.Text>
+            </div>
+            <Input.TextArea
+              aria-label="文件内容编辑器"
+              className="managed-file-editor-textarea"
+              value={editorContent}
+              disabled={editorLoading || updateContentMutation.isPending}
+              autoSize={false}
+              spellCheck={false}
+              placeholder="输入文件内容"
+              onChange={(event) => setEditorContent(event.target.value)}
+              onKeyDown={handleEditorKeyDown}
+            />
+            {editorOverLimit ? (
+              <Typography.Text type="danger">
+                当前内容超过 1 MiB，请缩减后再保存。
+              </Typography.Text>
+            ) : null}
+          </div>
+        </Spin>
+      </Modal>
+      <Modal
         title={previewing ? `预览：${previewing.name}` : "文件预览"}
         open={Boolean(previewing)}
         onCancel={closePreview}
@@ -1105,6 +1814,19 @@ export function FilesPage() {
               >
                 下载
               </PermissionButton>
+              {isEditableTextFile(previewing) ? (
+                <PermissionButton
+                  icon={<FileTextOutlined />}
+                  permission="system:file:update"
+                  onClick={() => {
+                    const record = previewing;
+                    closePreview();
+                    openContentEditor(record);
+                  }}
+                >
+                  编辑文本
+                </PermissionButton>
+              ) : null}
               <Button onClick={closePreview}>关闭</Button>
             </Space>
           ) : null

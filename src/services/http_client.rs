@@ -28,6 +28,8 @@ pub struct HttpClientRuntimeConfig {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HttpClientRuntimeOverrides {
     pub request_timeout_seconds: Option<u64>,
+    pub disable_idle_pool: bool,
+    pub enable_http2_keep_alive: bool,
 }
 
 impl Default for HttpClientRuntimeConfig {
@@ -102,15 +104,33 @@ pub async fn build_http_client_with_overrides(
         config.request_timeout_seconds = timeout;
     }
     config.validate()?;
-    build_client_from_config(&config)
+    build_client_from_config_with_overrides(&config, overrides)
 }
 
 fn build_client_from_config(config: &HttpClientRuntimeConfig) -> ApiResult<reqwest::Client> {
+    build_client_from_config_with_overrides(config, HttpClientRuntimeOverrides::default())
+}
+
+fn build_client_from_config_with_overrides(
+    config: &HttpClientRuntimeConfig,
+    overrides: HttpClientRuntimeOverrides,
+) -> ApiResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(config.request_timeout_seconds))
         .connect_timeout(Duration::from_secs(config.connect_timeout_seconds))
         .pool_idle_timeout(Duration::from_secs(config.pool_idle_timeout_seconds))
         .danger_accept_invalid_certs(config.danger_accept_invalid_certs);
+
+    if overrides.disable_idle_pool {
+        builder = builder.pool_max_idle_per_host(0);
+    }
+
+    if overrides.enable_http2_keep_alive {
+        builder = builder
+            .http2_keep_alive_interval(Duration::from_secs(15))
+            .http2_keep_alive_timeout(Duration::from_secs(10))
+            .http2_keep_alive_while_idle(true);
+    }
 
     if config.proxy_enabled {
         let proxy_url = config

@@ -63,6 +63,7 @@ type AuthState = {
     dataScopes: AuthDataScope[];
     effectiveDataScope: string;
   }) => void;
+  setMenus: (menus: AdminMenuItem[]) => void;
   signOut: () => void;
   hasPermission: (permission?: PermissionCode) => boolean;
 };
@@ -132,6 +133,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       effectiveDataScope,
     });
   },
+  setMenus: (menus) => set({ menus }),
   signOut: () => {
     localStorage.removeItem(tokenKey);
     localStorage.removeItem(refreshTokenKey);

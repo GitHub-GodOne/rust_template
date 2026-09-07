@@ -116,6 +116,20 @@ export async function fetchSshSessionFiles(params: {
   return unwrap(response.data);
 }
 
+export async function previewSshSessionFile(params: {
+  sessionId: string;
+  path: string;
+}) {
+  const response = await apiClient.get<Blob>(
+    `/admin/ssh/sessions/${params.sessionId}/files/preview`,
+    {
+      params: { path: params.path },
+      responseType: "blob",
+    },
+  );
+  return response.data;
+}
+
 export function buildSshWebSocketUrl(ticket: string) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/api/admin/ssh/sessions/${ticket}/ws`;

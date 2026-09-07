@@ -23,6 +23,7 @@ const ROLE_PERMISSIONS_FIXTURE: &str = include_str!("../fixtures/role_permission
 const ROLE_MENUS_FIXTURE: &str = include_str!("../fixtures/role_menus.yaml");
 
 pub struct RecoverAdmin;
+pub struct UnlockAdmin;
 pub struct SyncFixtureBaseline;
 
 #[async_trait]
@@ -50,6 +51,27 @@ impl Task for RecoverAdmin {
             email = user.email,
             role_code,
             "admin recovery completed"
+        );
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Task for UnlockAdmin {
+    fn task(&self) -> TaskInfo {
+        TaskInfo {
+            name: "admin.unlock".to_string(),
+            detail: "Clear login failures and unlock an admin account".to_string(),
+        }
+    }
+
+    async fn run(&self, ctx: &AppContext, vars: &Vars) -> Result<()> {
+        let email = required_arg(vars, "email")?;
+        let user = unlock_admin(&ctx.db, email).await?;
+        tracing::info!(
+            user_id = user.id,
+            email = user.email,
+            "admin account unlocked"
         );
         Ok(())
     }
@@ -159,6 +181,9 @@ pub async fn recover_admin(
         active.email_verified_at = ActiveValue::set(verified_at);
         active.reset_token = ActiveValue::set(None);
         active.reset_sent_at = ActiveValue::set(None);
+        active.failed_login_attempts = ActiveValue::set(0);
+        active.locked_until = ActiveValue::set(None);
+        active.last_failed_login_at = ActiveValue::set(None);
         if let Some(name) = name.filter(|value| !value.trim().is_empty()) {
             active.name = ActiveValue::set(name.trim().to_string());
         }
@@ -197,6 +222,29 @@ pub async fn recover_admin(
 
     txn.commit().await?;
     Ok(user)
+}
+
+/// Clears login failure counters and unlocks an existing user without changing the password.
+///
+/// # Errors
+///
+/// Returns an error when the email is empty, the user does not exist, or the database update fails.
+pub async fn unlock_admin(db: &DatabaseConnection, email: &str) -> Result<users::Model> {
+    let email = email.trim().to_ascii_lowercase();
+    if email.is_empty() {
+        return Err(Error::Message("email is required".to_string()));
+    }
+
+    let user = users::Entity::find()
+        .filter(users::Column::Email.eq(&email))
+        .one(db)
+        .await?
+        .ok_or_else(|| Error::Message(format!("user {email} not found")))?;
+    let mut active = user.into_active_model();
+    active.failed_login_attempts = ActiveValue::set(0);
+    active.locked_until = ActiveValue::set(None);
+    active.last_failed_login_at = ActiveValue::set(None);
+    Ok(active.update(db).await?)
 }
 
 fn required_arg<'a>(vars: &'a Vars, key: &str) -> Result<&'a str> {

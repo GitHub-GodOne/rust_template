@@ -22,11 +22,13 @@ use crate::{
     errors::{ApiError, ApiResult},
     models::{_entities::managed_file_access_rules, admin_logs, system_settings},
     responses::{self, ApiResponse, EmptyData},
+    services::{file_stream, storage},
 };
 
 const ROOTS_SETTING_KEY: &str = "file_manager.roots";
 const VISIBILITY_PRIVATE: &str = "private";
 const VISIBILITY_PUBLIC: &str = "public";
+const MAX_EDITABLE_FILE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct FileRootRecord {
@@ -75,9 +77,31 @@ pub struct FilePathParams {
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct ManagedFileContentRecord {
+    pub content: String,
+    pub size_bytes: i64,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct UpdateFileContentParams {
+    pub root_key: String,
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct CreateFileFolderParams {
     pub root_key: String,
     pub path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CreateManagedFileParams {
+    pub root_key: String,
+    pub path: String,
+    #[serde(default)]
+    pub content: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -219,6 +243,46 @@ pub async fn create_folder(
 
 #[utoipa::path(
     post,
+    path = "/api/admin/files",
+    tag = "admin-files",
+    security(("bearer_auth" = [])),
+    request_body = CreateManagedFileParams,
+    responses((status = 200, body = ApiResponse<ManagedFileRecord>))
+)]
+#[debug_handler]
+pub async fn create_file(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<CreateManagedFileParams>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:file:create").await?;
+    let root = find_root(&ctx, &params.root_key).await?;
+    let relative = normalize_required_path(&params.path)?;
+    let target = resolve_new_path(&root, &relative)?;
+    if target.exists() {
+        return Err(ApiError::bad_request("target path already exists"));
+    }
+    validate_editable_content(&params.content)?;
+    fs::write(&target, params.content.as_bytes())
+        .map_err(|_| ApiError::internal("failed to create file"))?;
+    let metadata = fs::metadata(&target).map_err(|_| ApiError::internal("failed to read file"))?;
+    let name = file_name(&relative)?;
+    record_file_log(
+        &ctx,
+        &user,
+        "create_file",
+        format!("新建文件：{relative}"),
+        Some(200),
+        None,
+    )
+    .await;
+    Ok(responses::ok(file_record(
+        &root, &relative, &name, &metadata, None,
+    )))
+}
+
+#[utoipa::path(
+    post,
     path = "/api/admin/files/upload",
     tag = "admin-files",
     security(("bearer_auth" = [])),
@@ -232,8 +296,7 @@ pub async fn upload(
     mut multipart: Multipart,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:file:create").await?;
-    let max_bytes =
-        system_settings::number_i64(&ctx.db, "upload.max_size_mb", 20).await? * 1024 * 1024;
+    let max_bytes = system_settings::upload_limit_bytes(&ctx.db).await?;
     let mut root_key = None;
     let mut directory = String::new();
     let mut uploaded = None;
@@ -420,6 +483,94 @@ pub async fn update_access(
 
 #[utoipa::path(
     get,
+    path = "/api/admin/files/content",
+    tag = "admin-files",
+    security(("bearer_auth" = [])),
+    params(FilePathParams),
+    responses((status = 200, body = ApiResponse<ManagedFileContentRecord>))
+)]
+#[debug_handler]
+pub async fn read_content(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<FilePathParams>,
+) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:file:update").await?;
+    let root = find_root(&ctx, &params.root_key).await?;
+    let relative = normalize_required_path(&params.path)?;
+    let target = resolve_existing_path(&root, &relative)?;
+    let metadata = fs::metadata(&target).map_err(|_| ApiError::internal("读取文件信息失败"))?;
+    if !metadata.is_file() {
+        return Err(ApiError::bad_request("只能编辑普通文件"));
+    }
+    let content = read_editable_text_file(&target, &metadata)?;
+
+    Ok(responses::ok(ManagedFileContentRecord {
+        content,
+        size_bytes: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
+        updated_at: metadata
+            .modified()
+            .ok()
+            .map(chrono::DateTime::<chrono::Utc>::from)
+            .map(|time| time.to_rfc3339()),
+    }))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/files/content",
+    tag = "admin-files",
+    security(("bearer_auth" = [])),
+    request_body = UpdateFileContentParams,
+    responses((status = 200, body = ApiResponse<ManagedFileRecord>))
+)]
+#[debug_handler]
+pub async fn update_content(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<UpdateFileContentParams>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:file:update").await?;
+    let root = find_root(&ctx, &params.root_key).await?;
+    let relative = normalize_required_path(&params.path)?;
+    let target = resolve_existing_path(&root, &relative)?;
+    let current_metadata =
+        fs::metadata(&target).map_err(|_| ApiError::internal("读取文件信息失败"))?;
+    if !current_metadata.is_file() {
+        return Err(ApiError::bad_request("只能编辑普通文件"));
+    }
+
+    // Validate the existing file before replacing it so binary files cannot be
+    // accidentally converted by opening them through the text editor.
+    read_editable_text_file(&target, &current_metadata)?;
+    validate_editable_content(&params.content)?;
+    fs::write(&target, params.content.as_bytes())
+        .map_err(|_| ApiError::internal("保存文件内容失败"))?;
+
+    let metadata = fs::metadata(&target).map_err(|_| ApiError::internal("读取文件信息失败"))?;
+    let name = file_name(&relative)?;
+    let rule = access_rule_for_path(&ctx, &root.key, &relative).await?;
+    record_file_log(
+        &ctx,
+        &user,
+        "edit_content",
+        format!("编辑文件内容：{relative}"),
+        Some(200),
+        None,
+    )
+    .await;
+
+    Ok(responses::ok(file_record(
+        &root,
+        &relative,
+        &name,
+        &metadata,
+        rule.as_ref(),
+    )))
+}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/files/preview",
     tag = "admin-files",
     security(("bearer_auth" = [])),
@@ -430,10 +581,11 @@ pub async fn update_access(
 pub async fn preview(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    headers: HeaderMap,
     Query(params): Query<FilePathParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:file:download").await?;
-    let response = file_response(&ctx, &user, &params, FileDisposition::Inline).await?;
+    let response = file_response(&ctx, &user, &headers, &params, FileDisposition::Inline).await?;
     Ok(response)
 }
 
@@ -449,50 +601,56 @@ pub async fn preview(
 pub async fn download(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    headers: HeaderMap,
     Query(params): Query<FilePathParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:file:download").await?;
-    let response = file_response(&ctx, &user, &params, FileDisposition::Attachment).await?;
+    let response =
+        file_response(&ctx, &user, &headers, &params, FileDisposition::Attachment).await?;
     Ok(response)
 }
 
 #[debug_handler]
 pub async fn public_file(
     State(ctx): State<AppContext>,
+    headers: HeaderMap,
     Path(token): Path<String>,
 ) -> ApiResult<Response> {
     let (root, rule) = public_access_rule(&ctx, &token).await?;
     if rule.password_hash.is_some() {
         return Ok(password_form_response(&token, None));
     }
-    raw_file_response(&root, &rule.path, FileDisposition::Inline, false)
+    raw_file_response(&root, &rule.path, &headers, FileDisposition::Inline, false).await
 }
 
 #[debug_handler]
 pub async fn public_file_with_password(
     State(ctx): State<AppContext>,
+    headers: HeaderMap,
     Path(token): Path<String>,
     Form(params): Form<PublicFilePasswordParams>,
 ) -> ApiResult<Response> {
     let (root, rule) = public_access_rule(&ctx, &token).await?;
     let Some(password_hash) = rule.password_hash.as_deref() else {
-        return raw_file_response(&root, &rule.path, FileDisposition::Inline, false);
+        return raw_file_response(&root, &rule.path, &headers, FileDisposition::Inline, false)
+            .await;
     };
     if !hash::verify_password(&params.password, password_hash) {
         return Ok(password_form_response(&token, Some("访问密码不正确")));
     }
-    raw_file_response(&root, &rule.path, FileDisposition::Inline, true)
+    raw_file_response(&root, &rule.path, &headers, FileDisposition::Inline, true).await
 }
 
 async fn file_response(
     ctx: &AppContext,
     user: &crate::models::users::Model,
+    request_headers: &HeaderMap,
     params: &FilePathParams,
     disposition: FileDisposition,
 ) -> ApiResult<Response> {
     let root = find_root(ctx, &params.root_key).await?;
     let relative = normalize_required_path(&params.path)?;
-    let response = raw_file_response(&root, &relative, disposition, true)?;
+    let response = raw_file_response(&root, &relative, request_headers, disposition, true).await?;
     record_file_log(
         ctx,
         user,
@@ -505,9 +663,10 @@ async fn file_response(
     Ok(response)
 }
 
-fn raw_file_response(
+async fn raw_file_response(
     root: &FileRootRecord,
     relative: &str,
+    request_headers: &HeaderMap,
     disposition: FileDisposition,
     private_cache: bool,
 ) -> ApiResult<Response> {
@@ -515,7 +674,12 @@ fn raw_file_response(
     if !target.is_file() {
         return Err(ApiError::bad_request("path is not a file"));
     }
-    let bytes = fs::read(&target).map_err(|_| ApiError::bad_request("file content not found"))?;
+    let metadata =
+        fs::metadata(&target).map_err(|_| ApiError::bad_request("file content not found"))?;
+    let total_size = usize::try_from(metadata.len())
+        .map_err(|_| ApiError::bad_request("file is too large to stream"))?;
+    let requested_range = file_stream::requested_range(request_headers, total_size)?;
+    let content = storage::stream_local_path(target, requested_range.clone()).await?;
     let name = file_name(relative)?;
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -545,7 +709,28 @@ fn raw_file_response(
             HeaderValue::from_static("public, max-age=300"),
         );
     }
-    Ok((headers, bytes).into_response())
+    file_stream::streaming_response(content, headers, requested_range.is_some())
+}
+
+fn read_editable_text_file(target: &FsPath, metadata: &fs::Metadata) -> ApiResult<String> {
+    if metadata.len() > MAX_EDITABLE_FILE_BYTES {
+        return Err(ApiError::bad_request("文件超过 1 MiB，暂不支持在线编辑"));
+    }
+    let bytes = fs::read(target).map_err(|_| ApiError::bad_request("读取文件内容失败"))?;
+    if bytes.contains(&0) {
+        return Err(ApiError::bad_request("文件包含二进制数据，无法在线编辑"));
+    }
+    String::from_utf8(bytes).map_err(|_| ApiError::bad_request("文件不是 UTF-8 文本，无法在线编辑"))
+}
+
+fn validate_editable_content(content: &str) -> ApiResult<()> {
+    if u64::try_from(content.len()).unwrap_or(u64::MAX) > MAX_EDITABLE_FILE_BYTES {
+        return Err(ApiError::bad_request("文件超过 1 MiB，暂不支持在线编辑"));
+    }
+    if content.contains('\0') {
+        return Err(ApiError::bad_request("文件包含二进制数据，无法在线编辑"));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -961,6 +1146,7 @@ fn percent_encode_segment(segment: &str) -> String {
 }
 
 async fn read_file_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<u8>> {
+    let limit_message = system_settings::upload_limit_error_message(max_bytes);
     let max_bytes = usize::try_from(max_bytes.max(1)).unwrap_or(usize::MAX);
     let mut bytes = Vec::new();
     while let Some(chunk) = field
@@ -969,7 +1155,7 @@ async fn read_file_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<
         .map_err(|_| ApiError::bad_request("failed to read uploaded file"))?
     {
         if bytes.len().saturating_add(chunk.len()) > max_bytes {
-            return Err(ApiError::bad_request("uploaded file is too large"));
+            return Err(ApiError::bad_request(limit_message));
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -1083,5 +1269,43 @@ fn sanitize_filename(file_name: &str) -> String {
         "file.bin".to_string()
     } else {
         sanitized
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editable_text_validation_accepts_utf8_and_rejects_binary() {
+        let directory =
+            std::env::temp_dir().join(format!("gpt-images-file-edit-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let text_path = directory.join("notes.txt");
+        fs::write(&text_path, b"editable text\n").unwrap();
+        let text_metadata = fs::metadata(&text_path).unwrap();
+        assert_eq!(
+            read_editable_text_file(&text_path, &text_metadata).unwrap(),
+            "editable text\n"
+        );
+
+        let binary_path = directory.join("image.bin");
+        fs::write(&binary_path, [0_u8, 159, 146, 150]).unwrap();
+        let binary_metadata = fs::metadata(&binary_path).unwrap();
+        assert!(read_editable_text_file(&binary_path, &binary_metadata).is_err());
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn editable_content_validation_enforces_size_and_binary_limits() {
+        assert!(validate_editable_content("plain text").is_ok());
+        assert!(validate_editable_content("binary\0text").is_err());
+        let oversized = "a".repeat(
+            usize::try_from(MAX_EDITABLE_FILE_BYTES)
+                .unwrap()
+                .saturating_add(1),
+        );
+        assert!(validate_editable_content(&oversized).is_err());
     }
 }

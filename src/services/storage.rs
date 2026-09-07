@@ -1,14 +1,22 @@
 #![allow(clippy::missing_errors_doc)]
 
 use std::{
-    fs,
+    fs, io,
+    ops::Range,
     path::{Component, Path, PathBuf},
 };
 
+use axum::body::Bytes;
+use futures_util::{
+    stream::{self, BoxStream},
+    StreamExt, TryStreamExt,
+};
 use object_store::{
-    aws::AmazonS3Builder, path::Path as ObjectPath, MultipartUpload, ObjectStore, PutPayload,
+    aws::AmazonS3Builder, path::Path as ObjectPath, GetOptions, GetRange, MultipartUpload,
+    ObjectStore, PutPayload,
 };
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::{
     errors::{ApiError, ApiResult},
@@ -55,6 +63,12 @@ pub struct ObjectMetadata {
     pub url: String,
 }
 
+pub struct ObjectByteStream {
+    pub total_size: usize,
+    pub range: Range<usize>,
+    pub stream: BoxStream<'static, Result<Bytes, io::Error>>,
+}
+
 pub async fn put_object(
     profile: &storage_profiles::Model,
     bucket: &storage_buckets::Model,
@@ -90,6 +104,65 @@ pub async fn get_object(
         "s3_compatible" => get_s3(profile, bucket, &object_key).await,
         _ => Err(ApiError::bad_request("unsupported storage provider")),
     }
+}
+
+pub async fn stream_object(
+    profile: &storage_profiles::Model,
+    bucket: &storage_buckets::Model,
+    object_key: &str,
+    range: Option<Range<usize>>,
+) -> ApiResult<ObjectByteStream> {
+    let object_key = normalize_object_key(object_key)?;
+    match profile.provider.as_str() {
+        "local" => stream_local_path(local_path(bucket, &object_key)?, range).await,
+        "s3_compatible" => stream_s3(profile, bucket, &object_key, range).await,
+        _ => Err(ApiError::bad_request("unsupported storage provider")),
+    }
+}
+
+pub async fn stream_local_path(
+    path: PathBuf,
+    range: Option<Range<usize>>,
+) -> ApiResult<ObjectByteStream> {
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| ApiError::bad_request("file content not found"))?;
+    let total_size = usize::try_from(metadata.len())
+        .map_err(|_| ApiError::bad_request("file is too large to stream"))?;
+    let range = range.unwrap_or(0..total_size);
+    if range.start > range.end || range.end > total_size {
+        return Err(ApiError::bad_request("invalid file byte range"));
+    }
+
+    let mut file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|_| ApiError::bad_request("file content not found"))?;
+    file.seek(std::io::SeekFrom::Start(
+        u64::try_from(range.start).unwrap_or(u64::MAX),
+    ))
+    .await
+    .map_err(|_| ApiError::internal("failed to seek file content"))?;
+
+    let remaining = range.end.saturating_sub(range.start);
+    let stream = stream::try_unfold((file, remaining), |(mut file, remaining)| async move {
+        if remaining == 0 {
+            return Ok(None);
+        }
+        let mut buffer = vec![0_u8; remaining.min(64 * 1024)];
+        let read = file.read(&mut buffer).await?;
+        if read == 0 {
+            return Ok(None);
+        }
+        buffer.truncate(read);
+        Ok(Some((Bytes::from(buffer), (file, remaining - read))))
+    })
+    .boxed();
+
+    Ok(ObjectByteStream {
+        total_size,
+        range,
+        stream,
+    })
 }
 
 pub async fn put_object_from_parts(
@@ -268,6 +341,28 @@ pub fn normalize_object_key(key: &str) -> ApiResult<String> {
         return Err(ApiError::bad_request("invalid object key"));
     }
     Ok(key.to_string())
+}
+
+pub fn object_local_path(
+    profile: &storage_profiles::Model,
+    bucket: &storage_buckets::Model,
+    object_key: &str,
+) -> ApiResult<Option<PathBuf>> {
+    match profile.provider.as_str() {
+        "local" => {
+            let object_key = normalize_object_key(object_key)?;
+            let path = local_path(bucket, &object_key)?;
+            if path.is_absolute() {
+                Ok(Some(path))
+            } else {
+                let current_dir = std::env::current_dir()
+                    .map_err(|_| ApiError::internal("failed to resolve local storage path"))?;
+                Ok(Some(current_dir.join(path)))
+            }
+        }
+        "s3_compatible" => Ok(None),
+        _ => Err(ApiError::bad_request("unsupported storage provider")),
+    }
 }
 
 fn put_local(bucket: &storage_buckets::Model, object_key: &str, bytes: &[u8]) -> ApiResult<()> {
@@ -507,6 +602,37 @@ async fn get_s3(
         .await
         .map_err(|_| ApiError::internal("failed to read object content"))?;
     Ok(bytes.to_vec())
+}
+
+async fn stream_s3(
+    profile: &storage_profiles::Model,
+    bucket: &storage_buckets::Model,
+    object_key: &str,
+    range: Option<Range<usize>>,
+) -> ApiResult<ObjectByteStream> {
+    let store = s3_store(profile, bucket)?;
+    let result = store
+        .get_opts(
+            &ObjectPath::from(object_key),
+            GetOptions {
+                range: range.map(GetRange::Bounded),
+                ..GetOptions::default()
+            },
+        )
+        .await
+        .map_err(|_| ApiError::bad_request("file content not found"))?;
+    let total_size = result.meta.size;
+    let range = result.range.clone();
+    let stream = result
+        .into_stream()
+        .map_err(|error| io::Error::other(error.to_string()))
+        .boxed();
+
+    Ok(ObjectByteStream {
+        total_size,
+        range,
+        stream,
+    })
 }
 
 async fn rename_s3(

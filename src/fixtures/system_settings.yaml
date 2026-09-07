@@ -3,9 +3,9 @@
   key: site.name
   name: 站点名称
   group_key: site
-  value: GPT Images Admin
+  value: 后台管理 Admin
   value_type: string
-  default_value: GPT Images Admin
+  default_value: 后台管理 Admin
   description: 后台站点显示名称
   is_public: true
   is_builtin: true
@@ -283,6 +283,22 @@
   is_builtin: true
   is_encrypted: false
   sort_order: 180
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 23
+  key: static_hosting.sites
+  name: 静态托管站点
+  group_key: static_hosting
+  value: "[]"
+  value_type: json
+  default_value: "[]"
+  description: URL 路径与本机静态站点目录映射
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 185
   created_by:
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"

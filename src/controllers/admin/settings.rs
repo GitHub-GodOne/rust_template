@@ -162,7 +162,7 @@ pub async fn create(
     Json(params): Json<SaveSettingParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:setting:create").await?;
-    validate_setting(&params.value_type, &params.value)?;
+    validate_setting(&params.key, &params.value_type, &params.value)?;
 
     let setting = system_settings::ActiveModel {
         key: Set(params.key),
@@ -207,7 +207,7 @@ pub async fn update(
     let value = if setting.value_type == "secret" && params.value == SECRET_MASK {
         setting.value.clone()
     } else {
-        validate_setting(&params.value_type, &params.value)?;
+        validate_setting(&params.key, &params.value_type, &params.value)?;
         params.value
     };
 
@@ -262,7 +262,19 @@ async fn find_setting(ctx: &AppContext, id: i32) -> ApiResult<system_settings::M
         .ok_or_else(|| ApiError::bad_request("setting not found"))
 }
 
-fn validate_setting(value_type: &str, value: &str) -> ApiResult<()> {
+fn validate_setting(key: &str, value_type: &str, value: &str) -> ApiResult<()> {
+    if key == "upload.max_size_mb" {
+        let max_mb = value
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| ApiError::bad_request("upload.max_size_mb 必须是整数 MB 数"))?;
+        if max_mb <= 0 {
+            return Err(ApiError::bad_request(
+                "upload.max_size_mb 必须是大于 0 的整数 MB 数",
+            ));
+        }
+    }
+
     match value_type {
         "string" | "secret" => Ok(()),
         "number" => value
@@ -306,5 +318,18 @@ impl From<system_settings::Model> for SettingRecord {
             created_at: setting.created_at.to_rfc3339(),
             updated_at: setting.updated_at.to_rfc3339(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_setting;
+
+    #[test]
+    fn upload_size_setting_has_no_artificial_upper_bound() {
+        assert!(validate_setting("upload.max_size_mb", "number", "10241").is_ok());
+        assert!(validate_setting("upload.max_size_mb", "number", "50000000").is_ok());
+        assert!(validate_setting("upload.max_size_mb", "number", "0").is_err());
+        assert!(validate_setting("upload.max_size_mb", "number", "1.5").is_err());
     }
 }

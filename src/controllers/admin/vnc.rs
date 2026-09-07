@@ -1,7 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex, OnceLock},
 };
 
@@ -9,11 +9,20 @@ use axum::{
     extract::{ws::Message, ws::WebSocket, ws::WebSocketUpgrade, Path},
     response::IntoResponse,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, Utc};
 use futures_util::{SinkExt, StreamExt};
 use loco_rs::prelude::*;
-use sea_orm::DatabaseConnection;
+use ring::{
+    aead::{self, Aad, LessSafeKey, Nonce, UnboundKey},
+    rand::{SecureRandom, SystemRandom},
+};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
+    Set,
+};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -23,7 +32,7 @@ use uuid::Uuid;
 use crate::{
     controllers::admin::authorize,
     errors::{ApiError, ApiResult},
-    models::{admin_logs, system_settings},
+    models::{_entities::vnc_credentials, admin_logs, system_settings},
     responses::{self, ApiResponse},
 };
 
@@ -32,6 +41,9 @@ const LOCAL_TARGET_KEY: &str = "local-vnc";
 const LOCAL_VNC_HOST: &str = "127.0.0.1";
 const DEFAULT_VNC_PORT: u16 = 5900;
 const TICKET_TTL_SECONDS: i64 = 60;
+const CREDENTIAL_PAYLOAD_PREFIX: &str = "v1:";
+const CREDENTIAL_NONCE_LENGTH: usize = 12;
+const CREDENTIAL_KEY_CONTEXT: &[u8] = b"gpt-images:vnc-credentials:v1:";
 
 static VNC_TICKETS: OnceLock<Mutex<HashMap<String, VncTicket>>> = OnceLock::new();
 static VNC_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<ManagedVncSession>>>> = OnceLock::new();
@@ -45,6 +57,7 @@ pub struct VncTargetRecord {
     pub port: u16,
     pub enabled: bool,
     pub requires_password: bool,
+    pub credentials_saved: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, utoipa::ToSchema)]
@@ -66,7 +79,37 @@ pub struct CreateVncSessionParams {
 pub struct VncTicketRecord {
     pub ticket: String,
     pub expires_at: String,
+    pub username: Option<String>,
     pub password: Option<String>,
+    pub target: Option<String>,
+    pub credentials_saved: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct SaveVncCredentialsParams {
+    pub target_key: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub target: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct VncCredentialQuery {
+    pub target_key: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct VncCredentialStatus {
+    pub target_key: String,
+    pub saved: bool,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+struct SavedVncCredentials {
+    username: Option<String>,
+    password: Option<String>,
+    target: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, utoipa::ToSchema)]
@@ -89,7 +132,7 @@ struct VncTicket {
     session_id: String,
     user_id: i32,
     operator: String,
-    password: Option<String>,
+    has_credentials: bool,
     expires_at: DateTime<Utc>,
 }
 
@@ -118,8 +161,84 @@ struct ManagedVncSession {
 )]
 #[debug_handler]
 pub async fn targets(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:vnc:list").await?;
-    Ok(responses::ok(target_records(&ctx).await?))
+    let user = authorize(&ctx, &auth, "system:vnc:list").await?;
+    Ok(responses::ok(target_records(&ctx, user.id).await?))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/vnc/credentials",
+    tag = "admin-vnc",
+    security(("bearer_auth" = [])),
+    request_body = SaveVncCredentialsParams,
+    responses((status = 200, body = ApiResponse<VncCredentialStatus>))
+)]
+#[debug_handler]
+pub async fn save_credentials(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<SaveVncCredentialsParams>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:vnc:connect").await?;
+    let target = find_target(&ctx, &params.target_key).await?;
+    let target_key = target.record().key;
+    let credentials = normalize_credentials(params)?;
+    let jwt_config = ctx.config.get_jwt_config()?;
+    let encrypted_payload =
+        encrypt_credentials(&jwt_config.secret, user.id, &target_key, &credentials)?;
+    upsert_credentials(&ctx.db, user.id, &target_key, encrypted_payload).await?;
+    record_vnc_log(
+        &ctx.db,
+        user.id,
+        Some(user.name),
+        "save_credentials",
+        format!("保存 VNC 登录凭据：{}", target.record().name),
+        Some(200),
+        None,
+    )
+    .await;
+    Ok(responses::ok(VncCredentialStatus {
+        target_key,
+        saved: true,
+    }))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/vnc/credentials",
+    tag = "admin-vnc",
+    security(("bearer_auth" = [])),
+    params(VncCredentialQuery),
+    responses((status = 200, body = ApiResponse<VncCredentialStatus>))
+)]
+#[debug_handler]
+pub async fn delete_credentials(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<VncCredentialQuery>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:vnc:connect").await?;
+    let target = find_target(&ctx, &params.target_key).await?;
+    let target_record = target.record();
+    vnc_credentials::Entity::delete_many()
+        .filter(vnc_credentials::Column::UserId.eq(user.id))
+        .filter(vnc_credentials::Column::TargetKey.eq(&target_record.key))
+        .exec(&ctx.db)
+        .await?;
+    record_vnc_log(
+        &ctx.db,
+        user.id,
+        Some(user.name),
+        "delete_credentials",
+        format!("清除 VNC 登录凭据：{}", target_record.name),
+        Some(200),
+        None,
+    )
+    .await;
+    Ok(responses::ok(VncCredentialStatus {
+        target_key: target_record.key,
+        saved: false,
+    }))
 }
 
 #[utoipa::path(
@@ -192,7 +311,21 @@ pub async fn create_session_ticket(
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| user.email.clone());
-    let record = create_attach_ticket(&session, user.id, operator.clone())?;
+    let jwt_config = ctx.config.get_jwt_config()?;
+    let saved_credentials =
+        load_credentials(&ctx.db, &jwt_config.secret, user.id, &session.target.key).await?;
+    let credentials_saved = saved_credentials.is_some();
+    let mut credentials = saved_credentials.unwrap_or_default();
+    if credentials.password.is_none() {
+        credentials.password = session.target_kind.password();
+    }
+    let record = create_attach_ticket(
+        &session,
+        user.id,
+        operator.clone(),
+        credentials,
+        credentials_saved,
+    )?;
     record_vnc_log(
         &ctx.db,
         user.id,
@@ -250,11 +383,22 @@ pub async fn session_ws(
         .into_response())
 }
 
-async fn target_records(ctx: &AppContext) -> ApiResult<Vec<VncTargetRecord>> {
+async fn target_records(ctx: &AppContext, user_id: i32) -> ApiResult<Vec<VncTargetRecord>> {
+    let saved_target_keys = vnc_credentials::Entity::find()
+        .filter(vnc_credentials::Column::UserId.eq(user_id))
+        .all(&ctx.db)
+        .await?
+        .into_iter()
+        .map(|credential| credential.target_key)
+        .collect::<HashSet<_>>();
     Ok(all_targets(ctx)
         .await?
         .into_iter()
-        .map(|target| target.record())
+        .map(|target| {
+            let mut record = target.record();
+            record.credentials_saved = saved_target_keys.contains(&record.key);
+            record
+        })
         .collect())
 }
 
@@ -290,6 +434,7 @@ fn local_target() -> VncTargetRecord {
         port: DEFAULT_VNC_PORT,
         enabled: true,
         requires_password: false,
+        credentials_saved: false,
     }
 }
 
@@ -346,6 +491,7 @@ impl VncTarget {
                 port: target.port.unwrap_or(DEFAULT_VNC_PORT),
                 enabled: target.enabled,
                 requires_password: target.password.is_some(),
+                credentials_saved: false,
             },
         }
     }
@@ -436,15 +582,19 @@ fn create_attach_ticket(
     session: &ManagedVncSession,
     user_id: i32,
     operator: String,
+    credentials: SavedVncCredentials,
+    credentials_saved: bool,
 ) -> ApiResult<VncTicketRecord> {
     let ticket = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::seconds(TICKET_TTL_SECONDS);
-    let password = session.target_kind.password();
+    let has_credentials = credentials.username.is_some()
+        || credentials.password.is_some()
+        || credentials.target.is_some();
     let vnc_ticket = VncTicket {
         session_id: session.id.clone(),
         user_id,
         operator,
-        password: password.clone(),
+        has_credentials,
         expires_at,
     };
     ticket_store()
@@ -454,7 +604,10 @@ fn create_attach_ticket(
     Ok(VncTicketRecord {
         ticket,
         expires_at: expires_at.to_rfc3339(),
-        password,
+        username: credentials.username,
+        password: credentials.password,
+        target: credentials.target,
+        credentials_saved,
     })
 }
 
@@ -508,7 +661,7 @@ async fn handle_vnc_socket(socket: WebSocket, session: Arc<ManagedVncSession>, t
         session_id = session.id,
         user_id = ticket.user_id,
         operator = ticket.operator,
-        has_password = ticket.password.is_some(),
+        has_credentials = ticket.has_credentials,
         "vnc websocket detached"
     );
 }
@@ -557,6 +710,182 @@ async fn proxy_vnc_socket(socket: WebSocket, stream: TcpStream, session: &Manage
     session.mark_status("ready");
 }
 
+fn normalize_credentials(params: SaveVncCredentialsParams) -> ApiResult<SavedVncCredentials> {
+    let credentials = SavedVncCredentials {
+        username: normalize_credential_text(params.username, "username", 512, true)?,
+        password: normalize_credential_text(params.password, "password", 4096, false)?,
+        target: normalize_credential_text(params.target, "target", 512, true)?,
+    };
+    if credentials.username.is_none()
+        && credentials.password.is_none()
+        && credentials.target.is_none()
+    {
+        return Err(ApiError::bad_request(
+            "at least one vnc credential field is required",
+        ));
+    }
+    Ok(credentials)
+}
+
+fn normalize_credential_text(
+    value: Option<String>,
+    field: &str,
+    max_length: usize,
+    trim: bool,
+) -> ApiResult<Option<String>> {
+    let Some(mut value) = value else {
+        return Ok(None);
+    };
+    if trim {
+        value = value.trim().to_string();
+    }
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > max_length || contains_control_char(&value) {
+        return Err(ApiError::bad_request(format!(
+            "invalid vnc credential field: {field}"
+        )));
+    }
+    Ok(Some(value))
+}
+
+async fn upsert_credentials(
+    db: &DatabaseConnection,
+    user_id: i32,
+    target_key: &str,
+    encrypted_payload: String,
+) -> ApiResult<()> {
+    let existing = vnc_credentials::Entity::find()
+        .filter(vnc_credentials::Column::UserId.eq(user_id))
+        .filter(vnc_credentials::Column::TargetKey.eq(target_key))
+        .one(db)
+        .await?;
+    if let Some(existing) = existing {
+        let mut active = existing.into_active_model();
+        active.encrypted_payload = Set(encrypted_payload);
+        active.updated_at = Set(Utc::now().into());
+        active.update(db).await?;
+    } else {
+        vnc_credentials::ActiveModel {
+            user_id: Set(user_id),
+            target_key: Set(target_key.to_string()),
+            encrypted_payload: Set(encrypted_payload),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn load_credentials(
+    db: &DatabaseConnection,
+    secret: &str,
+    user_id: i32,
+    target_key: &str,
+) -> ApiResult<Option<SavedVncCredentials>> {
+    let Some(record) = vnc_credentials::Entity::find()
+        .filter(vnc_credentials::Column::UserId.eq(user_id))
+        .filter(vnc_credentials::Column::TargetKey.eq(target_key))
+        .one(db)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    match decrypt_credentials(secret, user_id, target_key, &record.encrypted_payload) {
+        Ok(credentials) => Ok(Some(credentials)),
+        Err(error) => {
+            tracing::warn!(
+                user_id,
+                target_key,
+                error = error.message(),
+                "discarding unreadable vnc credentials"
+            );
+            vnc_credentials::Entity::delete_by_id(record.id)
+                .exec(db)
+                .await?;
+            Ok(None)
+        }
+    }
+}
+
+fn encrypt_credentials(
+    secret: &str,
+    user_id: i32,
+    target_key: &str,
+    credentials: &SavedVncCredentials,
+) -> ApiResult<String> {
+    let key = credential_key(secret)?;
+    let mut nonce_bytes = [0_u8; CREDENTIAL_NONCE_LENGTH];
+    SystemRandom::new()
+        .fill(&mut nonce_bytes)
+        .map_err(|_| ApiError::internal("failed to create vnc credential nonce"))?;
+    let nonce = Nonce::assume_unique_for_key(nonce_bytes);
+    let mut payload = serde_json::to_vec(credentials)
+        .map_err(|_| ApiError::internal("failed to serialize vnc credentials"))?;
+    key.seal_in_place_append_tag(
+        nonce,
+        Aad::from(credential_aad(user_id, target_key).as_bytes()),
+        &mut payload,
+    )
+    .map_err(|_| ApiError::internal("failed to encrypt vnc credentials"))?;
+
+    let mut encoded = Vec::with_capacity(CREDENTIAL_NONCE_LENGTH + payload.len());
+    encoded.extend_from_slice(&nonce_bytes);
+    encoded.extend_from_slice(&payload);
+    Ok(format!(
+        "{CREDENTIAL_PAYLOAD_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(encoded)
+    ))
+}
+
+fn decrypt_credentials(
+    secret: &str,
+    user_id: i32,
+    target_key: &str,
+    encrypted_payload: &str,
+) -> ApiResult<SavedVncCredentials> {
+    let encoded = encrypted_payload
+        .strip_prefix(CREDENTIAL_PAYLOAD_PREFIX)
+        .ok_or_else(|| ApiError::internal("unsupported vnc credential payload"))?;
+    let mut payload = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| ApiError::internal("invalid vnc credential payload"))?;
+    if payload.len() <= CREDENTIAL_NONCE_LENGTH {
+        return Err(ApiError::internal("invalid vnc credential payload"));
+    }
+    let mut nonce_bytes = [0_u8; CREDENTIAL_NONCE_LENGTH];
+    nonce_bytes.copy_from_slice(&payload[..CREDENTIAL_NONCE_LENGTH]);
+    payload.drain(..CREDENTIAL_NONCE_LENGTH);
+
+    let key = credential_key(secret)?;
+    let decrypted = key
+        .open_in_place(
+            Nonce::assume_unique_for_key(nonce_bytes),
+            Aad::from(credential_aad(user_id, target_key).as_bytes()),
+            &mut payload,
+        )
+        .map_err(|_| ApiError::internal("failed to decrypt vnc credentials"))?;
+    serde_json::from_slice(decrypted)
+        .map_err(|_| ApiError::internal("invalid decrypted vnc credentials"))
+}
+
+fn credential_key(secret: &str) -> ApiResult<LessSafeKey> {
+    let mut hasher = Sha256::new();
+    hasher.update(CREDENTIAL_KEY_CONTEXT);
+    hasher.update(secret.as_bytes());
+    let digest = hasher.finalize();
+    let key = UnboundKey::new(&aead::AES_256_GCM, &digest)
+        .map_err(|_| ApiError::internal("failed to initialize vnc credential encryption"))?;
+    Ok(LessSafeKey::new(key))
+}
+
+fn credential_aad(user_id: i32, target_key: &str) -> String {
+    format!("{user_id}:{target_key}")
+}
+
 async fn record_vnc_log(
     db: &DatabaseConnection,
     user_id: i32,
@@ -587,4 +916,38 @@ async fn record_vnc_log(
         },
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decrypt_credentials, encrypt_credentials, SavedVncCredentials};
+
+    #[test]
+    fn vnc_credentials_round_trip_without_plaintext_storage() {
+        let credentials = SavedVncCredentials {
+            username: Some("pikju".to_string()),
+            password: Some("vnc-secret-123".to_string()),
+            target: Some("local-vnc".to_string()),
+        };
+        let encrypted = encrypt_credentials("jwt-secret", 7, "local-vnc", &credentials).unwrap();
+        assert!(!encrypted.contains("pikju"));
+        assert!(!encrypted.contains("vnc-secret-123"));
+
+        let decrypted = decrypt_credentials("jwt-secret", 7, "local-vnc", &encrypted).unwrap();
+        assert_eq!(decrypted.username.as_deref(), Some("pikju"));
+        assert_eq!(decrypted.password.as_deref(), Some("vnc-secret-123"));
+        assert_eq!(decrypted.target.as_deref(), Some("local-vnc"));
+    }
+
+    #[test]
+    fn vnc_credentials_are_bound_to_user_and_target() {
+        let credentials = SavedVncCredentials {
+            password: Some("vnc-secret-123".to_string()),
+            ..Default::default()
+        };
+        let encrypted = encrypt_credentials("jwt-secret", 7, "local-vnc", &credentials).unwrap();
+        assert!(decrypt_credentials("jwt-secret", 8, "local-vnc", &encrypted).is_err());
+        assert!(decrypt_credentials("jwt-secret", 7, "remote-vnc", &encrypted).is_err());
+        assert!(decrypt_credentials("different-secret", 7, "local-vnc", &encrypted).is_err());
+    }
 }

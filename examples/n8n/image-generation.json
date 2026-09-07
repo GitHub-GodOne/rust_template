@@ -1,0 +1,169 @@
+{
+  "name": "后台管理 - AI 图片生成接口",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c1334712-c845-4cbc-a7cf-a4fe31cb8a11",
+      "name": "手动触发",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6f233322-2a41-47a9-a26a-9cb4134e3ee2",
+              "name": "api_base_url",
+              "value": "http://host.docker.internal:5150",
+              "type": "string"
+            },
+            {
+              "id": "59187dc8-c1de-4d5b-9c3d-7375d59601c5",
+              "name": "platform_bearer_token",
+              "value": "eyJ0_REPLACE_WITH_YOUR_PLATFORM_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "eaad4569-699a-48c7-92e8-77530647809c",
+              "name": "ai_api_url",
+              "value": "https://api.pikju.top/v1",
+              "type": "string"
+            },
+            {
+              "id": "5105b113-8240-4d8c-8f57-c93c25d44c6f",
+              "name": "ai_api_key",
+              "value": "REPLACE_WITH_YOUR_AI_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "1742a59f-ad69-4e17-aab0-97d3eda43e67",
+              "name": "prompt",
+              "value": "电影感雨夜城市街道，霓虹灯倒影",
+              "type": "string"
+            },
+            {
+              "id": "d971966b-5000-435c-87aa-a48795428fc6",
+              "name": "base_model",
+              "value": "gpt-5.4-mini",
+              "type": "string"
+            },
+            {
+              "id": "eaa66dce-8003-439e-8430-824b8ce70dbf",
+              "name": "image_model",
+              "value": "gpt-image-2",
+              "type": "string"
+            },
+            {
+              "id": "70ab3bf2-5ff8-41b8-a4b1-f06cefa69c07",
+              "name": "size",
+              "value": "1024x1536",
+              "type": "string"
+            },
+            {
+              "id": "25815fae-c9fb-43ee-919b-561433cbe6d3",
+              "name": "quality",
+              "value": "high",
+              "type": "string"
+            },
+            {
+              "id": "eaa50a25-eb35-4746-8558-8334243c657a",
+              "name": "output_format",
+              "value": "png",
+              "type": "string"
+            },
+            {
+              "id": "c872b34f-cd8d-48e4-bea8-96cba8bd0f7f",
+              "name": "partial_images",
+              "value": 2,
+              "type": "number"
+            },
+            {
+              "id": "19a34f2d-46ca-4517-bf11-45955cf16341",
+              "name": "reasoning_effort",
+              "value": "medium",
+              "type": "string"
+            },
+            {
+              "id": "8867a625-b51b-4ac8-bcbf-e61eda7bfd82",
+              "name": "timeout_seconds",
+              "value": 900,
+              "type": "number"
+            },
+            {
+              "id": "631e4712-f14e-4677-9870-8ee81296994d",
+              "name": "prefix",
+              "value": "n8n/ai-generated",
+              "type": "string"
+            },
+            {
+              "id": "1ad902b5-798b-4cad-b7a7-7b5961dc0094",
+              "name": "visibility",
+              "value": "public",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "e7e60193-8a71-4bf8-a4ce-dda37c2626c4",
+      "name": "配置生图请求",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.api_base_url + '/api/image-api/generations' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.platform_bearer_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ prompt: $json.prompt, api_url: $json.ai_api_url, api_key: $json.ai_api_key, base_model: $json.base_model, image_model: $json.image_model, size: $json.size, quality: $json.quality, output_format: $json.output_format, partial_images: Number($json.partial_images), reasoning_effort: $json.reasoning_effort, timeout_seconds: Number($json.timeout_seconds), prefix: $json.prefix, visibility: $json.visibility }) }}",
+        "options": {
+          "timeout": 950000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "5c043487-c0df-464e-826e-46dd7a8ad3cc",
+      "name": "调用图片生成接口",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "手动触发": {
+      "main": [[{"node": "配置生图请求", "type": "main", "index": 0}]]
+    },
+    "配置生图请求": {
+      "main": [[{"node": "调用图片生成接口", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

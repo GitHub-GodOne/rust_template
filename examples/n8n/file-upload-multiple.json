@@ -1,0 +1,183 @@
+{
+  "name": "后台管理 文件接口 - 多文件上传",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gpt-images-upload-multiple",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "95d75b0f-b56b-4920-a0ea-f18f1b8b989a",
+      "name": "接收多个文件",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "d9daf5c8-cb5a-4728-b040-079bc4c39bbc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "92856ee9-45a0-42e8-a81f-82d3536cbb19",
+              "name": "api_base_url",
+              "value": "http://host.docker.internal:5150",
+              "type": "string"
+            },
+            {
+              "id": "3997003a-ecda-43d8-98b9-6bcdf6fb9cd5",
+              "name": "bearer_token",
+              "value": "eyJ0_REPLACE_WITH_YOUR_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "f65c1a47-da68-491e-8da4-6d3040feecf0",
+              "name": "storage_bucket_id",
+              "value": "={{ $json.body?.storage_bucket_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "6e61efed-e082-452d-851d-46b0ffb537fa",
+              "name": "prefix",
+              "value": "={{ $json.body?.prefix || 'n8n/multiple' }}",
+              "type": "string"
+            },
+            {
+              "id": "333a0e48-4bcf-4548-9d2f-e14d836b045b",
+              "name": "visibility",
+              "value": "={{ $json.body?.visibility || 'private' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "48a34b66-ad02-4ea1-ad5c-a15bf9b72fb8",
+      "name": "配置接口",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const inputItems = $input.all();\nconst output = [];\n\nfor (let itemIndex = 0; itemIndex < inputItems.length; itemIndex += 1) {\n  const item = inputItems[itemIndex];\n  const files = Object.entries(item.binary || {});\n\n  for (const [fieldName, binaryData] of files) {\n    output.push({\n      json: {\n        ...item.json,\n        source_field: fieldName,\n        source_file_name: binaryData.fileName || fieldName,\n      },\n      binary: {\n        file: binaryData,\n      },\n      pairedItem: { item: itemIndex },\n    });\n  }\n}\n\nif (output.length === 0) {\n  throw new Error('没有收到文件。请使用不同的 multipart 字段名，例如 file_1、file_2。');\n}\n\nreturn output;"
+      },
+      "id": "f09e43b1-3ddb-4a68-bf58-09f44b547a76",
+      "name": "拆分多个文件",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.api_base_url + '/api/file-api/uploads' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.bearer_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            },
+            {
+              "parameterType": "formData",
+              "name": "storage_bucket_id",
+              "value": "={{ $json.storage_bucket_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "prefix",
+              "value": "={{ $json.prefix }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "visibility",
+              "value": "={{ $json.visibility }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "23cd3266-69ca-46fd-a000-ea80322b386c",
+      "name": "逐个上传到文件接口",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const responses = $input.all().map((item) => item.json);\nconst files = [];\nconst failures = [];\n\nfor (const response of responses) {\n  if (response.success && response.data) {\n    files.push(response.data);\n    continue;\n  }\n\n  const rawError = response.error;\n  const message =\n    typeof rawError === 'string'\n      ? rawError\n      : rawError?.message || response.message || '文件上传失败';\n\n  failures.push({\n    file: response.source_file_name || null,\n    message,\n  });\n}\n\nreturn [{\n  json: {\n    success: failures.length === 0,\n    count: files.length,\n    failed_count: failures.length,\n    files,\n    failures,\n  },\n}];"
+      },
+      "id": "1448fe45-ce5e-4365-9a60-d0a84f47cf2b",
+      "name": "汇总多文件结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "90a70335-a28e-4605-874c-72431c2bfd95",
+      "name": "返回汇总结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1440, 300]
+    }
+  ],
+  "connections": {
+    "接收多个文件": {
+      "main": [[{"node": "配置接口", "type": "main", "index": 0}]]
+    },
+    "配置接口": {
+      "main": [[{"node": "拆分多个文件", "type": "main", "index": 0}]]
+    },
+    "拆分多个文件": {
+      "main": [[{"node": "逐个上传到文件接口", "type": "main", "index": 0}]]
+    },
+    "逐个上传到文件接口": {
+      "main": [[{"node": "汇总多文件结果", "type": "main", "index": 0}]]
+    },
+    "汇总多文件结果": {
+      "main": [[{"node": "返回汇总结果", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

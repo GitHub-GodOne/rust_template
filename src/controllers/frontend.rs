@@ -30,7 +30,7 @@ async fn asset(Path(path): Path<String>) -> Result<Response> {
     })
 }
 
-fn frontend_response(path: &str, immutable: bool) -> Response {
+pub(crate) fn frontend_response(path: &str, immutable: bool) -> Response {
     let Some(file) = FRONTEND_DIR.get_file(path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -52,7 +52,7 @@ fn frontend_response(path: &str, immutable: bool) -> Response {
     (headers, file.contents().to_vec()).into_response()
 }
 
-fn is_backend_path(path: &str) -> bool {
+pub(crate) fn is_backend_path(path: &str) -> bool {
     path == "api"
         || path.starts_with("api/")
         || path == "api-docs"

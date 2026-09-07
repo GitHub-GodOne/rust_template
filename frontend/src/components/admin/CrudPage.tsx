@@ -1,5 +1,5 @@
-import { FilterOutlined, MoreOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Modal, Space, Typography } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Drawer } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { CrudToolbar } from "./CrudToolbar";
@@ -13,6 +13,7 @@ export function CrudPage({
   children,
   toolbar,
   notice,
+  className,
 }: {
   title: string;
   subtitle?: string;
@@ -21,51 +22,43 @@ export function CrudPage({
   children: ReactNode;
   toolbar?: ReactNode;
   notice?: string;
+  className?: string;
 }) {
   const [mobileToolbarOpen, setMobileToolbarOpen] = useState(false);
   const cardToolbar = toolbar ?? <CrudToolbar />;
 
   return (
-    <div>
+    <div className={className}>
       <PageHeader
         title={title}
         subtitle={subtitle}
         breadcrumb={breadcrumb}
         icon={icon}
-      />
-      <Card
-        className="admin-card crud-card"
-        title={
-          <Space size={10} className="crud-card-title">
-            {icon ? <span className="crud-card-icon">{icon}</span> : null}
-            <span>{title}</span>
-            {subtitle ? (
-              <Typography.Text type="secondary" className="crud-card-subtitle">
-                {subtitle}
-              </Typography.Text>
-            ) : null}
-          </Space>
-        }
         extra={
           <>
-            <div className="crud-card-extra-desktop">{cardToolbar}</div>
-            <Space.Compact block className="crud-card-extra-mobile">
-              <Button
-                icon={<FilterOutlined />}
-                onClick={() => setMobileToolbarOpen(true)}
-              >
-                筛选 / 操作
-              </Button>
-              <Button
-                icon={<MoreOutlined />}
-                onClick={() => setMobileToolbarOpen(true)}
-              >
-                更多
-              </Button>
-            </Space.Compact>
+            <div className="crud-page-toolbar-desktop">{cardToolbar}</div>
+            <Button
+              className="crud-page-toolbar-mobile"
+              type="primary"
+              icon={<MoreOutlined />}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => {
+                event.stopPropagation();
+                if (event.pointerType !== "mouse") {
+                  setMobileToolbarOpen(true);
+                }
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMobileToolbarOpen(true);
+              }}
+            >
+              操作
+            </Button>
           </>
         }
-      >
+      />
+      <Card className="admin-card crud-card">
         {notice && (
           <Alert
             type="info"
@@ -76,15 +69,17 @@ export function CrudPage({
         )}
         {children}
       </Card>
-      <Modal
-        title={`${title} 操作`}
+      <Drawer
+        title={`${title} · 操作`}
         open={mobileToolbarOpen}
-        onCancel={() => setMobileToolbarOpen(false)}
-        footer={null}
-        width="min(560px, 94vw)"
+        onClose={() => setMobileToolbarOpen(false)}
+        placement="bottom"
+        height="auto"
+        rootClassName="admin-action-drawer-root"
+        className="admin-action-drawer"
       >
         <div className="admin-mobile-toolbar-sheet">{cardToolbar}</div>
-      </Modal>
+      </Drawer>
     </div>
   );
 }
