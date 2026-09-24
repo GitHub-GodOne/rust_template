@@ -24,10 +24,11 @@ use crate::{
         dict_items, dict_types, email_templates, http_request_presets, http_request_runs,
         managed_file_access_rules, menus, operation_logs, payment_callbacks, payment_channels,
         payment_orders, payment_refunds, permissions, rate_limit_events, rate_limit_rules,
-        refresh_tokens, role_data_scopes, role_menus, role_permissions, roles, scheduled_task_runs,
-        scheduled_tasks, storage_buckets, storage_profiles, system_notifications, system_settings,
-        tenants, upload_files, upload_tasks, user_departments, user_roles, users,
-        work_order_assignments, work_order_attachments, work_order_comments, work_orders,
+        rdp_credentials, refresh_tokens, role_data_scopes, role_menus, role_permissions, roles,
+        scheduled_task_runs, scheduled_tasks, storage_buckets, storage_profiles,
+        system_notifications, system_settings, tenants, upload_files, upload_tasks,
+        user_departments, user_roles, users, work_order_assignments, work_order_attachments,
+        work_order_comments, work_orders,
     },
     tasks,
     workers::downloader::DownloadWorker,
@@ -55,6 +56,9 @@ impl Hooks for App {
         environment: &Environment,
         config: Config,
     ) -> Result<BootResult> {
+        if !matches!(environment, Environment::Test) {
+            crate::setup::ensure_configured_database(&config.database.uri).await?;
+        }
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
@@ -150,6 +154,7 @@ impl Hooks for App {
         truncate_table(&ctx.db, permissions::Entity).await?;
         truncate_table(&ctx.db, roles::Entity).await?;
         truncate_table(&ctx.db, refresh_tokens::Entity).await?;
+        truncate_table(&ctx.db, rdp_credentials::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;
         truncate_table(&ctx.db, departments::Entity).await?;
         truncate_table(&ctx.db, tenants::Entity).await?;

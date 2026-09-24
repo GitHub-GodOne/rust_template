@@ -1,5 +1,5 @@
 import { MoreOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Drawer } from "antd";
+import { Alert, Button, Card, Drawer, Grid } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { CrudToolbar } from "./CrudToolbar";
@@ -14,10 +14,12 @@ export function CrudPage({
   toolbar,
   notice,
   className,
+  extra,
 }: {
   title: string;
   subtitle?: string;
-  breadcrumb: string[];
+  breadcrumb?: string[];
+  extra?: ReactNode;
   icon?: ReactNode;
   children: ReactNode;
   toolbar?: ReactNode;
@@ -25,6 +27,8 @@ export function CrudPage({
   className?: string;
 }) {
   const [mobileToolbarOpen, setMobileToolbarOpen] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const cardToolbar = toolbar ?? <CrudToolbar />;
 
   return (
@@ -36,7 +40,10 @@ export function CrudPage({
         icon={icon}
         extra={
           <>
-            <div className="crud-page-toolbar-desktop">{cardToolbar}</div>
+            {extra}
+            {!isMobile && (
+              <div className="crud-page-toolbar-desktop">{cardToolbar}</div>
+            )}
             <Button
               className="crud-page-toolbar-mobile"
               type="primary"
@@ -71,14 +78,16 @@ export function CrudPage({
       </Card>
       <Drawer
         title={`${title} · 操作`}
-        open={mobileToolbarOpen}
+        open={isMobile && mobileToolbarOpen}
         onClose={() => setMobileToolbarOpen(false)}
         placement="bottom"
         height="auto"
         rootClassName="admin-action-drawer-root"
         className="admin-action-drawer"
       >
-        <div className="admin-mobile-toolbar-sheet">{cardToolbar}</div>
+        {isMobile && (
+          <div className="admin-mobile-toolbar-sheet">{cardToolbar}</div>
+        )}
       </Drawer>
     </div>
   );

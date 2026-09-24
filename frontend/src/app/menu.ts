@@ -205,6 +205,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:vnc:list",
       },
       {
+        key: "system-rdp",
+        label: "RDP 管理",
+        path: "/admin/system/rdp",
+        icon: "monitor",
+        permission: "system:rdp:list",
+      },
+      {
         key: "system-ai-images",
         label: "AI 图片生成",
         path: "/admin/system/ai-images",
@@ -310,7 +317,10 @@ export function mergeMenuItems(
   return mergeLevel(sourceMenus, fallbackMenus);
 }
 
-export function findMenuByPath(pathname: string, items = defaultAdminMenus) {
+export function findMenuByPath(
+  pathname: string,
+  items = defaultAdminMenus,
+): AdminMenuItem | undefined {
   for (const item of items) {
     if (item.path === pathname) {
       return item;

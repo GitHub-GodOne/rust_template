@@ -1063,3 +1063,24 @@
   description: 允许删除永久 API 密钥
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 153
+  name: 查看 RDP 管理
+  code: system:rdp:list
+  group_name: system:rdp
+  description: 查看远程桌面目标
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 154
+  name: 连接 RDP 桌面
+  code: system:rdp:connect
+  group_name: system:rdp
+  description: 使用 Windows 账号连接远程桌面
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 155
+  name: 管理 RDP 目标
+  code: system:rdp:update
+  group_name: system:rdp
+  description: 新增、编辑和删除远程桌面目标
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

@@ -122,7 +122,248 @@ sudo ./target/release/gpt_images-cli service uninstall
 服务配置会保存安装时的二进制和工作目录绝对路径。移动二进制或项目目录后，应使用
 新的路径再次执行 `service install` 覆盖配置。同名安装也可用于更新端口、环境或模式。
 
+## Windows VNC 服务安装与启动
+
+后台“VNC 管理”的本机目标连接后端所在机器的 `127.0.0.1:5900`，需要该机器先运行
+VNC Server。目前项目的自动安装和服务控制命令仅支持 Windows，使用 TightVNC
+（服务名 `tvnserver`）。请在目标 Windows 机器上，以管理员身份打开 PowerShell，
+进入 `gpt_images-cli.exe` 所在目录执行：
+
+```powershell
+# 检查 TightVNC 服务及本机 5900 端口
+.\gpt_images-cli.exe vnc status
+
+# 未安装时通过 winget 安装，然后配置自动启动并启动服务
+.\gpt_images-cli.exe vnc install
+
+# 安装后再次检查端口是否可连接
+.\gpt_images-cli.exe vnc status
+```
+
+如果程序已加入 PATH，可以直接使用：
+
+```powershell
+gpt_images-cli vnc install
+```
+
+仅使用已安装的 TightVNC，不下载或安装软件：
+
+```powershell
+.\gpt_images-cli.exe vnc install --no-install
+```
+
+启动已安装但未运行的服务（同时设置开机自动启动）：
+
+```powershell
+.\gpt_images-cli.exe vnc start
+```
+
+从源码运行时，在项目根目录使用：
+
+```powershell
+cargo loco vnc status
+cargo loco vnc install
+cargo loco vnc start
+```
+
+安装命令要求 `winget` 可用并能下载软件；如果系统无法运行 `winget`，需要先修复它，
+或手动安装 TightVNC Server 后再检查服务。服务已运行时不必重复执行 `install` 或
+`start`；当前实现可能返回“服务已启动”的错误，此时用 `vnc status` 检查即可。
+`install` 和 `start` 本身不验证端口可用性，请以随后执行的 `status` 和实际连接为准。
+
+在 TightVNC 中配置访问密码，再在后台“VNC 管理”选择“本机 VNC”连接；这些命令不会
+代替你设置 VNC 密码。Linux/macOS 需要自行配置 VNC 服务。更多说明见 [Windows VNC](docs/vnc.md)。
+
+## 数据库迁移到另一台服务器
+
+本项目默认使用 PostgreSQL。迁移时需要同时迁移数据库、配置文件和本地文件存储；只复制
+数据库不会包含上传的图片、附件等本地文件。迁移前先停止旧服务器上的应用，避免导出期间
+仍有写入。
+
+### 1. 旧服务器导出
+
+Linux/macOS：
+
+```sh
+pg_dump --format=custom --no-owner --no-acl \
+  --dbname="postgresql://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME" \
+  --file=/tmp/gpt-images.dump
+```
+
+Windows PowerShell：
+
+```powershell
+$env:PGPASSWORD = "DB_PASSWORD"
+pg_dump.exe --format=custom --no-owner --no-acl `
+  --host=127.0.0.1 --port=5432 --username=DB_USER --dbname=DB_NAME `
+  --file=C:\backup\gpt-images.dump
+Remove-Item Env:PGPASSWORD
+```
+
+然后把 dump 文件复制到新服务器，例如：
+
+```sh
+scp /tmp/gpt-images.dump NEW_USER@NEW_SERVER:/tmp/gpt-images.dump
+```
+
+如果使用本地存储，还要复制存储根目录。该目录以后台“存储配置”中的本地根目录为准，
+例如：
+
+```sh
+rsync -a /opt/gpt-images/storage/ NEW_USER@NEW_SERVER:/opt/gpt-images/storage/
+```
+
+### 2. 新服务器创建数据库并导入
+
+先在新服务器创建空数据库和数据库用户（名称可以与旧服务器不同）：
+
+```sh
+sudo -u postgres createuser --pwprompt DB_USER
+sudo -u postgres createdb --owner=DB_USER DB_NAME
+```
+
+导入数据：
+
+```sh
+pg_restore --exit-on-error --no-owner --no-acl \
+  --dbname="postgresql://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME" \
+  /tmp/gpt-images.dump
+```
+
+如果目标数据库不是本机，把 `127.0.0.1` 改成 PostgreSQL 主机地址。Windows 上使用
+`pg_restore.exe`，参数相同。
+
+### 3. 更新新服务器配置并验证
+
+把旧服务器的 `config/production.local.yaml` 安全复制到新服务器，或只更新其中的
+`database.uri`、JWT 密钥和存储配置。数据库连接地址也可以用环境变量覆盖：
+
+```sh
+export DATABASE_URL='postgres://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME'
+./gpt_images-cli -e production db migrate
+./gpt_images-cli -e production task admin.unlock email:admin@example.com
+./gpt_images-cli -e production start
+```
+
+Windows PowerShell：
+
+```powershell
+$env:DATABASE_URL = "postgres://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME"
+.\gpt_images-cli.exe -e production db migrate
+.\gpt_images-cli.exe -e production start
+```
+
+确认可以登录、后台菜单和历史数据正常后，再安装开机服务。不要在已有数据的新服务器
+上执行 `db seed --reset`，它会清空并重置 fixture 相关数据；普通迁移只执行
+`db migrate`。
+
+### 使用项目自带命令导入导出
+
+项目提供跨平台的 `data export` 和 `data import` 命令。它们要求服务器已安装
+PostgreSQL 客户端工具 `pg_dump` 和 `pg_restore`，不要求安装完整 PostgreSQL 服务端。
+Linux、macOS 和 Windows 使用相同参数。
+
+默认优先读取 `config/<environment>.local.yaml`，其次读取
+`config/<environment>.yaml` 中的 `database.uri`。配置文件存在时不需要重复写数据库连接串。
+
+```sh
+DATABASE_URL='postgres://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME' \
+  ./gpt_images-cli data export --file=/tmp/gpt-images.dump
+```
+
+Windows PowerShell：
+
+```powershell
+$env:DATABASE_URL = "postgres://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME"
+.\gpt_images-cli.exe data export --file C:\backup\gpt-images.dump
+```
+
+如果没有配置文件，或需要临时指定数据库，才传入 `--database-url`。在新服务器创建空数据库后导入：
+
+```sh
+./gpt_images-cli data import \
+  --database-url 'postgres://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME' \
+  --file=/tmp/gpt-images.dump
+```
+
+Windows PowerShell：
+
+```powershell
+.\gpt_images-cli.exe data import `
+  --database-url "postgres://DB_USER:DB_PASSWORD@127.0.0.1:5432/DB_NAME" `
+  --file C:\backup\gpt-images.dump
+```
+
+如果不指定 `--file`，导出命令会在当前目录生成带时间戳的 `.dump` 文件。导入建议只对
+新建的空数据库执行；完成后运行 `db migrate` 再启动应用。数据库之外的本地图片、附件
+仍需单独复制存储根目录。
+
+### 使用 Loco 自带命令导入导出 YAML fixtures
+
+本项目使用的 Loco 0.16.4 已内置 `db seed --dump`，不需要新增导出工具。
+在项目根目录执行，命令使用对应环境的数据库配置，不必重复传入连接串；
+`-e development` 与 `-e production` 应按实际数据库环境选择。
+
+导出所有表到默认的 `src/fixtures` 目录（一张表生成一个 `<表名>.yaml`）：
+
+```sh
+cargo loco -e development db seed --dump
+```
+
+生产环境指定导出目录。建议先导出到独立目录检查，避免覆盖项目的初始化数据：
+
+```sh
+cargo loco -e production db seed --dump --from backups/fixtures
+```
+
+只导出指定表，表名用逗号分隔：
+
+```sh
+cargo loco -e production db seed --dump-tables roles,permissions,menus,role_permissions,role_menus --from backups/fixtures
+```
+
+确认需要更新项目 fixtures 后，可直接指定 `--from src/fixtures`。
+虽然参数名为 `--from`，在导出模式下它表示**输出目录**；同名 YAML 文件会被覆盖。
+
+使用编译后的程序（Linux/macOS）：
+
+```sh
+./gpt_images-cli -e production db seed --dump --from backups/fixtures
+```
+
+Windows PowerShell：
+
+```powershell
+.\gpt_images-cli.exe -e production db seed --dump --from backups/fixtures
+```
+
+导入 fixtures 时去掉 `--dump`。先确保目标数据库已迁移，且不会与待导入记录产生主键冲突：
+
+```sh
+cargo loco -e production db migrate
+cargo loco -e production db seed --from backups/fixtures
+```
+
+Windows 编译后的程序：
+
+```powershell
+.\gpt_images-cli.exe -e production db migrate
+.\gpt_images-cli.exe -e production db seed --from backups/fixtures
+```
+
+导入只加载 `src/app.rs` 的 `App::seed` 中登记的表及对应 YAML，并不会自动导入目录中的
+所有文件。只导出部分表的目录也不能直接当成完整 seed 目录使用，需补齐 seed 所需文件。
+不要在已有业务数据的数据库上使用 `db seed --reset`，该选项会重置数据库。
+导出的文件可能含真实账号、密码哈希、密钥等敏感数据，提交到仓库前务必检查。
+fixtures 适合保存初始化数据；完整数据库迁移仍建议使用前述 PostgreSQL `.dump` 备份方式，
+上传图片、附件等本地文件仍需另行复制。
+
 ## 首次安装向导
+
+已有配置文件时，正常启动也会检查 PostgreSQL 目标数据库：数据库缺失时自动创建，
+随后执行配置启用的自动迁移。数据库账号需要 `CREATEDB` 权限；PostgreSQL 服务本身
+仍需安装并运行。连接失败时会提示检查服务、网络或权限，不会把连接失败当作空数据库重置。
+测试环境不执行此启动检查。新建库不会自动填入演示管理员；按下面的管理员初始化说明配置账号。
 
 执行 `start` 时，应用会按下面顺序查找当前环境的配置：
 
@@ -269,7 +510,7 @@ DATABASE_URL='postgres://user:password@127.0.0.1:5432/gpt_images' \
 如果登录时报 `login attempt with non-existent email email=admin@example.com`，说明当前数据库里没有默认管理员。可以用恢复任务创建或重置管理员：
 
 ```sh
-cargo loco -e development task admin.recover email:admin@example.com password:NewPassword123 name:Admin role-code:super_admin
+cargo loco -e development task admin.recover email:admin@example.com password:Vue8484229@ name:Admin role-code:super_admin
 ```
 
 然后使用下面账号登录：

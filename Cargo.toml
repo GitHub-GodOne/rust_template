@@ -28,7 +28,7 @@ tokio = { version = "1.45", default-features = false, features = [
   "net",
 ] }
 async-trait = { version = "0.1" }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 axum = { version = "0.8", features = ["multipart", "ws"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

@@ -6,7 +6,7 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Checkbox, Form, Input, Modal, Select, Space, message } from "antd";
-import type { CheckboxValueType } from "antd/es/checkbox/Group";
+type CheckboxValueType = string | number | boolean;
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
 import { fetchDepartments } from "../../../api/admin/departments";

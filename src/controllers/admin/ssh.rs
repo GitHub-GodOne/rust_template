@@ -553,12 +553,22 @@ impl SshTarget {
     fn command(&self) -> CommandBuilder {
         match self {
             Self::Local(_) => {
-                let shell = env::var("SHELL")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| "/bin/sh".to_string());
-                let mut command = CommandBuilder::new(shell);
-                command.arg("-i");
+                #[cfg(windows)]
+                let mut command = {
+                    let mut command = CommandBuilder::new("powershell.exe");
+                    command.args(["-NoLogo", "-NoProfile", "-NoExit"]);
+                    command
+                };
+                #[cfg(not(windows))]
+                let mut command = {
+                    let shell = env::var("SHELL")
+                        .ok()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or_else(|| "/bin/sh".to_string());
+                    let mut command = CommandBuilder::new(shell);
+                    command.arg("-i");
+                    command
+                };
                 command.env("TERM", "xterm-256color");
                 command
             }

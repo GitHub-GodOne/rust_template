@@ -1,13 +1,33 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ConfigProvider, theme } from "antd";
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { ConfigProvider, message, theme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter } from "react-router-dom";
+import { ApiRequestError } from "../api/client";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { AppRouter } from "./router";
 
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      void message.error({
+        key: "query-error",
+        content: error.message || "数据加载失败，请重试",
+      });
+    },
+  }),
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (count, error) =>
+        count < 1 &&
+        !(
+          error instanceof ApiRequestError &&
+          error.status &&
+          error.status < 500
+        ),
       refetchOnWindowFocus: false,
     },
   },
@@ -74,7 +94,9 @@ export function App() {
     >
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <AppRouter />
+          <ErrorBoundary>
+            <AppRouter />
+          </ErrorBoundary>
         </BrowserRouter>
       </QueryClientProvider>
     </ConfigProvider>

@@ -1,6 +1,7 @@
 pub mod app;
 pub mod controllers;
 pub mod data;
+pub mod data_manager;
 pub mod errors;
 pub mod initializers;
 pub mod mailers;
@@ -13,4 +14,5 @@ pub mod services;
 pub mod setup;
 pub mod tasks;
 pub mod views;
+pub mod vnc_manager;
 pub mod workers;

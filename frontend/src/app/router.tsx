@@ -374,6 +374,14 @@ export function AppRouter() {
             }
           />
           <Route
+            path="system/rdp"
+            element={
+              <RequirePermission permission="system:rdp:list">
+                {null}
+              </RequirePermission>
+            }
+          />
+          <Route
             path="system/ai-images"
             element={
               <RequirePermission permission="system:ai_image:list">

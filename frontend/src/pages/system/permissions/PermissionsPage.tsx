@@ -16,7 +16,7 @@ import {
   Typography,
   message,
 } from "antd";
-import type { CheckboxValueType } from "antd/es/checkbox/Group";
+type CheckboxValueType = string | number | boolean;
 import { useEffect, useMemo, useState } from "react";
 import { type MenuRecord, fetchMenus } from "../../../api/admin/menus";
 import { fetchAllPermissions } from "../../../api/admin/permissions";
@@ -88,6 +88,7 @@ const permissionGroupLabels: Record<string, string> = {
   "system:api_key": "API 授权",
   "system:ssh": "SSH 管理",
   "system:vnc": "VNC 管理",
+  "system:rdp": "RDP 管理",
   "system:ai_image": "AI 图片",
   "system:email_template": "邮箱模板",
   "system:work_order": "工单管理",

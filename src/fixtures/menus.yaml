@@ -340,3 +340,14 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 32
+  parent_id: 2
+  title: RDP 管理
+  path: /admin/system/rdp
+  icon: monitor
+  permission_code: system:rdp:list
+  sort_order: 226
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

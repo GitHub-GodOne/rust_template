@@ -53,6 +53,11 @@ export function LoginPage() {
         roles: session.roles,
         permissions: session.permissions,
         menus: session.menus,
+        tenant: session.tenant ?? null,
+        departments: session.departments,
+        currentDepartment: session.current_department ?? null,
+        dataScopes: session.data_scopes,
+        effectiveDataScope: session.effective_data_scope,
       });
       message.success("登录成功");
       navigate(from, { replace: true });

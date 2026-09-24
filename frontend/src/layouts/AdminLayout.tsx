@@ -1,6 +1,7 @@
 import { ConfigProvider, Grid, Layout, theme } from "antd";
 import { type CSSProperties, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { RdpPage } from "../pages/system/rdp/RdpPage";
 import { SshPage } from "../pages/system/ssh/SshPage";
 import { VncPage } from "../pages/system/vnc/VncPage";
 import { useAuthStore } from "../stores/auth";
@@ -18,6 +19,10 @@ export function AdminLayout() {
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
   const [sshPageMounted, setSshPageMounted] = useState(false);
   const [vncPageMounted, setVncPageMounted] = useState(false);
+  const [rdpPageMounted, setRdpPageMounted] = useState(false);
+  const hasRdpPermission = useAuthStore((state) =>
+    state.hasPermission("system:rdp:list"),
+  );
   const location = useLocation();
   const hasSshPermission = useAuthStore((state) =>
     state.hasPermission("system:ssh:list"),
@@ -48,10 +53,15 @@ export function AdminLayout() {
   } as CSSProperties;
   const isSshPage = location.pathname === "/admin/system/ssh";
   const isVncPage = location.pathname === "/admin/system/vnc";
-  const isKeepAlivePage = isSshPage || isVncPage;
+  const isRdpPage = location.pathname === "/admin/system/rdp";
+  const isKeepAlivePage = isSshPage || isVncPage || isRdpPage;
   const {
     token: { borderRadiusLG },
   } = theme.useToken();
+
+  useEffect(() => {
+    if (isRdpPage && hasRdpPermission) setRdpPageMounted(true);
+  }, [isRdpPage, hasRdpPermission]);
 
   useEffect(() => {
     if (isSshPage && hasSshPermission) {
@@ -109,6 +119,11 @@ export function AdminLayout() {
                   {vncPageMounted && hasVncPermission ? (
                     <div hidden={!isVncPage}>
                       <VncPage visible={isVncPage} />
+                    </div>
+                  ) : null}
+                  {rdpPageMounted && hasRdpPermission ? (
+                    <div hidden={!isRdpPage}>
+                      <RdpPage visible={isRdpPage} />
                     </div>
                   ) : null}
                 </div>

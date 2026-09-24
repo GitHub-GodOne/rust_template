@@ -24,6 +24,7 @@ mod m20260703_000019_chat_management;
 mod m20260703_000020_managed_file_access_rules;
 mod m20260717_000021_command_api_keys;
 mod m20260828_000022_vnc_credentials;
+mod m20260916_000023_rdp_credentials;
 
 pub struct Migrator;
 
@@ -54,6 +55,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260703_000020_managed_file_access_rules::Migration),
             Box::new(m20260717_000021_command_api_keys::Migration),
             Box::new(m20260828_000022_vnc_credentials::Migration),
+            Box::new(m20260916_000023_rdp_credentials::Migration),
             // inject-above (do not remove this comment)
         ]
     }

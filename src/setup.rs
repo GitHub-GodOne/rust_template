@@ -593,14 +593,63 @@ async fn postgres_database_exists(
     database: &str,
 ) -> Result<bool, sea_orm::DbErr> {
     let result = connection
-        .query_one(Statement::from_string(
+        .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            format!(
-                "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = '{database}') AS exists"
-            ),
+            "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1) AS exists",
+            [database.into()],
         ))
         .await?;
     result.map_or(Ok(false), |row| row.try_get("", "exists"))
+}
+
+/// Ensure an existing configuration can start against a missing PostgreSQL database.
+///
+/// # Errors
+/// Returns an actionable, credential-free error if PostgreSQL is unavailable or creation fails.
+pub async fn ensure_configured_database(uri: &str) -> loco_rs::Result<()> {
+    let failure = |message: &str| loco_rs::Error::Message(message.to_string());
+    let mut maintenance_uri =
+        Url::parse(uri).map_err(|_| failure("数据库连接地址格式不正确，请检查 database.uri"))?;
+    if !matches!(maintenance_uri.scheme(), "postgres" | "postgresql") {
+        return Ok(());
+    }
+    if let Ok(connection) = connect(uri).await {
+        connection.close().await?;
+        return Ok(());
+    }
+    // Decode URL-encoded database names without interpreting them as SQL.
+    let name = maintenance_uri.path().trim_start_matches('/');
+    let decoded =
+        url::form_urlencoded::parse(format!("name={}", name.replace('+', "%2B")).as_bytes())
+            .next()
+            .map(|(_, value)| value.into_owned())
+            .unwrap_or_default();
+    if decoded.is_empty() || decoded.contains('\0') {
+        return Err(failure("数据库名称不能为空或包含空字符"));
+    }
+    maintenance_uri.set_path("/postgres");
+    let maintenance = connect(maintenance_uri.as_str()).await
+        .map_err(|_| failure("无法连接 PostgreSQL，请检查服务、地址、账号密码及网络；自动建库需要可访问 postgres 数据库"))?;
+    let exists = postgres_database_exists(&maintenance, &decoded).await?;
+    if !exists {
+        let result = maintenance
+            .execute_unprepared(&format!(
+                "CREATE DATABASE \"{}\" ENCODING 'UTF8' TEMPLATE template0",
+                decoded.replace('"', "\"\"")
+            ))
+            .await;
+        // Another instance may have created the same database concurrently.
+        if result.is_err() && !postgres_database_exists(&maintenance, &decoded).await? {
+            return Err(failure("数据库不存在且自动创建失败，请授予数据库账号 CREATEDB 权限，或请管理员手动创建数据库"));
+        }
+        tracing::info!("PostgreSQL database is ready for initial migrations");
+    }
+    maintenance.close().await?;
+    let connection = connect(uri)
+        .await
+        .map_err(|_| failure("数据库已存在但无法连接，请检查数据库访问权限及连接配置"))?;
+    connection.close().await?;
+    Ok(())
 }
 
 async fn connect(uri: &str) -> Result<DatabaseConnection, sea_orm::DbErr> {

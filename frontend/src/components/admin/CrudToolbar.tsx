@@ -21,6 +21,7 @@ type ToolbarAction = {
   icon: ReactNode;
   permission?: PermissionCode;
   danger?: boolean;
+  disabled?: boolean;
   primary?: boolean;
   onClick?: () => void;
 };
@@ -58,6 +59,7 @@ export function CrudToolbar({
       size={block ? "middle" : "small"}
       permission={action.permission}
       danger={action.danger}
+      disabled={action.disabled || !action.onClick}
       type={action.primary ? "primary" : "default"}
       icon={action.icon}
       onClick={() => {

@@ -221,14 +221,17 @@ export function useUploadTaskManager({
       });
       lifecycle?.onStageChange?.("uploading");
       setTaskRunning(task.id, { file, paused: false });
+      const createdTask = task;
       queryClient.setQueryData<UploadTaskRecord[]>(
         ["admin-upload-tasks"],
         (tasks) => {
           const current = tasks ?? [];
-          if (current.some((item) => item.id === task.id)) {
-            return current.map((item) => (item.id === task.id ? task : item));
+          if (current.some((item) => item.id === createdTask.id)) {
+            return current.map((item) =>
+              item.id === createdTask.id ? createdTask : item,
+            );
           }
-          return [task, ...current];
+          return [createdTask, ...current];
         },
       );
       const uploaded = new Set(task.uploaded_chunks);
@@ -358,9 +361,7 @@ export function createUploadTaskColumns({
       ellipsis: true,
       render: (value, task) => (
         <Space size={8}>
-          <span className="material-table-file-icon">
-            {fileIcon(task as UploadRecord)}
-          </span>
+          <span className="material-table-file-icon">{fileIcon(task)}</span>
           <Typography.Text ellipsis className="material-table-file-name">
             {value}
           </Typography.Text>

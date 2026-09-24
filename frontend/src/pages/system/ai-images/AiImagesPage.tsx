@@ -594,7 +594,10 @@ export function AiImagesPage() {
                         reference_upload_ids: selectedUploadIds,
                         files: referenceFiles
                           .map((file) => file.originFileObj)
-                          .filter((file): file is File => Boolean(file)),
+                          .filter(
+                            (file): file is NonNullable<typeof file> =>
+                              file !== undefined,
+                          ),
                       });
                     }}
                   >

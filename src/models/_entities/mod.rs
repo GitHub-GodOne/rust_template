@@ -33,6 +33,7 @@ pub mod permissions;
 pub mod prelude;
 pub mod rate_limit_events;
 pub mod rate_limit_rules;
+pub mod rdp_credentials;
 pub mod refresh_tokens;
 pub mod role_data_scopes;
 pub mod role_menus;

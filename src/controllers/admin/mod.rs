@@ -27,6 +27,7 @@ pub mod notifications;
 pub mod payments;
 pub mod permissions;
 pub mod rate_limits;
+pub mod rdp;
 pub mod roles;
 pub mod scheduled_tasks;
 pub mod settings;
@@ -600,6 +601,17 @@ fn ssh_routes(routes: Routes) -> Routes {
 fn vnc_routes(routes: Routes) -> Routes {
     routes
         .add("/api/admin/vnc/targets", get(vnc::targets))
+        .add(
+            "/api/admin/rdp/targets",
+            get(rdp::targets).put(rdp::save_targets),
+        )
+        .add("/api/admin/rdp/tickets", post(rdp::create_ticket))
+        .add("/api/admin/rdp/gateway", get(rdp::gateway_status))
+        .add(
+            "/api/admin/rdp/credentials/{key}",
+            get(rdp::credential_status).delete(rdp::delete_credentials),
+        )
+        .add("/api/admin/rdp/ws/{token}", get(rdp::connect))
         .add(
             "/api/admin/vnc/credentials",
             put(vnc::save_credentials).delete(vnc::delete_credentials),

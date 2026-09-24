@@ -122,7 +122,7 @@ export function SetupPage() {
         "database",
         "ssl_mode",
       ] as const;
-      const databaseValues = await form.validateFields(fieldNames);
+      const databaseValues = await form.validateFields([...fieldNames]);
       const database = databaseFromValues(databaseValues as SetupFormValues);
       const result = await testSetupDatabase(database);
       setTestResult(result);

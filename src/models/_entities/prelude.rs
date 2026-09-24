@@ -31,6 +31,7 @@ pub use super::payment_refunds::Entity as PaymentRefunds;
 pub use super::permissions::Entity as Permissions;
 pub use super::rate_limit_events::Entity as RateLimitEvents;
 pub use super::rate_limit_rules::Entity as RateLimitRules;
+pub use super::rdp_credentials::Entity as RdpCredentials;
 pub use super::refresh_tokens::Entity as RefreshTokens;
 pub use super::role_data_scopes::Entity as RoleDataScopes;
 pub use super::role_menus::Entity as RoleMenus;
