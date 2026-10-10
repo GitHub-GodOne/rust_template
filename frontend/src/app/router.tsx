@@ -162,6 +162,8 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return children;
 }
 
+const PERMISSION_FALLBACK_PATH = "/admin/dashboard";
+
 function RequirePermission({
   permission,
   children,
@@ -170,9 +172,20 @@ function RequirePermission({
   children: ReactNode;
 }) {
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const location = useLocation();
 
   if (!hasPermission(permission)) {
-    return <Navigate replace to="/admin/dashboard" />;
+    // Redirecting from the fallback page itself would loop forever.
+    if (location.pathname === PERMISSION_FALLBACK_PATH) {
+      return (
+        <Result
+          status="403"
+          title="403"
+          subTitle="当前账号没有访问此页面的权限"
+        />
+      );
+    }
+    return <Navigate replace to={PERMISSION_FALLBACK_PATH} />;
   }
 
   return children;

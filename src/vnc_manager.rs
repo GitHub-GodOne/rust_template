@@ -2,7 +2,9 @@
 
 #![allow(clippy::missing_errors_doc)]
 
-use std::{env, process::Command};
+use std::env;
+#[cfg(target_os = "windows")]
+use std::process::Command;
 
 use clap::{error::ErrorKind, Args, Parser, Subcommand};
 use loco_rs::{Error, Result};
@@ -156,6 +158,8 @@ mod platform {
 mod platform {
     use super::{message, Result};
 
+    // Keeps the same signature as the Windows implementation.
+    #[allow(clippy::unnecessary_wraps)]
     pub fn status() -> Result<()> {
         println!("Automatic VNC installation is currently implemented for Windows only.");
         Ok(())

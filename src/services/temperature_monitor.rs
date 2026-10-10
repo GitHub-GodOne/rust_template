@@ -249,7 +249,7 @@ mod tests {
             message: None,
         };
         let old = record_snapshot(&db, &snapshot).await.unwrap().unwrap();
-        assert_eq!(old.max_temperature_celsius, 51.2);
+        assert!((old.max_temperature_celsius - 51.2).abs() < f32::EPSILON);
         assert_eq!(old.peak_sensor, "Board");
         assert_eq!(old.sensor_count, 2);
         let details: Vec<TemperatureReading> = serde_json::from_str(&old.sensors_json).unwrap();

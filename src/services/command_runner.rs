@@ -1433,7 +1433,7 @@ mod tests {
         .expect("command must finish")
     }
 
-    fn retry_policy(max_retries: i32) -> super::RetryPolicy {
+    const fn retry_policy(max_retries: i32) -> super::RetryPolicy {
         super::RetryPolicy {
             enabled: true,
             max_retries,

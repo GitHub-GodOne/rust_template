@@ -1,6 +1,6 @@
 ---
 source: tests/requests/auth.rs
-assertion_line: 475
+assertion_line: 532
 expression: user
 ---
 Model {
@@ -23,6 +23,9 @@ Model {
     email_verified_at: None,
     magic_link_token: None,
     magic_link_expiration: None,
+    failed_login_attempts: 0,
+    locked_until: None,
+    last_failed_login_at: None,
     tenant_id: None,
     current_department_id: None,
 }

@@ -76,7 +76,7 @@ pub fn handle_if_requested() -> Result<bool> {
 fn execute(command: DataCommand) -> Result<()> {
     match command {
         DataCommand::Export(args) => export(args),
-        DataCommand::Import(args) => import(args),
+        DataCommand::Import(args) => import(&args),
     }
 }
 
@@ -92,7 +92,7 @@ fn export(args: DatabaseArgs) -> Result<()> {
     run_dump("pg_dump", &database_url, &file)
 }
 
-fn import(args: ImportArgs) -> Result<()> {
+fn import(args: &ImportArgs) -> Result<()> {
     if !args.file.is_file() {
         return Err(message(format!(
             "dump file does not exist: {}",
@@ -141,9 +141,8 @@ fn default_dump_path() -> PathBuf {
 }
 
 fn resolve_database_url(explicit: Option<&str>, environment: &str) -> Result<String> {
-    let config_folder = env::var_os("LOCO_CONFIG_FOLDER")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("config"));
+    let config_folder =
+        env::var_os("LOCO_CONFIG_FOLDER").map_or_else(|| PathBuf::from("config"), PathBuf::from);
     for path in [
         config_folder.join(format!("{environment}.local.yaml")),
         config_folder.join(format!("{environment}.yaml")),

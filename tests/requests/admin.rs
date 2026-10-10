@@ -123,13 +123,18 @@ async fn admin_extensions_require_auth() {
             .await;
         assert_eq!(http_test_response.status_code(), 401);
 
+        let image_api_response = request
+            .post("/api/image-api/generations")
+            .json(&serde_json::json!({ "prompt": "test" }))
+            .await;
+        assert_eq!(image_api_response.status_code(), 401);
+
         for path in [
             "/api/admin/logs",
             "/api/admin/settings",
             "/api/admin/http-client/config",
             "/api/admin/ai-images/configs",
             "/api/admin/ai-images/generations",
-            "/api/image-api/generations",
             "/api/admin/ssh/targets",
             "/api/admin/vnc/targets",
             "/api/admin/email-templates",

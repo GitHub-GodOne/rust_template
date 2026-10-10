@@ -41,6 +41,13 @@ pub struct HttpRequestExecuteParams {
     pub content_type: Option<String>,
 }
 
+/// Sends the HTTP request described by `params` and records the outcome as a run.
+///
+/// Network failures are stored as `network_error` runs rather than returned.
+///
+/// # Errors
+/// Returns an error when the request is invalid, the HTTP client cannot be built,
+/// the response cannot be read or stored, or the run cannot be persisted.
 pub async fn execute_request(
     ctx: &AppContext,
     actor_id: i32,
@@ -81,7 +88,24 @@ pub async fn execute_request(
         .as_ref()
         .map_or(0, |value| i64::try_from(value.len()).unwrap_or(i64::MAX));
 
-    let active = match result {
+    let mut active = http_request_runs::ActiveModel {
+        preset_id: Set(preset_id),
+        name: Set(normalized
+            .name
+            .unwrap_or_else(|| format!("{} {}", normalized.method, normalized.url))),
+        method: Set(normalized.method),
+        url: Set(url.to_string()),
+        headers_json: Set(normalized.headers_json),
+        query_json: Set(normalized.query_json),
+        request_body_type: Set(normalized.body_type),
+        request_body_text: Set(normalized.body_text),
+        request_body_size_bytes: Set(request_body_size_bytes),
+        duration_ms: Set(duration_ms),
+        created_by: Set(Some(actor_id)),
+        ..Default::default()
+    };
+
+    match result {
         Ok(response) => {
             let status = response.status();
             let response_headers_json = serialize_headers(response.headers())?;
@@ -93,68 +117,40 @@ pub async fn execute_request(
             let bytes = response.bytes().await.map_err(|error| {
                 ApiError::bad_request(format!("request response read failed: {error}"))
             })?;
-            let response_size_bytes = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
             let storage_path = write_response_body(&bytes)?;
-            let preview = preview_text(&bytes);
-            http_request_runs::ActiveModel {
-                preset_id: Set(preset_id),
-                name: Set(normalized
-                    .name
-                    .unwrap_or_else(|| format!("{} {}", normalized.method, normalized.url))),
-                method: Set(normalized.method),
-                url: Set(url.to_string()),
-                headers_json: Set(normalized.headers_json),
-                query_json: Set(normalized.query_json),
-                request_body_type: Set(normalized.body_type),
-                request_body_text: Set(normalized.body_text),
-                request_body_size_bytes: Set(request_body_size_bytes),
-                status: Set(if status.is_success() {
-                    "success"
-                } else {
-                    "http_error"
-                }
-                .to_string()),
-                response_status_code: Set(Some(i32::from(status.as_u16()))),
-                response_headers_json: Set(Some(response_headers_json)),
-                response_content_type: Set(response_content_type),
-                response_size_bytes: Set(response_size_bytes),
-                duration_ms: Set(duration_ms),
-                error_message: Set(None),
-                response_storage_path: Set(Some(storage_path.display().to_string())),
-                response_preview_text: Set(preview),
-                created_by: Set(Some(actor_id)),
-                ..Default::default()
+            active.status = Set(if status.is_success() {
+                "success"
+            } else {
+                "http_error"
             }
+            .to_string());
+            active.response_status_code = Set(Some(i32::from(status.as_u16())));
+            active.response_headers_json = Set(Some(response_headers_json));
+            active.response_content_type = Set(response_content_type);
+            active.response_size_bytes = Set(i64::try_from(bytes.len()).unwrap_or(i64::MAX));
+            active.error_message = Set(None);
+            active.response_storage_path = Set(Some(storage_path.display().to_string()));
+            active.response_preview_text = Set(preview_text(&bytes));
         }
-        Err(error) => http_request_runs::ActiveModel {
-            preset_id: Set(preset_id),
-            name: Set(normalized
-                .name
-                .unwrap_or_else(|| format!("{} {}", normalized.method, normalized.url))),
-            method: Set(normalized.method),
-            url: Set(url.to_string()),
-            headers_json: Set(normalized.headers_json),
-            query_json: Set(normalized.query_json),
-            request_body_type: Set(normalized.body_type),
-            request_body_text: Set(normalized.body_text),
-            request_body_size_bytes: Set(request_body_size_bytes),
-            status: Set("network_error".to_string()),
-            response_status_code: Set(None),
-            response_headers_json: Set(None),
-            response_content_type: Set(None),
-            response_size_bytes: Set(0),
-            duration_ms: Set(duration_ms),
-            error_message: Set(Some(trim_message(&error.to_string(), 1000))),
-            response_storage_path: Set(None),
-            response_preview_text: Set(None),
-            created_by: Set(Some(actor_id)),
-            ..Default::default()
-        },
-    };
+        Err(error) => {
+            active.status = Set("network_error".to_string());
+            active.response_status_code = Set(None);
+            active.response_headers_json = Set(None);
+            active.response_content_type = Set(None);
+            active.response_size_bytes = Set(0);
+            active.error_message = Set(Some(trim_message(&error.to_string(), 1000)));
+            active.response_storage_path = Set(None);
+            active.response_preview_text = Set(None);
+        }
+    }
 
     active.insert(&ctx.db).await.map_err(ApiError::from)
 }
 
+/// Validates and normalizes request parameters into a storable draft.
+///
+/// # Errors
+/// Returns a bad-request error when the method, URL, or JSON fields are invalid.
 pub fn normalize_request(params: HttpRequestExecuteParams) -> ApiResult<HttpRequestDraft> {
     let method = params.method.trim().to_uppercase();
     parse_method(&method)?;
@@ -200,6 +196,10 @@ pub fn normalize_request(params: HttpRequestExecuteParams) -> ApiResult<HttpRequ
     })
 }
 
+/// Parses a cURL command, Postman request, or raw HTTP request into a draft.
+///
+/// # Errors
+/// Returns a bad-request error when the format is unknown or the content cannot be parsed.
 pub fn parse_import(format: &str, content: &str) -> ApiResult<HttpRequestDraft> {
     match format.trim() {
         "curl" => parse_curl(content),
@@ -239,8 +239,7 @@ fn parse_string_map(value: Option<&str>, field: &str) -> ApiResult<BTreeMap<Stri
     for (key, value) in parsed {
         let string_value = value
             .as_str()
-            .map(ToString::to_string)
-            .unwrap_or_else(|| value.to_string());
+            .map_or_else(|| value.to_string(), ToString::to_string);
         values.insert(key, string_value);
     }
     Ok(values)
@@ -331,7 +330,7 @@ fn parse_curl(content: &str) -> ApiResult<HttpRequestDraft> {
         name: None,
         method: method.unwrap_or_else(|| if body.is_some() { "POST" } else { "GET" }.to_string()),
         url: url.ok_or_else(|| ApiError::bad_request("curl url is required"))?,
-        headers_json: map_to_json(headers)?,
+        headers_json: map_to_json(&headers)?,
         query_json: None,
         body_type,
         body_text: body,
@@ -388,7 +387,7 @@ fn parse_postman(content: &str) -> ApiResult<HttpRequestDraft> {
                 .map(ToString::to_string),
             method,
             url,
-            headers_json: map_to_json(headers)?,
+            headers_json: map_to_json(&headers)?,
             query_json: None,
             body_type,
             body_text,
@@ -428,7 +427,7 @@ fn parse_raw_request(content: &str) -> ApiResult<HttpRequestDraft> {
             name: None,
             method,
             url,
-            headers_json: map_to_json(headers)?,
+            headers_json: map_to_json(&headers)?,
             query_json: None,
             body_type: if body
                 .as_deref()
@@ -487,11 +486,11 @@ fn shell_tokens(content: &str) -> Vec<String> {
     tokens
 }
 
-fn map_to_json(values: BTreeMap<String, String>) -> ApiResult<Option<String>> {
+fn map_to_json(values: &BTreeMap<String, String>) -> ApiResult<Option<String>> {
     if values.is_empty() {
         Ok(None)
     } else {
-        serde_json::to_string(&values)
+        serde_json::to_string(values)
             .map(Some)
             .map_err(|_| ApiError::internal("failed to serialize import values"))
     }
