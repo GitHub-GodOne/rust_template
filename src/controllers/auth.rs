@@ -12,7 +12,7 @@ use crate::{
     views::auth::{CurrentResponse, LoginResponse, RefreshResponse},
 };
 use chrono::{Duration, Local, TimeZone};
-use loco_rs::prelude::*;
+use loco_rs::{model::ModelError, prelude::*};
 use regex::Regex;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
@@ -283,29 +283,33 @@ pub async fn login(
     State(ctx): State<AppContext>,
     Json(params): Json<LoginParams>,
 ) -> ApiResult<Response> {
-    let Ok(user) = users::Model::find_by_email(&ctx.db, &params.email).await else {
-        tracing::debug!(
-            email = %params.email,
-            "login attempt with non-existent email"
-        );
-        admin_logs::record(
-            &ctx.db,
-            admin_logs::LogInput {
-                log_type: "login",
-                level: "warn",
-                module: "auth",
-                action: "login_failed",
-                message: "登录失败：用户不存在",
-                user_id: None,
-                operator: Some(params.email.clone()),
-                method: Some("POST"),
-                path: Some("/api/auth/login"),
-                status: Some(401),
-                error_message: Some("user not found".to_string()),
-            },
-        )
-        .await;
-        return Err(ApiError::unauthorized("Invalid credentials!"));
+    let user = match users::Model::find_by_email(&ctx.db, &params.email).await {
+        Ok(user) => user,
+        Err(ModelError::EntityNotFound) => {
+            tracing::debug!(
+                email = %params.email,
+                "login attempt with non-existent email"
+            );
+            admin_logs::record(
+                &ctx.db,
+                admin_logs::LogInput {
+                    log_type: "login",
+                    level: "warn",
+                    module: "auth",
+                    action: "login_failed",
+                    message: "登录失败：用户不存在",
+                    user_id: None,
+                    operator: Some(params.email.clone()),
+                    method: Some("POST"),
+                    path: Some("/api/auth/login"),
+                    status: Some(401),
+                    error_message: Some("user not found".to_string()),
+                },
+            )
+            .await;
+            return Err(ApiError::unauthorized("Invalid credentials!"));
+        }
+        Err(error) => return Err(error.into()),
     };
 
     if is_locked(&user) {
@@ -369,7 +373,7 @@ pub async fn refresh(
 ) -> ApiResult<Response> {
     let refresh_token = refresh_tokens::Model::find_valid_by_token(&ctx.db, &params.refresh_token)
         .await
-        .map_err(|_| ApiError::unauthorized("invalid refresh token"))?;
+        .map_err(refresh_lookup_error)?;
 
     let user = users::Entity::find_by_id(refresh_token.user_id)
         .one(&ctx.db)
@@ -380,9 +384,10 @@ pub async fn refresh(
         })?
         .ok_or_else(|| ApiError::unauthorized("invalid refresh token"))?;
 
-    refresh_token.into_active_model().revoke(&ctx.db).await?;
-    let issued_refresh_token = refresh_tokens::Model::issue(&ctx.db, &user).await?;
+    // Keep the existing token usable if issuing its replacement fails.
     let token = jwt_for_user(&ctx, &user)?;
+    let issued_refresh_token = refresh_tokens::Model::issue(&ctx.db, &user).await?;
+    refresh_token.into_active_model().revoke(&ctx.db).await?;
 
     Ok(responses::ok(RefreshResponse::new(
         &token,
@@ -641,4 +646,29 @@ pub fn routes() -> Routes {
         .add("/magic-link", post(magic_link))
         .add("/magic-link/{token}", get(magic_link_verify))
         .add("/resend-verification-mail", post(resend_verification_email))
+}
+
+// A database outage must not invalidate the browser's persisted session.
+fn refresh_lookup_error(error: ModelError) -> ApiError {
+    match error {
+        ModelError::EntityNotFound => ApiError::unauthorized("invalid refresh token"),
+        other => other.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::refresh_lookup_error;
+    use loco_rs::model::ModelError;
+    use sea_orm::{ConnAcquireErr, DbErr};
+
+    #[test]
+    fn refresh_distinguishes_invalid_credentials_from_database_outage() {
+        assert_eq!(
+            refresh_lookup_error(ModelError::EntityNotFound).status_code(),
+            401
+        );
+        let error = ModelError::from(DbErr::ConnectionAcquire(ConnAcquireErr::Timeout));
+        assert_eq!(refresh_lookup_error(error).status_code(), 500);
+    }
 }

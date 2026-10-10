@@ -1554,6 +1554,7 @@ dependencies = [
  "hex",
  "include_dir",
  "insta",
+ "libc",
  "loco-rs",
  "migration",
  "mime_guess",

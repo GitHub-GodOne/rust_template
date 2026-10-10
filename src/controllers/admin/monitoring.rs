@@ -4,15 +4,18 @@ use std::process::Command;
 
 use chrono::Utc;
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use sysinfo::{Disks, Networks, System};
 
 use crate::{
     controllers::admin::authorize,
     errors::ApiResult,
-    models::_entities::{database_backups, operation_logs, rate_limit_events, scheduled_task_runs},
+    models::_entities::{
+        database_backups, host_temperatures, operation_logs, rate_limit_events, scheduled_task_runs,
+    },
     responses::{self, ApiResponse, PageResponse},
+    services::temperature_monitor::{self, TemperatureReading, TemperatureSnapshot},
 };
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -31,6 +34,7 @@ pub struct MonitoringOverview {
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct ServerMonitorSnapshot {
     pub captured_at: String,
+    pub temperatures: TemperatureSnapshot,
     pub host: HostInfo,
     pub cpu: CpuInfo,
     pub memory: MemoryInfo,
@@ -262,6 +266,92 @@ pub async fn processes(
     }))
 }
 
+#[derive(Debug, Deserialize, Serialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct TemperatureHistoryParams {
+    pub page: Option<u64>,
+    pub page_size: Option<u64>,
+    pub hours: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct TemperatureRecord {
+    pub id: i32,
+    pub hostname: String,
+    pub captured_at: String,
+    pub max_temperature_celsius: f32,
+    pub peak_sensor: String,
+    pub sensor_count: i32,
+    pub sensors: Vec<TemperatureReading>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/monitoring/temperature-history",
+    tag = "admin-monitoring",
+    security(("bearer_auth" = [])),
+    params(TemperatureHistoryParams),
+    responses((status = 200, body = ApiResponse<PageResponse<TemperatureRecord>>))
+)]
+#[debug_handler]
+pub async fn temperature_history(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<TemperatureHistoryParams>,
+) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:monitor:view").await?;
+    Ok(responses::ok(
+        load_temperature_history(&ctx.db, &params).await?,
+    ))
+}
+
+async fn load_temperature_history(
+    db: &sea_orm::DatabaseConnection,
+    params: &TemperatureHistoryParams,
+) -> ApiResult<PageResponse<TemperatureRecord>> {
+    let page = params.page.unwrap_or(1).max(1);
+    let page_size = params.page_size.unwrap_or(20).clamp(10, 100);
+    let hours = params
+        .hours
+        .unwrap_or(24)
+        .clamp(1, 24 * temperature_monitor::RETENTION_DAYS);
+    let paginator = host_temperatures::Entity::find()
+        .filter(
+            host_temperatures::Column::CapturedAt.gte(Utc::now() - chrono::Duration::hours(hours)),
+        )
+        .order_by_desc(host_temperatures::Column::CapturedAt)
+        .order_by_desc(host_temperatures::Column::Id)
+        .paginate(db, page_size);
+    let total = paginator.num_items().await?;
+    let records = if (page - 1).saturating_mul(page_size) >= total {
+        Vec::new()
+    } else {
+        paginator.fetch_page(page - 1).await?
+    };
+    let items = records
+        .into_iter()
+        .map(|record| {
+            Ok(TemperatureRecord {
+                id: record.id,
+                hostname: record.hostname,
+                captured_at: record.captured_at.to_rfc3339(),
+                max_temperature_celsius: record.max_temperature_celsius,
+                peak_sensor: record.peak_sensor,
+                sensor_count: record.sensor_count,
+                sensors: serde_json::from_str(&record.sensors_json).map_err(|_| {
+                    crate::errors::ApiError::internal("invalid temperature history")
+                })?,
+            })
+        })
+        .collect::<ApiResult<Vec<_>>>()?;
+    Ok(PageResponse {
+        items,
+        page,
+        page_size,
+        total,
+    })
+}
+
 fn collect_server_snapshot() -> ServerMonitorSnapshot {
     let mut system = System::new_all();
     system.refresh_all();
@@ -277,6 +367,7 @@ fn collect_server_snapshot() -> ServerMonitorSnapshot {
 
     ServerMonitorSnapshot {
         captured_at: Utc::now().to_rfc3339(),
+        temperatures: temperature_monitor::current_snapshot(),
         host: HostInfo {
             hostname: System::host_name(),
             system_name: System::name(),
@@ -512,4 +603,45 @@ fn percent(used: u64, total: u64) -> f32 {
     }
     let basis_points = used.saturating_mul(10_000).checked_div(total).unwrap_or(0);
     f32::from(u16::try_from(basis_points.min(10_000)).unwrap_or(10_000)) / 100.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::temperature_monitor::{record_snapshot, test_database};
+
+    #[tokio::test]
+    async fn temperature_history_filters_time_and_bounds_pagination() {
+        let db = test_database().await;
+        let snapshot = TemperatureSnapshot {
+            captured_at: Some((Utc::now() - chrono::Duration::hours(6)).to_rfc3339()),
+            sensors: vec![TemperatureReading {
+                sensor: "CPU".to_string(),
+                temperature_celsius: Some(42.0),
+                critical_celsius: None,
+            }],
+            available: true,
+            message: None,
+        };
+        record_snapshot(&db, &snapshot).await.unwrap();
+        let mut params = TemperatureHistoryParams {
+            page: Some(0),
+            page_size: Some(1000),
+            hours: Some(1),
+        };
+        let recent = load_temperature_history(&db, &params).await.unwrap();
+        assert_eq!(recent.total, 0);
+        assert_eq!(recent.page, 1);
+        assert_eq!(recent.page_size, 100);
+        params.hours = Some(24);
+        let day = load_temperature_history(&db, &params).await.unwrap();
+        assert_eq!(day.total, 1);
+        assert_eq!(day.items[0].sensors[0].temperature_celsius, Some(42.0));
+        params.page = Some(u64::MAX);
+        assert!(load_temperature_history(&db, &params)
+            .await
+            .unwrap()
+            .items
+            .is_empty());
+    }
 }

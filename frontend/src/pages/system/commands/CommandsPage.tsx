@@ -17,12 +17,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
+  Col,
   Drawer,
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
+  Row,
   Select,
   Space,
   Spin,
@@ -204,6 +207,9 @@ function buildRunPayloadFromRecord(run: CommandRunRecord) {
     working_directory: run.working_directory,
     command_line: run.command_line,
     preview_path_template: run.preview_path_template ?? undefined,
+    retry_on_failure: run.retry_on_failure ?? false,
+    max_retries: run.max_retries ?? 3,
+    retry_delay_seconds: run.retry_delay_seconds ?? 5,
   };
 }
 
@@ -493,6 +499,9 @@ export function CommandsPage() {
         python_venv_path: normalizeEmpty(values.python_venv_path),
         env_vars: normalizeEmpty(values.env_vars),
         timeout_seconds: values.timeout_seconds ?? null,
+        retry_on_failure: values.retry_on_failure ?? false,
+        max_retries: values.max_retries ?? 3,
+        retry_delay_seconds: values.retry_delay_seconds ?? 5,
         preview_path_template: normalizeEmpty(values.preview_path_template),
       };
       return values.template_id
@@ -816,6 +825,11 @@ export function CommandsPage() {
     run?: CommandRunRecord,
   ) => {
     runForm.resetFields();
+    runForm.setFieldsValue({
+      retry_on_failure: false,
+      max_retries: 3,
+      retry_delay_seconds: 5,
+    });
     if (run) {
       const sourceTemplate = templateOptionsQuery.data?.items.find(
         (item) => item.id === run.template_id,
@@ -832,6 +846,9 @@ export function CommandsPage() {
         python_venv_path: sourceTemplate?.python_venv_path,
         env_vars: sourceTemplate?.env_vars,
         timeout_seconds: sourceTemplate?.timeout_seconds,
+        retry_on_failure: run.retry_on_failure ?? false,
+        max_retries: run.max_retries ?? 3,
+        retry_delay_seconds: run.retry_delay_seconds ?? 5,
         preview_path_template:
           run.preview_path_template ?? sourceTemplate?.preview_path_template,
       });
@@ -1131,6 +1148,15 @@ export function CommandsPage() {
       render: (value) => (
         <Tag color={statusColor[value] ?? "default"}>{value}</Tag>
       ),
+    },
+    {
+      title: "自动重试",
+      key: "retry_policy",
+      width: 130,
+      render: (_, record) =>
+        record.retry_on_failure
+          ? `已重试 ${Math.max(0, (record.attempt_count ?? 1) - 1)}/${record.max_retries} 次`
+          : "关闭",
     },
     {
       title: "目录",
@@ -1668,6 +1694,55 @@ export function CommandsPage() {
           <Form.Item name="timeout_seconds" label="超时时间（秒）">
             <Input type="number" min={1} />
           </Form.Item>
+          <Form.Item
+            name="retry_on_failure"
+            label="出错后自动重试"
+            valuePropName="checked"
+            extra="非零退出或被信号异常终止时，从头重新运行脚本；正常结束、手动取消和超时不会重试。"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(previous, current) =>
+              previous.retry_on_failure !== current.retry_on_failure
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("retry_on_failure") ? (
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="max_retries"
+                      label="最多重试次数"
+                      rules={[{ required: true }]}
+                    >
+                      <InputNumber
+                        min={1}
+                        max={10}
+                        precision={0}
+                        className="full-width"
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="retry_delay_seconds"
+                      label="重试间隔（秒）"
+                      rules={[{ required: true }]}
+                    >
+                      <InputNumber
+                        min={1}
+                        max={3600}
+                        precision={0}
+                        className="full-width"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              ) : null
+            }
+          </Form.Item>
         </Form>
       </Modal>
       <Drawer
@@ -1681,6 +1756,11 @@ export function CommandsPage() {
             <Space wrap>
               <Tag color={statusColor[detailRun.status] ?? "default"}>
                 {detailRun.status}
+              </Tag>
+              <Tag color={detailRun.retry_on_failure ? "blue" : "default"}>
+                {detailRun.retry_on_failure
+                  ? `自动重试开启 · 已重试 ${Math.max(0, (detailRun.attempt_count ?? 1) - 1)}/${detailRun.max_retries} 次`
+                  : "自动重试关闭"}
               </Tag>
               <Typography.Text>{detailRun.working_directory}</Typography.Text>
               <Typography.Text type="secondary">

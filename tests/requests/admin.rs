@@ -154,6 +154,7 @@ async fn admin_extensions_require_auth() {
             "/api/admin/rate-limit-events",
             "/api/admin/monitoring/overview",
             "/api/admin/monitoring/server",
+            "/api/admin/monitoring/temperature-history",
             "/api/admin/monitoring/processes",
             "/api/admin/api-keys",
             "/api/admin/commands",
@@ -1730,6 +1731,7 @@ async fn super_admin_can_access_operations_infrastructure() {
             "/api/admin/rate-limit-events",
             "/api/admin/monitoring/overview",
             "/api/admin/monitoring/server",
+            "/api/admin/monitoring/temperature-history",
             "/api/admin/monitoring/processes",
             "/api/admin/api-keys",
             "/api/admin/commands",
@@ -1774,6 +1776,7 @@ async fn super_admin_can_view_server_monitoring() {
         assert!(server_body["data"]["memory"].is_object());
         assert!(server_body["data"]["disks"].is_array());
         assert!(server_body["data"]["networks"].is_array());
+        assert!(server_body["data"]["temperatures"]["sensors"].is_array());
         assert!(server_body["data"]["host"]["process_count"].is_number());
 
         let processes = request

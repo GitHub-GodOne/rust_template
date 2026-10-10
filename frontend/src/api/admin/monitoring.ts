@@ -16,6 +16,7 @@ export type MonitoringOverview = {
 
 export type ServerMonitorSnapshot = {
   captured_at: string;
+  temperatures: TemperatureSnapshot;
   host: HostInfo;
   cpu: CpuInfo;
   memory: MemoryInfo;
@@ -141,5 +142,39 @@ export async function fetchMonitorProcesses(params?: ProcessQueryParams) {
   const response = await apiClient.get<
     ApiResponse<PageResponse<ProcessRecord>>
   >("/admin/monitoring/processes", { params });
+  return unwrap(response.data);
+}
+
+export type TemperatureReading = {
+  sensor: string;
+  temperature_celsius: number | null;
+  critical_celsius: number | null;
+};
+
+export type TemperatureSnapshot = {
+  captured_at: string | null;
+  sensors: TemperatureReading[];
+  available: boolean;
+  message: string | null;
+};
+
+export type TemperatureRecord = {
+  id: number;
+  hostname: string;
+  captured_at: string;
+  max_temperature_celsius: number;
+  peak_sensor: string;
+  sensor_count: number;
+  sensors: TemperatureReading[];
+};
+
+export async function fetchTemperatureHistory(params: {
+  page?: number;
+  page_size?: number;
+  hours?: number;
+}) {
+  const response = await apiClient.get<
+    ApiResponse<PageResponse<TemperatureRecord>>
+  >("/admin/monitoring/temperature-history", { params });
   return unwrap(response.data);
 }

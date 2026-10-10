@@ -58,6 +58,7 @@ import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
 import { WidgetCard } from "../../../components/admin/WidgetCard";
 import { formatBytes } from "../uploads/uploadTaskManager";
+import { TemperatureCard, TemperatureHistory } from "./TemperaturePanel";
 
 function formatPercent(value?: number | null) {
   return Number(value ?? 0).toFixed(1);
@@ -405,7 +406,7 @@ export function MonitoringPage() {
   return (
     <CrudPage
       title="系统监控"
-      subtitle="服务器资源、实时性能、进程列表、健康检查和 IP 限流事件"
+      subtitle="服务器资源、实时性能、主机温度记录、进程列表、健康检查和 IP 限流事件"
       breadcrumb={["系统管理", "系统监控"]}
       icon={<MonitorOutlined />}
     >
@@ -566,6 +567,7 @@ export function MonitoringPage() {
                     </Card>
                   </Col>
                 </Row>
+                <TemperatureCard snapshot={server?.temperatures} />
                 <GpuCards
                   gpus={server?.gpus ?? []}
                   message={server?.gpu_message}
@@ -618,6 +620,11 @@ export function MonitoringPage() {
                 </Row>
               </Space>
             ),
+          },
+          {
+            key: "temperature-history",
+            label: "温度记录",
+            children: <TemperatureHistory />,
           },
           {
             key: "processes",

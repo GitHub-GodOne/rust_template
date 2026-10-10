@@ -26,6 +26,10 @@ mod m20260717_000021_command_api_keys;
 mod m20260828_000022_vnc_credentials;
 mod m20260916_000023_rdp_credentials;
 
+mod m20261007_000024_host_temperatures;
+
+mod m20261010_000025_command_retries;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -56,6 +60,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260717_000021_command_api_keys::Migration),
             Box::new(m20260828_000022_vnc_credentials::Migration),
             Box::new(m20260916_000023_rdp_credentials::Migration),
+            Box::new(m20261007_000024_host_temperatures::Migration),
+            Box::new(m20261010_000025_command_retries::Migration),
             // inject-above (do not remove this comment)
         ]
     }

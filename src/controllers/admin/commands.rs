@@ -193,6 +193,10 @@ pub struct CommandRunRecord {
     pub command_line: String,
     pub effective_script: String,
     pub status: String,
+    pub retry_on_failure: bool,
+    pub max_retries: i32,
+    pub retry_delay_seconds: i32,
+    pub attempt_count: i32,
     pub exit_code: Option<i32>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
@@ -325,6 +329,9 @@ pub struct RunCommandParams {
     pub python_venv_path: Option<String>,
     pub env_vars: Option<String>,
     pub timeout_seconds: Option<i32>,
+    pub retry_on_failure: Option<bool>,
+    pub max_retries: Option<i32>,
+    pub retry_delay_seconds: Option<i32>,
     pub preview_path_template: Option<String>,
 }
 
@@ -339,6 +346,9 @@ pub struct CommandApiRunParams {
     pub python_venv_path: Option<String>,
     pub env_vars: Option<String>,
     pub timeout_seconds: Option<i32>,
+    pub retry_on_failure: Option<bool>,
+    pub max_retries: Option<i32>,
+    pub retry_delay_seconds: Option<i32>,
     pub preview_path_template: Option<String>,
 }
 
@@ -969,6 +979,11 @@ pub async fn run_template(
         preview_path_template: params
             .preview_path_template
             .or(template.preview_path_template),
+        retry_policy: command_runner::RetryPolicy::from_options(
+            params.retry_on_failure,
+            params.max_retries,
+            params.retry_delay_seconds,
+        )?,
         triggered_by: "manual".to_string(),
         created_by: Some(actor.id),
     };
@@ -1009,6 +1024,11 @@ pub async fn run_ad_hoc(
         env_vars: params.env_vars,
         timeout_seconds: params.timeout_seconds,
         preview_path_template: params.preview_path_template,
+        retry_policy: command_runner::RetryPolicy::from_options(
+            params.retry_on_failure,
+            params.max_retries,
+            params.retry_delay_seconds,
+        )?,
         triggered_by: "manual".to_string(),
         created_by: Some(actor.id),
     };
@@ -1392,6 +1412,11 @@ async fn build_api_command_request(
             preview_path_template: params
                 .preview_path_template
                 .or(template.preview_path_template),
+            retry_policy: command_runner::RetryPolicy::from_options(
+                params.retry_on_failure,
+                params.max_retries,
+                params.retry_delay_seconds,
+            )?,
             triggered_by,
             created_by: key.created_by,
         });
@@ -1415,6 +1440,11 @@ async fn build_api_command_request(
         env_vars: params.env_vars,
         timeout_seconds: params.timeout_seconds,
         preview_path_template: params.preview_path_template,
+        retry_policy: command_runner::RetryPolicy::from_options(
+            params.retry_on_failure,
+            params.max_retries,
+            params.retry_delay_seconds,
+        )?,
         triggered_by,
         created_by: key.created_by,
     })
@@ -1801,6 +1831,10 @@ impl From<command_runs::Model> for CommandRunRecord {
             command_line: run.command_line,
             effective_script: run.effective_script,
             status: run.status,
+            retry_on_failure: run.retry_on_failure,
+            max_retries: run.max_retries,
+            retry_delay_seconds: run.retry_delay_seconds,
+            attempt_count: run.attempt_count,
             exit_code: run.exit_code,
             started_at: run.started_at.map(|value| value.to_rfc3339()),
             finished_at: run.finished_at.map(|value| value.to_rfc3339()),

@@ -438,7 +438,7 @@ fn render_launchd_plist(
             })
     };
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key>\n  <string>{label}</string>\n  <key>ProgramArguments</key>\n  <array>\n{program_arguments}\n  </array>\n  <key>WorkingDirectory</key>\n  <string>{working_directory}</string>\n{user_name}  <key>EnvironmentVariables</key>\n  <dict>\n    <key>HOME</key>\n    <string>{home_directory}</string>\n    <key>USER</key>\n    <string>{account}</string>\n    <key>LOGNAME</key>\n    <string>{account}</string>\n  </dict>\n  <key>RunAtLoad</key>\n  <true/>\n  <key>KeepAlive</key>\n  <true/>\n  <key>ThrottleInterval</key>\n  <integer>5</integer>\n  <key>StandardOutPath</key>\n  <string>{stdout}</string>\n  <key>StandardErrorPath</key>\n  <string>{stderr}</string>\n</dict>\n</plist>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key>\n  <string>{label}</string>\n  <key>ProgramArguments</key>\n  <array>\n{program_arguments}\n  </array>\n  <key>WorkingDirectory</key>\n  <string>{working_directory}</string>\n{user_name}  <key>EnvironmentVariables</key>\n  <dict>\n    <key>HOME</key>\n    <string>{home_directory}</string>\n    <key>USER</key>\n    <string>{account}</string>\n    <key>LOGNAME</key>\n    <string>{account}</string>\n    <key>GPT_IMAGES_DB_WATCHDOG</key>\n    <string>1</string>\n  </dict>\n  <key>RunAtLoad</key>\n  <true/>\n  <key>KeepAlive</key>\n  <true/>\n  <key>ThrottleInterval</key>\n  <integer>5</integer>\n  <key>StandardOutPath</key>\n  <string>{stdout}</string>\n  <key>StandardErrorPath</key>\n  <string>{stderr}</string>\n</dict>\n</plist>\n",
         label = xml_escape(&service_label(&definition.name)),
         working_directory = xml_escape(&definition.working_directory.to_string_lossy()),
         home_directory = xml_escape(&home_directory.to_string_lossy()),
@@ -1018,6 +1018,7 @@ mod tests {
         );
         assert!(plist.contains("<string>top.pikju.gpt-images</string>"));
         assert!(plist.contains("<key>KeepAlive</key>"));
+        assert!(plist.contains("<key>GPT_IMAGES_DB_WATCHDOG</key>"));
         assert!(plist.contains("<key>UserName</key>"));
         assert!(plist.contains("<string>/opt/GPT Images</string>"));
         assert!(plist.contains("<key>HOME</key>"));

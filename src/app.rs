@@ -76,6 +76,14 @@ impl Hooks for App {
             .add_route(controllers::frontend::routes())
     }
 
+    async fn after_routes(router: axum::Router, ctx: &AppContext) -> Result<axum::Router> {
+        crate::services::database_health::start_service_watchdog(ctx.db.clone());
+        if !matches!(ctx.environment, Environment::Test) {
+            crate::services::temperature_monitor::start_collector(ctx.db.clone());
+        }
+        Ok(router)
+    }
+
     fn middlewares(ctx: &AppContext) -> Vec<Box<dyn loco_middleware::MiddlewareLayer>> {
         let mut stack = loco_middleware::default_middleware_stack(ctx);
         stack.push(Box::new(
@@ -104,6 +112,7 @@ impl Hooks for App {
         // tasks-inject (do not remove)
     }
     async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, crate::models::_entities::host_temperatures::Entity).await?;
         truncate_table(&ctx.db, managed_file_access_rules::Entity).await?;
         truncate_table(&ctx.db, content_articles::Entity).await?;
         truncate_table(&ctx.db, content_categories::Entity).await?;

@@ -70,41 +70,58 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const refreshToken = useAuthStore.getState().refreshToken;
+    const token = useAuthStore.getState().accessToken;
+    const isCurrentSessionRequest =
+      Boolean(token) &&
+      originalRequest?.headers?.Authorization === `Bearer ${token}`;
+    let requestError = error;
 
     if (
       error.response?.status === 401 &&
       refreshToken &&
+      isCurrentSessionRequest &&
       originalRequest &&
       !originalRequest._retry &&
-      originalRequest?.url !== "/auth/refresh"
+      originalRequest?.url !== "/auth/refresh" &&
+      originalRequest?.url !== "/auth/login"
     ) {
       originalRequest._retry = true;
       try {
         const data = await refreshSession(refreshToken);
         originalRequest.headers.Authorization = `Bearer ${data.token}`;
         return apiClient(originalRequest);
-      } catch {
-        if (useAuthStore.getState().refreshToken === refreshToken) {
+      } catch (refreshError) {
+        requestError = refreshError;
+        if (
+          axios.isAxiosError(refreshError) &&
+          refreshError.response?.status === 401 &&
+          useAuthStore.getState().refreshToken === refreshToken
+        ) {
           useAuthStore.getState().signOut();
         }
       }
-    } else if (error.response?.status === 401) {
+    } else if (
+      error.response?.status === 401 &&
+      isCurrentSessionRequest &&
+      originalRequest?.url !== "/auth/login"
+    ) {
       useAuthStore.getState().signOut();
     }
 
-    if (axios.isCancel(error)) return Promise.reject(error);
+    if (axios.isCancel(requestError)) return Promise.reject(requestError);
+    if (!axios.isAxiosError(requestError)) return Promise.reject(requestError);
     const message =
-      error.response?.data?.message ??
-      (error.code === "ECONNABORTED"
+      requestError.response?.data?.message ??
+      (requestError.code === "ECONNABORTED"
         ? "请求超时，请稍后重试"
-        : !error.response
+        : !requestError.response
           ? "无法连接服务器，请检查网络后重试"
           : "请求失败，请稍后重试");
     return Promise.reject(
       new ApiRequestError(
         message,
-        error.response?.status,
-        error.response?.data?.code,
+        requestError.response?.status,
+        requestError.response?.data?.code,
       ),
     );
   },

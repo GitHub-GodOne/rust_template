@@ -35,7 +35,8 @@ cargo loco start -p 5166
 
 ## 开机启动与自动重启
 
-发布环境建议先构建前端和 release 二进制，再安装为系统服务：
+后端把 `frontend/dist` 嵌入二进制；必须先构建前端，再构建 release 二进制。
+`build.rs` 会追踪前端资源变化，确保更新网页后重新编译后端。构建后再安装为系统服务：
 
 ```sh
 npm --prefix frontend run build
@@ -49,8 +50,8 @@ cargo build --release --bin gpt_images-cli
 
 ```sh
 sudo ./target/release/gpt_images-cli service install \
-  --environment production \
-  --port 5150 \
+  --environment development \
+  --port 5155 \
   --binding 0.0.0.0
 
 sudo ./target/release/gpt_images-cli service status
@@ -94,6 +95,44 @@ sudo ./target/release/gpt_images-cli service uninstall
 
 也可以增加 `--user` 安装到 `~/Library/LaunchAgents`，此时无需 `sudo`，服务会在用户
 登录后启动，日志同样位于 `~/Library/Logs`。
+
+### macOS 注销后仍需使用网页
+
+后端及 PostgreSQL 都应使用系统级 LaunchDaemon。`--run-as pikju` 只指定运行账户，
+不会把系统服务改成登录后才运行的 LaunchAgent。不要给后台常驻服务加 `--user`。
+
+更新代码后，构建前端及二进制，再重启已安装服务即可，无需先停止再重新安装：
+
+```sh
+npm --prefix frontend install
+npm --prefix frontend run build
+cargo build --release --bin gpt_images-cli
+sudo ./target/release/gpt_images-cli service restart
+```
+
+只有端口、环境、工作目录、运行账户或服务配置改变时，才需要再次执行 `service install`。
+macOS 服务配置启用 `GPT_IMAGES_DB_WATCHDOG=1`：每次检查前等待 5 秒，数据库查询最多
+等待 3 秒，连续失败 3 次后退出，让 launchd 重启。健康时不会定时重启；最坏约 24 秒
+判定持续故障，之后的启动时间取决于数据库是否已恢复。`KeepAlive` 只负责进程退出后的
+重启，不能自行发现仍存活但卡住的进程。
+
+开发环境的默认数据库连接池允许 10 个连接，连接和获取连接超时为 5000 毫秒，
+空闲超时为 300000 毫秒。可以通过 `DB_MAX_CONNECTIONS`、`DB_CONNECT_TIMEOUT`、
+`DB_ACQUIRE_TIMEOUT`、`DB_IDLE_TIMEOUT` 覆盖。网页初始化和凭证刷新遇到网络、超时
+或服务端错误时保留登录凭证；页面提供重试按钮，刷新凭证明确失效才会清除登录状态。
+
+系统休眠期间服务不能处理网页请求，watchdog 也不会执行。若 Mac 要长期作为服务器，
+在系统设置中启用接通电源时防止自动休眠；下面的命令可检查当前休眠策略和两个服务：
+
+```sh
+pmset -g custom
+sudo launchctl print system/top.pikju.gpt-images
+sudo launchctl print system/homebrew.mxcl.postgresql@14
+```
+
+如仍出现超时，记录发生时间并检查 `~/Library/Logs/gpt-images.log`、
+`~/Library/Logs/gpt-images.error.log` 以及 PostgreSQL 日志。`/_ping` 返回正常只说明
+HTTP 服务响应，不能证明数据库查询正常。
 
 ### Windows（任务计划程序）
 
@@ -580,6 +619,30 @@ curl -X POST 'http://127.0.0.1:5150/api/command-api/runs' \
 curl 'http://127.0.0.1:5150/api/command-api/runs/224?limit=200' \
   -H 'Authorization: Bearer eyJ0_your_api_key'
 ```
+
+系统监控的“主机温度”显示主机提供的真实传感器读数及最高读数，支持 macOS/Linux
+等可通过 `sysinfo` 读取温度的环境。不把无法读取的温度当成 0℃，也不根据未经确认的
+传感器名称推测 CPU/GPU 温度。温度采集独立于网页访问，每 15 秒刷新读数，每分钟保存
+一条 `host_temperatures` 记录（含全部传感器明细），自动保留最近 7 天；休眠期间不采样。
+“温度记录”标签页支持时间范围筛选、分页与展开明细。沿用 `system:monitor:view` 权限，
+接口为 `/api/admin/monitoring/temperature-history`，支持 `hours`、`page` 和 `page_size`。
+
+执行记录的“取消”会终止对应命令：macOS/Linux 为每次执行创建独立进程组，取消和
+超时会同时终止 shell 及组内的子进程、孙进程。取消接口收到进程终止确认后才将记录
+标为 `cancelled`；排队期间收到取消请求的命令不会启动。没有当前后端进程登记的旧执行
+记录会返回错误，不会仅修改状态来宣称进程已取消。主动脱离进程组的守护进程不属于
+此取消范围，命令脚本应以前台方式运行需随记录取消的任务。
+
+命令管理的执行弹窗提供“出错后自动重试”开关，默认关闭。开启后，脚本非零退出或被信号
+异常终止时会从头执行，默认最多重试 3 次（连同首次最多执行 4 次），间隔 5 秒；可设置
+1–10 次重试、1–3600 秒间隔。正常退出、手动取消、超时及无法启动进程不会重试。
+每次重试都会重新执行前置脚本和命令，沿用本次已解析的参数及预览文件路径；请根据脚本
+是否适合重复执行选择开启。执行记录保留同一 ID，日志记录各次执行及失败原因，列表和
+详情显示已重试次数；等待重试期间也可以取消。
+
+命令执行 API 同样支持可选字段 `retry_on_failure`、`max_retries`、`retry_delay_seconds`，
+省略时默认关闭。返回记录中的 `attempt_count` 表示已开始的执行次数。工作流步骤默认
+不自动重试。
 
 命令管理中的 `working_directory` 会同时设置子进程的原生工作目录，并在执行脚本开头
 再次执行 `cd`；执行日志会显示实际工作目录以及继承到的 `USER`、`HOME`。工作目录只

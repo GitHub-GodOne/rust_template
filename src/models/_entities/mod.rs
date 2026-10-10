@@ -20,6 +20,7 @@ pub mod departments;
 pub mod dict_items;
 pub mod dict_types;
 pub mod email_templates;
+pub mod host_temperatures;
 pub mod http_request_presets;
 pub mod http_request_runs;
 pub mod managed_file_access_rules;

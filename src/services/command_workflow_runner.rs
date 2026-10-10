@@ -113,6 +113,7 @@ async fn run_workflow_steps(db: &DatabaseConnection, workflow_run_id: i32) -> Ap
                 env_vars: step.env_vars.clone().or_else(|| template.env_vars.clone()),
                 timeout_seconds: step.timeout_seconds.or(template.timeout_seconds),
                 preview_path_template: template.preview_path_template.clone(),
+                retry_policy: command_runner::RetryPolicy::default(),
                 triggered_by: "workflow".to_string(),
                 created_by: workflow_run.created_by,
             },

@@ -218,6 +218,10 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
         .add("/api/admin/monitoring/overview", get(monitoring::overview))
         .add("/api/admin/monitoring/server", get(monitoring::server))
         .add(
+            "/api/admin/monitoring/temperature-history",
+            get(monitoring::temperature_history),
+        )
+        .add(
             "/api/admin/monitoring/processes",
             get(monitoring::processes),
         )

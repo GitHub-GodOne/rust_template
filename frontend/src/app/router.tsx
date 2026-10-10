@@ -1,4 +1,4 @@
-import { Spin } from "antd";
+import { Button, Result, Spin } from "antd";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -77,11 +77,13 @@ function SetupBoundary({ children }: { children: ReactNode }) {
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((state) => state.accessToken);
-  const signOut = useAuthStore((state) => state.signOut);
   const setSession = useAuthStore((state) => state.setSession);
   const location = useLocation();
   const [hydrating, setHydrating] = useState(Boolean(token));
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retry explicitly reloads the session after a transient failure.
   useEffect(() => {
     if (!token) {
       setHydrating(false);
@@ -90,6 +92,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
     let mounted = true;
     setHydrating(true);
+    setSessionError(null);
     current()
       .then((session) => {
         if (!mounted) {
@@ -111,9 +114,11 @@ function RequireAuth({ children }: { children: ReactNode }) {
           effectiveDataScope: session.effective_data_scope,
         });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (mounted) {
-          signOut();
+          setSessionError(
+            error instanceof Error ? error.message : "暂时无法连接服务器",
+          );
         }
       })
       .finally(() => {
@@ -125,7 +130,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [token, setSession, signOut]);
+  }, [token, setSession, retry]);
 
   if (!token) {
     return <Navigate replace to="/login" state={{ from: location }} />;
@@ -136,6 +141,21 @@ function RequireAuth({ children }: { children: ReactNode }) {
       <div className="route-loading">
         <Spin />
       </div>
+    );
+  }
+
+  if (sessionError) {
+    return (
+      <Result
+        status="warning"
+        title="暂时无法加载登录状态"
+        subTitle={sessionError}
+        extra={
+          <Button type="primary" onClick={() => setRetry((value) => value + 1)}>
+            重试
+          </Button>
+        }
+      />
     );
   }
 

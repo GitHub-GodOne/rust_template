@@ -8,7 +8,9 @@
     "dev:open": "rsbuild dev --open",
     "build": "rsbuild build",
     "lint": "biome check src/",
-    "preview": "rsbuild preview"
+    "preview": "rsbuild preview",
+    "test:auth": "node --test tests/auth-client.test.cjs",
+    "test:temperature": "node --test tests/temperature-panel.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5",

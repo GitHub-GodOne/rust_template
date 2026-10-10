@@ -30,6 +30,10 @@ export type CommandRunRecord = {
   command_line: string;
   effective_script: string;
   status: string;
+  retry_on_failure: boolean;
+  max_retries: number;
+  retry_delay_seconds: number;
+  attempt_count: number;
   exit_code?: number | null;
   started_at?: string | null;
   finished_at?: string | null;
@@ -135,6 +139,9 @@ export type RunCommandParams = {
   python_venv_path?: string | null;
   env_vars?: string | null;
   timeout_seconds?: number | null;
+  retry_on_failure?: boolean;
+  max_retries?: number;
+  retry_delay_seconds?: number;
   preview_path_template?: string | null;
 };
 
