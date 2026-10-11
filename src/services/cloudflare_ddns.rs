@@ -45,7 +45,9 @@ const MAX_INTERVAL_SECONDS: i64 = 86_400;
 const STARTUP_DELAY: Duration = Duration::from_secs(15);
 /// Re-check Cloudflare even when the address is unchanged, in case a record
 /// was edited by hand on the Cloudflare dashboard.
-const VERIFY_INTERVAL: Duration = Duration::from_hours(1);
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const VERIFY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const REQUEST_TIMEOUT_SECONDS: u64 = 30;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

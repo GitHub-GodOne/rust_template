@@ -14,7 +14,9 @@ use sysinfo::{Components, System};
 use crate::models::_entities::host_temperatures;
 
 const COLLECTION_INTERVAL: Duration = Duration::from_secs(15);
-const RECORD_INTERVAL: Duration = Duration::from_mins(1);
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const RECORD_INTERVAL: Duration = Duration::from_secs(60);
 pub const RETENTION_DAYS: i64 = 7;
 static CURRENT: OnceLock<Mutex<TemperatureSnapshot>> = OnceLock::new();
 

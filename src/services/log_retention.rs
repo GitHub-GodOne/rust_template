@@ -26,8 +26,11 @@ use crate::{
 pub const SETTING_KEY: &str = "security.log_retention_days";
 pub const DEFAULT_RETENTION_DAYS: i64 = 90;
 pub const MAX_RETENTION_DAYS: i64 = 3650;
-const FIRST_RUN_DELAY: Duration = Duration::from_mins(1);
-const RUN_INTERVAL: Duration = Duration::from_hours(6);
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const FIRST_RUN_DELAY: Duration = Duration::from_secs(60);
+#[allow(clippy::duration_suboptimal_units)]
+const RUN_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// Rows deleted per statement, so the table is never locked for long.
 const BATCH: u64 = 5000;
 

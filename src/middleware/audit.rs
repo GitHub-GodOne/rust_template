@@ -32,7 +32,9 @@ use crate::{
 const MAX_CAPTURED_BODY: usize = 64 * 1024;
 /// Error responses larger than this are not inspected for a message.
 const MAX_ERROR_BODY: usize = 16 * 1024;
-const OPERATOR_CACHE_TTL: Duration = Duration::from_mins(5);
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const OPERATOR_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 
 pub struct AuditMiddleware {
     ctx: AppContext,
