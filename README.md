@@ -376,6 +376,23 @@ Windows PowerShell：
 .\gpt_images-cli.exe -e production db seed --dump --from backups/fixtures
 ```
 
+已有数据库要更新菜单分组、顺序、权限和角色授权，可使用专用同步任务：
+
+```sh
+./gpt_images-cli -e production task admin.sync_fixture_baseline
+```
+
+Windows 使用 `.\gpt_images-cli.exe`；开发环境将 `production` 换成
+`development`。此任务读取编译进程序的 `menus.yaml`、`permissions.yaml`、
+`role_menus.yaml`、`role_permissions.yaml`，所以修改这些文件后必须重新构建程序并部署
+到目标机器。执行后刷新网页，重新加载登录用户的菜单。
+
+页面“菜单管理”中的调整只保存到数据库，不会自动更新源码 fixtures。当前默认分组为
+首页、存储管理、接口管理、便捷管理、系统管理、远程管理；`parent_id` 决定分组，
+同组内按 `sort_order`、`id` 升序排列。同步任务会更新分组和排序，保留目标数据库里的
+菜单 ID；页面按路径匹配，分组按名称和父菜单匹配，并映射角色菜单授权。未在 fixtures
+中的自定义菜单和授权不会被删除。
+
 导入 fixtures 时去掉 `--dump`。先确保目标数据库已迁移，且不会与待导入记录产生主键冲突：
 
 ```sh

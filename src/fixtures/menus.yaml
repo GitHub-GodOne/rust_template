@@ -10,13 +10,57 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 40
+  parent_id:
+  title: 存储管理
+  path:
+  icon: cloud-server
+  permission_code:
+  sort_order: 20
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 42
+  parent_id:
+  title: 接口管理
+  path:
+  icon: api
+  permission_code:
+  sort_order: 30
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 41
+  parent_id:
+  title: 便捷管理
+  path:
+  icon: appstore
+  permission_code:
+  sort_order: 40
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 2
   parent_id:
   title: 系统管理
   path:
   icon: setting
   permission_code:
-  sort_order: 20
+  sort_order: 50
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 43
+  parent_id:
+  title: 远程管理
+  path:
+  icon: monitor
+  permission_code:
+  sort_order: 60
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -27,7 +71,7 @@
   path: /admin/system/users
   icon: user
   permission_code: system:user:list
-  sort_order: 30
+  sort_order: 10
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -38,7 +82,7 @@
   path: /admin/system/roles
   icon: team
   permission_code: system:role:list
-  sort_order: 40
+  sort_order: 20
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -49,7 +93,7 @@
   path: /admin/system/menus
   icon: menu
   permission_code: system:menu:list
-  sort_order: 50
+  sort_order: 30
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -60,7 +104,7 @@
   path: /admin/system/permissions
   icon: safety
   permission_code: system:permission:list
-  sort_order: 60
+  sort_order: 40
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -71,29 +115,29 @@
   path: /admin/system/logs
   icon: file-search
   permission_code: system:log:list
-  sort_order: 70
+  sort_order: 50
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 8
-  parent_id: 2
+  parent_id: 40
   title: 素材库
   path: /admin/system/uploads
   icon: picture
   permission_code: system:upload:list
-  sort_order: 80
+  sort_order: 10
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 22
-  parent_id: 2
+  parent_id: 40
   title: 上传任务
   path: /admin/system/upload-tasks
   icon: cloud-sync
   permission_code: system:upload:list
-  sort_order: 85
+  sort_order: 20
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -104,7 +148,7 @@
   path: /admin/system/settings
   icon: control
   permission_code: system:setting:list
-  sort_order: 90
+  sort_order: 60
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -115,7 +159,7 @@
   path: /admin/system/tenants
   icon: apartment
   permission_code: system:tenant:list
-  sort_order: 100
+  sort_order: 70
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -126,7 +170,7 @@
   path: /admin/system/notifications
   icon: notification
   permission_code: system:notification:list
-  sort_order: 110
+  sort_order: 80
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -137,7 +181,7 @@
   path: /admin/system/scheduled-tasks
   icon: schedule
   permission_code: system:scheduled_task:list
-  sort_order: 120
+  sort_order: 90
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -148,7 +192,7 @@
   path: /admin/system/backups
   icon: database
   permission_code: system:backup:list
-  sort_order: 130
+  sort_order: 100
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -159,7 +203,7 @@
   path: /admin/system/monitoring
   icon: monitor
   permission_code: system:monitor:view
-  sort_order: 140
+  sort_order: 110
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -170,7 +214,7 @@
   path: /admin/system/email-templates
   icon: mail
   permission_code: system:email_template:list
-  sort_order: 150
+  sort_order: 120
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -181,7 +225,7 @@
   path: /admin/system/work-orders
   icon: profile
   permission_code: system:work_order:list
-  sort_order: 160
+  sort_order: 130
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -192,7 +236,7 @@
   path: /admin/system/payments
   icon: credit-card
   permission_code: system:payment_order:list
-  sort_order: 170
+  sort_order: 140
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -203,7 +247,7 @@
   path: /admin/system/content
   icon: read
   permission_code: system:content_article:list
-  sort_order: 180
+  sort_order: 150
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -214,117 +258,117 @@
   path: /admin/system/departments
   icon: branches
   permission_code: system:department:list
-  sort_order: 190
+  sort_order: 160
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 20
-  parent_id: 2
+  parent_id: 40
   title: 存储配置
   path: /admin/system/storage
   icon: cloud-server
   permission_code: system:storage:list
-  sort_order: 200
+  sort_order: 30
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 21
-  parent_id: 2
+  parent_id: 42
   title: 接口文档
   path: /admin/system/docs
   icon: api
   permission_code: system:docs:view
-  sort_order: 210
+  sort_order: 10
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 23
-  parent_id: 2
+  parent_id: 40
   title: 文件管理
   path: /admin/system/files
   icon: folder-open
   permission_code: system:file:list
-  sort_order: 215
+  sort_order: 40
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 29
-  parent_id: 2
+  parent_id: 41
   title: 聊天管理
   path: /admin/system/chat-messages
   icon: message
   permission_code: system:chat:list
-  sort_order: 218
+  sort_order: 20
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 30
-  parent_id: 2
+  parent_id: 41
   title: 静态托管
   path: /admin/system/static-hosting
   icon: global
   permission_code: system:static_host:list
-  sort_order: 217
+  sort_order: 40
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 27
-  parent_id: 2
+  parent_id: 41
   title: 命令管理
   path: /admin/system/commands
   icon: code
   permission_code: system:command:list
-  sort_order: 218
+  sort_order: 10
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 31
-  parent_id: 2
+  parent_id: 42
   title: API 授权
   path: /admin/system/api-keys
   icon: key
   permission_code: system:api_key:list
-  sort_order: 219
+  sort_order: 20
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 24
-  parent_id: 2
+  parent_id: 43
   title: SSH 管理
   path: /admin/system/ssh
   icon: code
   permission_code: system:ssh:list
-  sort_order: 220
+  sort_order: 10
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 28
-  parent_id: 2
+  parent_id: 43
   title: VNC 管理
   path: /admin/system/vnc
   icon: monitor
   permission_code: system:vnc:list
-  sort_order: 225
+  sort_order: 20
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 25
-  parent_id: 2
+  parent_id: 41
   title: AI 图片生成
   path: /admin/system/ai-images
   icon: picture
   permission_code: system:ai_image:list
-  sort_order: 230
+  sort_order: 30
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
@@ -335,18 +379,18 @@
   path: /admin/system/http-client
   icon: api
   permission_code: system:http_client:config
-  sort_order: 240
+  sort_order: 170
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 32
-  parent_id: 2
+  parent_id: 43
   title: RDP 管理
   path: /admin/system/rdp
   icon: monitor
   permission_code: system:rdp:list
-  sort_order: 226
+  sort_order: 30
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
