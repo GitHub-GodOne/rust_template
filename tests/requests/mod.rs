@@ -1,3 +1,12 @@
 mod admin;
+mod audit;
 mod auth;
+mod dashboard;
+mod ddns;
+mod logs_export;
+mod logs_retention;
+mod preferences;
 mod prepare_data;
+mod project_cli;
+mod ssh;
+mod uploads;

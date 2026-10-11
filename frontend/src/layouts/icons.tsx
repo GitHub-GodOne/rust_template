@@ -2,6 +2,7 @@ import * as AntIcons from "@ant-design/icons";
 import { type ComponentType, createElement } from "react";
 
 const menuIconLabels: Record<string, string> = {
+  home: "首页 HomeOutlined",
   dashboard: "仪表盘 DashboardOutlined",
   setting: "系统 SettingOutlined",
   user: "用户 UserOutlined",
@@ -27,6 +28,8 @@ const menuIconLabels: Record<string, string> = {
   profile: "工单 ProfileOutlined",
   read: "内容 ReadOutlined",
   code: "SSH CodeOutlined",
+  wifi: "网络 WifiOutlined",
+  appstore: "应用 AppstoreOutlined",
 };
 
 function iconValueFromExportName(name: string) {

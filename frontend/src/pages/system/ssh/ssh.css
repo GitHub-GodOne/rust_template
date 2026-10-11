@@ -1,0 +1,488 @@
+.ssh-terminal-stage {
+	position: relative;
+}
+
+/* Terminal window: the terminal fills everything below the admin header. */
+.ssh-workspace {
+	display: flex;
+	height: calc(100dvh - var(--ssh-workspace-top, 140px) - 24px);
+	min-height: 420px;
+	flex-direction: column;
+}
+
+.ssh-workspace .ssh-terminal-card {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	overflow: hidden;
+	background: #050505;
+	border: 1px solid #23211d;
+	border-radius: 10px;
+	box-shadow: 0 14px 34px rgba(30, 24, 18, 0.16);
+}
+
+.ssh-workspace .ssh-terminal-card > .ant-card-body {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	padding: 0;
+}
+
+.ssh-workspace .ssh-session-panel {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+}
+
+.ssh-workspace .ssh-terminal-stage {
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+}
+
+.ssh-workspace .ssh-terminal-host {
+	height: 100%;
+	min-height: 0;
+	padding: 10px 12px 6px;
+}
+
+.ssh-window-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 40px;
+	flex: 0 0 40px;
+	padding: 0 8px;
+	background: #161513;
+	border-bottom: 1px solid #26241f;
+}
+
+.ssh-tabstrip {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.ssh-tabstrip::-webkit-scrollbar {
+	display: none;
+}
+
+.ssh-tab {
+	display: flex;
+	max-width: 200px;
+	height: 28px;
+	flex: 0 0 auto;
+	align-items: center;
+	color: #a8a39b;
+	border-radius: 6px;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ssh-tab:hover {
+	color: #e7e4de;
+	background: #211f1c;
+}
+
+.ssh-tab.is-active {
+	color: #f5f5f4;
+	background: #2c2925;
+}
+
+.ssh-tab-main {
+	display: flex;
+	min-width: 0;
+	height: 100%;
+	align-items: center;
+	gap: 7px;
+	padding: 0 8px 0 10px;
+	color: inherit;
+	font: inherit;
+	font-size: 12px;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+.ssh-tab-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ssh-tab-close {
+	display: grid;
+	width: 20px;
+	height: 20px;
+	margin-right: 4px;
+	place-items: center;
+	color: #77736c;
+	font-size: 10px;
+	background: none;
+	border: 0;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.ssh-tab-close:hover {
+	color: #f5f5f4;
+	background: #3a3631;
+}
+
+.ssh-tab-main:focus-visible,
+.ssh-tab-close:focus-visible {
+	outline: 2px solid #c15f3c;
+	outline-offset: -2px;
+}
+
+.ssh-window-bar .ant-btn.ant-btn-text {
+	color: #bdb8b0;
+}
+
+.ssh-window-bar .ant-btn.ant-btn-text:not(:disabled):hover {
+	color: #ffffff;
+	background: #2c2925;
+}
+
+.ssh-window-bar .ant-btn.ant-btn-text:disabled {
+	color: #4d4a45;
+}
+
+.ssh-window-bar .ant-btn.ant-btn-dangerous {
+	color: #e0716b;
+}
+
+.ssh-window-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex: 0 0 auto;
+}
+
+.ssh-target-select {
+	width: 200px;
+	margin-right: 4px;
+}
+
+.ssh-target-select .ant-select-selector {
+	background: #1f1d1a !important;
+	border-radius: 6px !important;
+}
+
+.ssh-target-select .ant-select-selection-item,
+.ssh-target-select .ant-select-arrow {
+	color: #d6d3cd;
+	font-size: 12px;
+}
+
+.ssh-status-dot {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	flex: 0 0 auto;
+	background: #6f6b64;
+	border-radius: 50%;
+}
+
+.ssh-status-dot.is-connected {
+	background: #5fb57a;
+	box-shadow: 0 0 0 3px rgba(95, 181, 122, 0.16);
+}
+
+.ssh-status-dot.is-connecting {
+	background: #e0a84f;
+	animation: ssh-dot-pulse 1s ease-in-out infinite;
+}
+
+.ssh-status-dot.is-detached {
+	background: #c9a15b;
+}
+
+.ssh-status-dot.is-error {
+	background: #e0716b;
+}
+
+.ssh-statusbar {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	height: 24px;
+	flex: 0 0 24px;
+	padding: 0 12px;
+	color: #8b867e;
+	font-family: Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	background: #11110f;
+	border-top: 1px solid #1f1d1a;
+}
+
+.ssh-statusbar-item {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ssh-statusbar-size {
+	margin-left: auto;
+}
+
+/* Desktop has a real keyboard: on-screen keys stay on phones. */
+@media (min-width: 769px) {
+	.ssh-workspace .ssh-mobile-keybar {
+		display: none;
+	}
+}
+
+/* An always-visible bottom dock gets its own strip below the terminal
+   window instead of covering the last lines (--dock-space comes from the
+   dock). Side docks are handled by the layout's side margin. */
+body.dock-reserve.dock-pos-bottom .ssh-workspace {
+	height: calc(
+		100dvh -
+		var(--ssh-workspace-top, 140px) -
+		var(--dock-space, 72px) -
+		40px
+	);
+}
+
+@keyframes ssh-dot-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+/* Connection state shown over the terminal instead of log lines. */
+.ssh-status-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	display: grid;
+	place-items: center;
+	padding: 16px;
+	background: rgba(5, 5, 5, 0.72);
+	backdrop-filter: blur(2px);
+	animation: ssh-overlay-in 0.18s ease-out both;
+}
+
+.ssh-status-overlay.is-busy {
+	background: rgba(5, 5, 5, 0.45);
+}
+
+.ssh-status-card {
+	display: flex;
+	width: min(320px, 100%);
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 22px 20px 18px;
+	color: #f5f5f4;
+	text-align: center;
+	background: #1b1a18;
+	border: 1px solid #33302b;
+	border-radius: 12px;
+	box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.ssh-status-card strong {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.ssh-status-card .ant-btn {
+	min-width: 132px;
+	margin-top: 6px;
+}
+
+.ssh-status-icon {
+	display: grid;
+	width: 42px;
+	height: 42px;
+	place-items: center;
+	color: #d6d3cd;
+	background: #2a2723;
+	border-radius: 50%;
+	font-size: 19px;
+}
+
+.is-warning .ssh-status-icon {
+	color: #e0a84f;
+	background: rgba(224, 168, 79, 0.14);
+}
+
+.is-error .ssh-status-icon {
+	color: #e0716b;
+	background: rgba(224, 113, 107, 0.14);
+}
+
+.is-busy .ssh-status-icon {
+	color: #e8875f;
+}
+
+.ssh-status-description {
+	color: #a8a39b;
+	font-size: 12px;
+	line-height: 1.6;
+	word-break: break-word;
+}
+
+.ssh-status-target {
+	margin-top: 4px;
+	color: #77736c;
+	font-family: Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+}
+
+/* Command line input: visible typing on mobile keyboards with IME. */
+.ssh-command-bar {
+	display: none;
+}
+
+.ssh-copy-text textarea {
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	font-size: 12px;
+}
+
+@keyframes ssh-overlay-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (max-width: 768px) {
+	body.ssh-terminal-open .admin-header,
+	body.ssh-terminal-open .admin-tabs-bar,
+	/* Full-screen phone terminal: the dock would cover the command bar. */
+		body.ssh-terminal-open
+		.admin-dock,
+	body.ssh-terminal-open .admin-dock-hotzone,
+	body.ssh-terminal-open .admin-dock-reveal {
+		display: none !important;
+	}
+
+	.ssh-workspace {
+		height: 100%;
+		min-height: 0;
+	}
+
+	.ssh-workspace .ssh-terminal-card {
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.ssh-window-actions,
+	.ssh-statusbar {
+		display: none;
+	}
+
+	/* Compact session strip: just enough to switch sessions. */
+	.ssh-window-bar {
+		height: 34px;
+		flex: 0 0 34px;
+		padding: 0 6px;
+		background: #11110f;
+		border-bottom-color: #23211d;
+	}
+
+	.ssh-tab {
+		height: 24px;
+		max-width: 150px;
+	}
+
+	.ssh-tab-main {
+		gap: 6px;
+		padding: 0 6px 0 8px;
+		font-size: 11px;
+	}
+
+	.ssh-tab-close {
+		width: 18px;
+		height: 18px;
+		margin-right: 2px;
+	}
+
+	/* The header already has "new terminal"; one session needs no strip. */
+	.ssh-tab-add.ant-btn,
+	.ssh-window-bar.is-single {
+		display: none;
+	}
+
+	.ssh-workspace .ssh-terminal-host {
+		padding: 6px 6px 4px;
+	}
+
+	/* Keys and the command bar sit right above the on-screen keyboard. */
+	.ssh-session-panel > .ssh-terminal-stage {
+		order: 1;
+	}
+
+	.ssh-session-panel > .ssh-mobile-keybar {
+		order: 2;
+		border-top: 1px solid #292824;
+		border-bottom: 0;
+	}
+
+	.ssh-session-panel > .ssh-command-bar {
+		order: 3;
+		display: flex;
+		gap: 8px;
+		flex: 0 0 auto;
+		padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+		background: #11110f;
+		border-top: 1px solid #292824;
+	}
+
+	.ssh-command-bar .ant-input {
+		height: 38px;
+		color: #f5f5f4;
+		font-family: Menlo, Monaco, Consolas, monospace;
+		/* 16px keeps iOS Safari from zooming in on focus. */
+		font-size: 16px;
+		background: #1b1a18;
+		border-color: #33302b;
+	}
+
+	.ssh-command-bar .ant-input::placeholder {
+		color: #6f6b64;
+	}
+
+	.ssh-command-bar .ant-input[disabled] {
+		background: #161513;
+	}
+
+	.ssh-command-bar .ant-btn {
+		width: 42px;
+		height: 38px;
+		flex: 0 0 42px;
+	}
+
+	.ssh-status-card {
+		padding: 20px 16px 16px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ssh-status-overlay,
+	.ssh-status-dot.is-connecting {
+		animation: none;
+	}
+}
+
+/* The window sizes itself to the viewport; the layout's generic min-height
+   would only add an empty scrollable strip below it. */
+body.ssh-terminal-open .admin-content {
+	min-height: 0;
+}

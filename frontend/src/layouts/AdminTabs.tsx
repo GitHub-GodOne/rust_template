@@ -4,16 +4,17 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { defaultAdminMenus, findMenuByPath, mergeMenuItems } from "../app/menu";
 import { useAuthStore } from "../stores/auth";
 
-const dashboardPath = "/admin/dashboard";
-
 type AdminTab = {
   key: string;
   label: string;
   closable: boolean;
 };
 
+const homePath = "/admin/dashboard";
+const homeTab: AdminTab = { key: homePath, label: "首页", closable: false };
+
 function normalizeAdminPath(pathname: string) {
-  return pathname === "/admin" ? dashboardPath : pathname;
+  return pathname === "/admin" ? homePath : pathname;
 }
 
 function fallbackLabel(pathname: string) {
@@ -33,9 +34,7 @@ export function AdminTabs() {
         : defaultAdminMenus,
     [menus],
   );
-  const [tabs, setTabs] = useState<AdminTab[]>([
-    { key: dashboardPath, label: "仪表盘", closable: false },
-  ]);
+  const [tabs, setTabs] = useState<AdminTab[]>([homeTab]);
   const activePath = normalizeAdminPath(location.pathname);
 
   useEffect(() => {
@@ -47,7 +46,7 @@ export function AdminTabs() {
     const nextTab: AdminTab = {
       key: activePath,
       label: menu?.label ?? fallbackLabel(activePath),
-      closable: activePath !== dashboardPath,
+      closable: activePath !== homePath,
     };
     setTabs((current) => {
       if (current.some((tab) => tab.key === activePath)) {
@@ -60,7 +59,7 @@ export function AdminTabs() {
   }, [activePath, visibleMenus]);
 
   const closeTab = (targetKey: string) => {
-    if (targetKey === dashboardPath) {
+    if (targetKey === homePath) {
       return;
     }
 
@@ -69,12 +68,10 @@ export function AdminTabs() {
       const nextTabs = current.filter((tab) => tab.key !== targetKey);
       if (targetKey === activePath) {
         const nextActive =
-          nextTabs[Math.max(0, targetIndex - 1)]?.key ?? dashboardPath;
+          nextTabs[Math.max(0, targetIndex - 1)]?.key ?? homePath;
         navigate(nextActive, { replace: true });
       }
-      return nextTabs.length > 0
-        ? nextTabs
-        : [{ key: dashboardPath, label: "仪表盘", closable: false }];
+      return nextTabs.length > 0 ? nextTabs : [homeTab];
     });
   };
 

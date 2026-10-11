@@ -1,9 +1,9 @@
 ---
 - id: 1
-  name: 查看仪表盘
+  name: 查看首页
   code: dashboard:view
   group_name: dashboard
-  description: 允许访问后台仪表盘
+  description: 允许访问后台首页
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
 - id: 2
@@ -1082,5 +1082,47 @@
   code: system:rdp:update
   group_name: system:rdp
   description: 新增、编辑和删除远程桌面目标
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 156
+  name: 查看 IPv6 动态解析
+  code: system:ddns:view
+  group_name: system:ddns
+  description: 查看 Cloudflare IPv6 动态解析的状态和配置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 157
+  name: 管理 IPv6 动态解析
+  code: system:ddns:update
+  group_name: system:ddns
+  description: 修改 IPv6 动态解析配置并手动同步到 Cloudflare
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 158
+  name: 查看项目命令
+  code: system:project_cli:view
+  group_name: system:project_cli
+  description: 查看项目命令行列表和运行记录
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 159
+  name: 执行项目命令
+  code: system:project_cli:run
+  group_name: system:project_cli
+  description: 在服务器上执行项目命令行，并停止运行中的命令
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 160
+  name: 日志记录设置
+  code: system:log:config
+  group_name: system:log
+  description: 按功能开启或关闭日志记录
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 161
+  name: 导出日志
+  code: system:log:export
+  group_name: system:log
+  description: 按筛选条件导出日志为 CSV 文件
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"

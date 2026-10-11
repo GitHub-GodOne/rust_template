@@ -69,6 +69,7 @@ impl Hooks for App {
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes() // controller routes below
             .add_route(controllers::auth::routes())
+            .add_route(controllers::preferences::routes())
             .add_route(controllers::admin::routes())
             .add_route(controllers::admin::public_routes())
             .add_route(controllers::setup::routes())
@@ -80,12 +81,25 @@ impl Hooks for App {
         crate::services::database_health::start_service_watchdog(ctx.db.clone());
         if !matches!(ctx.environment, Environment::Test) {
             crate::services::temperature_monitor::start_collector(ctx.db.clone());
+            crate::services::cloudflare_ddns::start_updater(ctx.db.clone());
+            crate::services::network_watch::start();
+            crate::services::log_retention::start_cleaner(ctx.db.clone());
         }
         Ok(router)
     }
 
     fn middlewares(ctx: &AppContext) -> Vec<Box<dyn loco_middleware::MiddlewareLayer>> {
         let mut stack = loco_middleware::default_middleware_stack(ctx);
+        // Inside API-key auth (which turns keys into bearer tokens) and
+        // compression (so error bodies are readable).
+        stack.push(Box::new(crate::middleware::audit::AuditMiddleware::new(
+            ctx,
+        )));
+        stack.push(Box::new(
+            crate::middleware::compression::CompressionMiddleware,
+        ));
+        // Outermost of ours, so it sees what actually goes on the wire.
+        stack.push(Box::new(crate::middleware::access_log::AccessLogMiddleware));
         stack.push(Box::new(
             crate::middleware::api_key_auth::ApiKeyAuthMiddleware::new(ctx),
         ));
@@ -162,6 +176,14 @@ impl Hooks for App {
         truncate_table(&ctx.db, menus::Entity).await?;
         truncate_table(&ctx.db, permissions::Entity).await?;
         truncate_table(&ctx.db, roles::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::user_preferences::Entity).await?;
+        truncate_table(
+            &ctx.db,
+            crate::models::_entities::project_cli_run_logs::Entity,
+        )
+        .await?;
+        truncate_table(&ctx.db, crate::models::_entities::project_cli_runs::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::audit_log_rules::Entity).await?;
         truncate_table(&ctx.db, refresh_tokens::Entity).await?;
         truncate_table(&ctx.db, rdp_credentials::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;

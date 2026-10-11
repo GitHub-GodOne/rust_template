@@ -9,8 +9,8 @@ use axum::{
 use loco_rs::{app::AppContext, controller::middleware::MiddlewareLayer, Result};
 
 use crate::services::static_hosting::{
-    is_reserved_request_path, load_cached_sites, match_site, percent_decode_path,
-    resolve_public_file,
+    is_reserved_request_path, list_public_directory, load_cached_sites, match_site,
+    percent_decode_path, render_directory_listing, resolve_public_target, PublicTarget,
 };
 
 pub struct StaticHostingMiddleware {
@@ -73,8 +73,25 @@ async fn serve_static_site(
         .get(header::ACCEPT)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.contains("text/html"));
-    let target = match resolve_public_file(site, &relative, accepts_html) {
-        Ok(Some(target)) => target,
+    let target = match resolve_public_target(site, &relative, accepts_html) {
+        Ok(Some(PublicTarget::File(target))) => target,
+        Ok(Some(PublicTarget::Directory { path, relative })) => {
+            return match list_public_directory(&path, &relative) {
+                Ok(listing) => html_response(
+                    request.method() == Method::HEAD,
+                    render_directory_listing(site, &relative, &listing),
+                ),
+                Err(error) => {
+                    tracing::warn!(
+                        site = site.key,
+                        path = decoded_path,
+                        error = ?error,
+                        "failed to list hosted static directory"
+                    );
+                    not_found_response()
+                }
+            };
+        }
         Ok(None) => return not_found_response(),
         Err(error) => {
             tracing::warn!(
@@ -121,6 +138,23 @@ async fn serve_static_site(
         return (StatusCode::OK, headers, Body::empty()).into_response();
     }
     (StatusCode::OK, headers, bytes).into_response()
+}
+
+fn html_response(head_only: bool, html: String) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    if head_only {
+        return (StatusCode::OK, headers, Body::empty()).into_response();
+    }
+    (StatusCode::OK, headers, html).into_response()
 }
 
 fn not_found_response() -> Response {

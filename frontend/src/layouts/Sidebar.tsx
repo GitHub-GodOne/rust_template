@@ -1,6 +1,13 @@
-import { Drawer, Layout, Menu } from "antd";
+import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
+import { Drawer, Layout, Menu, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { useMemo } from "react";
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   type AdminMenuItem,
@@ -8,8 +15,14 @@ import {
   mergeMenuItems,
 } from "../app/menu";
 import { useAuthStore } from "../stores/auth";
-import { useUiStore } from "../stores/ui";
+import {
+  SIDEBAR_COLLAPSED_WIDTH,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  useUiStore,
+} from "../stores/ui";
 import { renderMenuIcon } from "./icons";
+import "./sidebar.css";
 
 const { Sider } = Layout;
 
@@ -56,9 +69,11 @@ function findOpenKeys(
 function SidebarContent({
   collapsed,
   onNavigate,
+  onToggleCollapsed,
 }: {
   collapsed: boolean;
   onNavigate?: () => void;
+  onToggleCollapsed?: () => void;
 }) {
   const menus = useAuthStore((state) => state.menus);
   const userId = useAuthStore((state) => state.user?.pid ?? "anonymous");
@@ -86,13 +101,39 @@ function SidebarContent({
   return (
     <>
       <div className="admin-brand">
-        <div className="admin-brand-mark">G</div>
+        {onToggleCollapsed && collapsed ? (
+          <Tooltip title="展开导航" placement="right">
+            <button
+              type="button"
+              className="admin-brand-mark admin-brand-mark-toggle"
+              aria-label="展开导航"
+              onClick={onToggleCollapsed}
+            >
+              <span className="admin-brand-mark-letter">G</span>
+              <MenuUnfoldOutlined className="admin-brand-mark-icon" />
+            </button>
+          </Tooltip>
+        ) : (
+          <div className="admin-brand-mark">G</div>
+        )}
         {!collapsed && (
-          <div>
+          <div className="admin-brand-copy">
             <div className="admin-brand-title">后台管理</div>
             <div className="admin-brand-subtitle">Admin Template</div>
           </div>
         )}
+        {onToggleCollapsed && !collapsed ? (
+          <Tooltip title="收起导航" placement="right">
+            <button
+              type="button"
+              className="admin-sidebar-collapse"
+              aria-label="收起导航"
+              onClick={onToggleCollapsed}
+            >
+              <MenuFoldOutlined />
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
       <Menu
         theme="dark"
@@ -117,12 +158,15 @@ export function Sidebar({
   isMobile,
   open,
   onClose,
+  onToggleCollapsed,
 }: {
   collapsed: boolean;
   isMobile: boolean;
   open: boolean;
   onClose: () => void;
+  onToggleCollapsed: () => void;
 }) {
+  const sidebarWidth = useUiStore((state) => state.sidebarWidth);
   if (isMobile) {
     return (
       <Drawer
@@ -142,13 +186,151 @@ export function Sidebar({
   }
 
   return (
-    <Sider
-      collapsed={collapsed}
-      collapsedWidth={72}
-      width={248}
-      className="admin-sidebar"
+    <>
+      <Sider
+        collapsed={collapsed}
+        collapsedWidth={SIDEBAR_COLLAPSED_WIDTH}
+        width={sidebarWidth}
+        className="admin-sidebar"
+      >
+        <SidebarContent
+          collapsed={collapsed}
+          onToggleCollapsed={onToggleCollapsed}
+        />
+      </Sider>
+      <SidebarSplitter collapsed={collapsed} />
+    </>
+  );
+}
+
+/** Pixels the pointer must travel before a press counts as a drag. */
+const DRAG_THRESHOLD = 4;
+/** Dragging this far below the minimum width collapses the sidebar. */
+const COLLAPSE_SNAP = 56;
+const KEYBOARD_STEP = 16;
+
+/**
+ * Divider on the sidebar's right edge: drag to resize, click to collapse or
+ * expand, double-click to restore the default width.
+ */
+function SidebarSplitter({ collapsed }: { collapsed: boolean }) {
+  const width = useUiStore((state) => state.sidebarWidth);
+  const setWidth = useUiStore((state) => state.setSidebarWidth);
+  const setCollapsed = useUiStore((state) => state.setSidebarCollapsed);
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{
+    startX: number;
+    startWidth: number;
+    moved: boolean;
+    wasCollapsed: boolean;
+  } | null>(null);
+
+  const finish = (pointerId: number, target: HTMLElement) => {
+    if (target.hasPointerCapture(pointerId)) {
+      target.releasePointerCapture(pointerId);
+    }
+    document.body.classList.remove("admin-sidebar-resizing");
+    setDragging(false);
+  };
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = {
+      startX: event.clientX,
+      startWidth: collapsed ? SIDEBAR_COLLAPSED_WIDTH : width,
+      moved: false,
+      wasCollapsed: collapsed,
+    };
+  };
+
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    if (!state) return;
+    const delta = event.clientX - state.startX;
+    if (!state.moved && Math.abs(delta) < DRAG_THRESHOLD) return;
+    if (!state.moved) {
+      state.moved = true;
+      setDragging(true);
+      document.body.classList.add("admin-sidebar-resizing");
+    }
+    const next = state.startWidth + delta;
+    if (next < SIDEBAR_MIN_WIDTH - COLLAPSE_SNAP) {
+      setCollapsed(true);
+      return;
+    }
+    setCollapsed(false);
+    setWidth(next);
+  };
+
+  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    drag.current = null;
+    finish(event.pointerId, event.currentTarget);
+    if (!state) return;
+    if (state.moved) {
+      setWidth(useUiStore.getState().sidebarWidth, true);
+    } else {
+      // A plain click toggles, like the collapse buttons in the header.
+      setCollapsed(!state.wasCollapsed);
+    }
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setCollapsed(!collapsed);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      const step = event.key === "ArrowRight" ? KEYBOARD_STEP : -KEYBOARD_STEP;
+      if (collapsed && step > 0) {
+        setCollapsed(false);
+        return;
+      }
+      setWidth(useUiStore.getState().sidebarWidth + step, true);
+    }
+  };
+
+  return (
+    <Tooltip
+      title={
+        collapsed
+          ? "点击展开，拖动调整宽度"
+          : "拖动调整宽度，点击收起，双击恢复默认"
+      }
+      placement="right"
+      mouseEnterDelay={0.6}
+      open={dragging ? false : undefined}
     >
-      <SidebarContent collapsed={collapsed} />
-    </Sider>
+      <div
+        // biome-ignore lint/a11y/useSemanticElements: a focusable, draggable window splitter; <hr> cannot be interactive
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整导航宽度"
+        aria-valuemin={SIDEBAR_COLLAPSED_WIDTH}
+        aria-valuemax={420}
+        aria-valuenow={collapsed ? SIDEBAR_COLLAPSED_WIDTH : width}
+        tabIndex={0}
+        className={`admin-sidebar-splitter${dragging ? " is-dragging" : ""}${collapsed ? " is-collapsed" : ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={(event) => {
+          drag.current = null;
+          finish(event.pointerId, event.currentTarget);
+        }}
+        onDoubleClick={() => {
+          setCollapsed(false);
+          setWidth(SIDEBAR_DEFAULT_WIDTH, true);
+        }}
+        onKeyDown={onKeyDown}
+      >
+        <span className="admin-sidebar-splitter-line" />
+        <span className="admin-sidebar-splitter-grip">
+          {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+        </span>
+      </div>
+    </Tooltip>
   );
 }

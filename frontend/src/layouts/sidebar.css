@@ -1,0 +1,80 @@
+/* Draggable divider between the sidebar and the content. It takes no
+   layout space; its hit area overlaps the sidebar edge. */
+.admin-sidebar-splitter {
+	position: relative;
+	z-index: 40;
+	width: 0;
+	flex: 0 0 0;
+	align-self: stretch;
+	outline: none;
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.admin-sidebar-splitter::before {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: -5px;
+	width: 10px;
+	content: "";
+}
+
+.admin-sidebar-splitter-line {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: -1px;
+	width: 2px;
+	background: transparent;
+	transition: background-color 0.15s ease;
+	pointer-events: none;
+}
+
+.admin-sidebar-splitter:hover .admin-sidebar-splitter-line,
+.admin-sidebar-splitter:focus-visible .admin-sidebar-splitter-line,
+.admin-sidebar-splitter.is-dragging .admin-sidebar-splitter-line {
+	background: #c15f3c;
+}
+
+/* Pill in the middle hints that the divider is clickable. */
+.admin-sidebar-splitter-grip {
+	position: absolute;
+	top: 50%;
+	left: -10px;
+	display: grid;
+	width: 20px;
+	height: 44px;
+	place-items: center;
+	color: #fff;
+	font-size: 11px;
+	background: #c15f3c;
+	border-radius: 10px;
+	box-shadow: 0 4px 12px rgba(40, 30, 20, 0.25);
+	opacity: 0;
+	transform: translateY(-50%) scale(0.9);
+	transition: opacity 0.15s ease, transform 0.15s ease;
+	pointer-events: none;
+}
+
+.admin-sidebar-splitter:hover .admin-sidebar-splitter-grip,
+.admin-sidebar-splitter:focus-visible .admin-sidebar-splitter-grip {
+	opacity: 1;
+	transform: translateY(-50%) scale(1);
+}
+
+.admin-sidebar-splitter.is-dragging .admin-sidebar-splitter-grip {
+	opacity: 0;
+}
+
+/* Follow the pointer exactly while dragging. */
+body.admin-sidebar-resizing,
+body.admin-sidebar-resizing * {
+	cursor: col-resize !important;
+	user-select: none !important;
+}
+
+body.admin-sidebar-resizing .admin-sidebar,
+body.admin-sidebar-resizing .admin-sidebar * {
+	transition: none !important;
+}

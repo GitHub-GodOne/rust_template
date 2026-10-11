@@ -1070,7 +1070,7 @@ fn channel_visible_condition(actor: &users::Model) -> Condition {
     condition
 }
 
-fn order_visible_condition(actor: &users::Model) -> Condition {
+pub(crate) fn order_visible_condition(actor: &users::Model) -> Condition {
     let mut condition = Condition::any().add(payment_orders::Column::CreatedBy.eq(actor.id));
     if let Some(tenant_id) = actor.tenant_id {
         condition = condition.add(payment_orders::Column::TenantId.eq(tenant_id));
@@ -1085,7 +1085,7 @@ fn callback_visible_condition(actor: &users::Model) -> Condition {
     )
 }
 
-fn refund_visible_condition(actor: &users::Model) -> Condition {
+pub(crate) fn refund_visible_condition(actor: &users::Model) -> Condition {
     actor.tenant_id.map_or_else(
         || Condition::all().add(payment_refunds::Column::TenantId.is_null()),
         |tenant_id| Condition::all().add(payment_refunds::Column::TenantId.eq(tenant_id)),

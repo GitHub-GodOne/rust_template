@@ -1,0 +1,58 @@
+.ddns-record-list {
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ddns-record-list li {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 0;
+	border-bottom: 1px solid #e4ded6;
+}
+
+.ddns-record-list li:last-child {
+	border-bottom: 0;
+}
+
+.ddns-record-icon {
+	flex: 0 0 auto;
+	font-size: 15px;
+}
+
+.ddns-ok {
+	color: #4f735b;
+}
+
+.ddns-error {
+	color: #b84a46;
+}
+
+.ddns-idle {
+	color: #c9c1b6;
+}
+
+.ddns-record-main {
+	display: flex;
+	min-width: 0;
+	flex: 1;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.ddns-record-detail.ant-typography {
+	overflow: hidden;
+	font-size: 12px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ddns-status .ant-descriptions-item-label {
+	width: 96px;
+	white-space: nowrap;
+}
+
+.ddns-status .ant-descriptions-item-content {
+	word-break: break-all;
+}

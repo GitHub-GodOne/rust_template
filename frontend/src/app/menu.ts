@@ -25,10 +25,10 @@ export type AdminMenuItem = {
 
 export const defaultAdminMenus: AdminMenuItem[] = [
   {
-    key: "dashboard",
-    label: "仪表盘",
+    key: "home",
+    label: "首页",
     path: "/admin/dashboard",
-    icon: "dashboard",
+    icon: "home",
     permission: "dashboard:view",
   },
   {
@@ -184,6 +184,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:command:list",
       },
       {
+        key: "system-project-cli",
+        label: "项目命令",
+        path: "/admin/system/project-cli",
+        icon: "build",
+        permission: "system:project_cli:view",
+      },
+      {
         key: "system-api-keys",
         label: "API 授权",
         path: "/admin/system/api-keys",
@@ -210,6 +217,19 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         path: "/admin/system/rdp",
         icon: "monitor",
         permission: "system:rdp:list",
+      },
+      {
+        key: "system-dock",
+        label: "快捷 Dock",
+        path: "/admin/system/dock",
+        icon: "appstore",
+      },
+      {
+        key: "system-ddns",
+        label: "IPv6 动态解析",
+        path: "/admin/system/ddns",
+        icon: "wifi",
+        permission: "system:ddns:view",
       },
       {
         key: "system-ai-images",

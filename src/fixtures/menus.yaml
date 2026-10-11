@@ -1,9 +1,9 @@
 ---
 - id: 1
   parent_id:
-  title: 仪表盘
+  title: 首页
   path: /admin/dashboard
-  icon: dashboard
+  icon: home
   permission_code: dashboard:view
   sort_order: 10
   visible: true
@@ -347,6 +347,39 @@
   icon: monitor
   permission_code: system:rdp:list
   sort_order: 226
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 33
+  parent_id: 2
+  title: IPv6 动态解析
+  path: /admin/system/ddns
+  icon: wifi
+  permission_code: system:ddns:view
+  sort_order: 245
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 34
+  parent_id: 2
+  title: 快捷 Dock
+  path: /admin/system/dock
+  icon: appstore
+  permission_code:
+  sort_order: 244
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 35
+  parent_id: 2
+  title: 项目命令
+  path: /admin/system/project-cli
+  icon: build
+  permission_code: system:project_cli:view
+  sort_order: 219
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"

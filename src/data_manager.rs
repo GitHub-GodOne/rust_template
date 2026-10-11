@@ -4,7 +4,7 @@
 
 use std::{env, path::PathBuf, process::Command};
 
-use clap::{error::ErrorKind, Args, Parser, Subcommand};
+use clap::{error::ErrorKind, Args, CommandFactory, Parser, Subcommand};
 use loco_rs::{Error, Result};
 
 #[derive(Debug, Parser)]
@@ -46,6 +46,12 @@ struct ImportArgs {
     /// Custom-format dump path created by `data export`.
     #[arg(short, long)]
     file: PathBuf,
+}
+
+/// Clap definition of this command, listed on the project CLI page.
+#[must_use]
+pub fn cli_command() -> clap::Command {
+    DataCli::command()
 }
 
 pub fn handle_if_requested() -> Result<bool> {

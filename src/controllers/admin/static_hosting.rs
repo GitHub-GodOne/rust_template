@@ -26,6 +26,7 @@ pub struct SaveStaticSiteParams {
     pub local_root: String,
     pub index_file: Option<String>,
     pub spa_fallback: Option<bool>,
+    pub directory_listing: Option<bool>,
     pub enabled: Option<bool>,
     pub cache_seconds: Option<u32>,
 }
@@ -79,6 +80,7 @@ impl SaveStaticSiteParams {
             local_root: self.local_root,
             index_file: self.index_file.unwrap_or_else(|| "index.html".to_string()),
             spa_fallback: self.spa_fallback.unwrap_or(false),
+            directory_listing: self.directory_listing.unwrap_or(false),
             enabled: self.enabled.unwrap_or(true),
             cache_seconds: self.cache_seconds.unwrap_or(300),
         }

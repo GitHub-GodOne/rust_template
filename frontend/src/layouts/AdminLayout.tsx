@@ -11,6 +11,7 @@ import { AdminTabs } from "./AdminTabs";
 import { HeaderBar } from "./HeaderBar";
 import { MenuCommandPalette } from "./MenuCommandPalette";
 import { Sidebar } from "./Sidebar";
+import "./content-fill.css";
 
 const { Content } = Layout;
 
@@ -79,6 +80,7 @@ export function AdminLayout() {
         isMobile={isMobile}
         open={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        onToggleCollapsed={toggleSidebarCollapsed}
       />
       <Layout className="admin-main-layout">
         <HeaderBar

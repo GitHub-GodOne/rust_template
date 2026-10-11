@@ -13,7 +13,9 @@ pub mod backups;
 pub mod chat_messages;
 pub mod commands;
 pub mod content;
+pub mod dashboard;
 pub mod data_scopes;
+pub mod ddns;
 pub mod departments;
 pub mod dicts;
 pub mod email_templates;
@@ -26,6 +28,7 @@ pub mod monitoring;
 pub mod notifications;
 pub mod payments;
 pub mod permissions;
+pub mod project_cli;
 pub mod rate_limits;
 pub mod rdp;
 pub mod roles;
@@ -75,6 +78,7 @@ pub fn public_routes() -> Routes {
 
 fn core_routes(routes: Routes) -> Routes {
     routes
+        .add("/api/admin/dashboard/overview", get(dashboard::overview))
         .add(
             "/api/admin/users",
             get(users_admin::list).post(users_admin::create),
@@ -215,6 +219,12 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
             "/api/admin/rate-limit-events",
             get(rate_limits::list_events),
         )
+        .add("/api/admin/ddns/status", get(ddns::status))
+        .add(
+            "/api/admin/ddns/config",
+            get(ddns::get_config).put(ddns::update_config),
+        )
+        .add("/api/admin/ddns/sync", post(ddns::sync))
         .add("/api/admin/monitoring/overview", get(monitoring::overview))
         .add("/api/admin/monitoring/server", get(monitoring::server))
         .add(
@@ -229,6 +239,19 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
 
 fn command_routes(routes: Routes) -> Routes {
     routes
+        .add("/api/admin/project-cli", get(project_cli::catalog))
+        .add(
+            "/api/admin/project-cli/runs",
+            get(project_cli::list_runs).post(project_cli::run),
+        )
+        .add(
+            "/api/admin/project-cli/runs/{id}",
+            get(project_cli::get_run),
+        )
+        .add(
+            "/api/admin/project-cli/runs/{id}/cancel",
+            post(project_cli::cancel_run),
+        )
         .add(
             "/api/admin/commands",
             get(commands::list).post(commands::create),
@@ -426,7 +449,17 @@ fn content_routes(routes: Routes) -> Routes {
 fn extension_routes(routes: Routes) -> Routes {
     let routes = routes
         .add("/api/admin/logs", get(logs::list))
+        .add("/api/admin/logs/export", get(logs::export))
+        .add(
+            "/api/admin/logs/retention",
+            get(logs::retention).put(logs::save_retention),
+        )
+        .add("/api/admin/logs/retention/run", post(logs::run_retention))
         .add("/api/admin/logs/{id}", get(logs::get).delete(logs::delete))
+        .add(
+            "/api/admin/audit-rules",
+            get(logs::audit_rules).put(logs::save_audit_rules),
+        )
         .add(
             "/api/admin/settings",
             get(settings::list).post(settings::create),

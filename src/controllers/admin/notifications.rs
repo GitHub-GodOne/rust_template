@@ -247,7 +247,7 @@ async fn find_notification(ctx: &AppContext, id: i32) -> ApiResult<system_notifi
         .ok_or_else(|| ApiError::bad_request("notification not found"))
 }
 
-fn visible_condition(actor: &users::Model) -> Condition {
+pub(crate) fn visible_condition(actor: &users::Model) -> Condition {
     let mut condition = Condition::any()
         .add(system_notifications::Column::TargetType.eq("all"))
         .add(system_notifications::Column::TargetUserId.eq(actor.id));

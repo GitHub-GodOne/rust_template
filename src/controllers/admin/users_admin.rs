@@ -403,7 +403,7 @@ async fn find_user(ctx: &AppContext, id: i32) -> ApiResult<users::Model> {
         .ok_or_else(|| ApiError::bad_request("user not found"))
 }
 
-fn apply_user_scope(
+pub(crate) fn apply_user_scope(
     query: sea_orm::Select<users::Entity>,
     scope: &EffectiveDataScope,
 ) -> sea_orm::Select<users::Entity> {

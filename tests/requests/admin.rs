@@ -740,6 +740,9 @@ async fn super_admin_can_manage_and_serve_static_site() {
         assert_eq!(public_asset.status_code(), 200);
         assert_eq!(public_asset.as_bytes().as_ref(), b"console.log('static');");
 
+        let unlisted_directory = request.get("/request-static/assets/").await;
+        assert_eq!(unlisted_directory.status_code(), 404);
+
         let create_folder = request
             .post("/api/admin/static-sites/folders")
             .add_header(auth_key.clone(), auth_value.clone())
@@ -761,11 +764,22 @@ async fn super_admin_can_manage_and_serve_static_site() {
                 "local_root": "storage/static-hosting/request-tests",
                 "index_file": "index.html",
                 "spa_fallback": true,
+                "directory_listing": true,
                 "enabled": true,
                 "cache_seconds": 60
             }))
             .await;
         assert_eq!(update.status_code(), 200);
+
+        let listed_directory = request.get("/request-static/assets/").await;
+        assert_eq!(listed_directory.status_code(), 200);
+        assert!(listed_directory.content_type().contains("text/html"));
+        let listed_text = listed_directory.text();
+        assert!(listed_text.contains(r#"href="/request-static/assets/app.js""#));
+        assert!(listed_text.contains(r#"href="/request-static/""#));
+
+        let indexed_root = request.get("/request-static/").await;
+        assert_eq!(indexed_root.as_bytes().as_ref(), b"<h1>request static</h1>");
 
         let spa_fallback = request
             .get("/request-static/dashboard/report")

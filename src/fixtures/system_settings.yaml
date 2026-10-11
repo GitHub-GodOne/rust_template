@@ -54,7 +54,7 @@
   value: "90"
   value_type: number
   default_value: "90"
-  description: 操作日志建议保留天数
+  description: 操作日志保留天数，超过的日志每 6 小时自动清理一次；0 表示永久保留
   is_public: false
   is_builtin: true
   is_encrypted: false
@@ -363,6 +363,198 @@
   is_builtin: true
   is_encrypted: false
   sort_order: 205
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 24
+  key: ddns.enabled
+  name: 启用 IPv6 动态解析
+  group_key: ddns
+  value: "false"
+  value_type: boolean
+  default_value: "false"
+  description: 开启后定时检测本机公网 IPv6，并自动更新到 Cloudflare 的 AAAA 记录
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 210
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 25
+  key: ddns.cloudflare_api_token
+  name: Cloudflare API Token
+  group_key: ddns
+  value: ""
+  value_type: secret
+  default_value: ""
+  description: Cloudflare API 令牌，需要 Zone.DNS 编辑权限（建议只授权目标域名）
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 215
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 26
+  key: ddns.cloudflare_zone_id
+  name: Cloudflare Zone ID
+  group_key: ddns
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 域名所在 Zone 的 ID；留空时根据域名自动查找
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 220
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 27
+  key: ddns.record_names
+  name: 解析域名
+  group_key: ddns
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 需要更新的完整域名，多个用逗号分隔，例如 home.example.com,nas.example.com
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 225
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 28
+  key: ddns.proxied
+  name: Cloudflare 代理
+  group_key: ddns
+  value: "false"
+  value_type: boolean
+  default_value: "false"
+  description: 是否开启 Cloudflare 代理（橙色云朵）；直连 IPv6 时请保持 false
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 230
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 29
+  key: ddns.ttl
+  name: 解析 TTL
+  group_key: ddns
+  value: "1"
+  value_type: number
+  default_value: "1"
+  description: 记录 TTL 秒数，1 表示自动，也可填 60 到 86400
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 235
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 30
+  key: ddns.check_interval_seconds
+  name: 检测间隔（秒）
+  group_key: ddns
+  value: "300"
+  value_type: number
+  default_value: "300"
+  description: 检测本机 IPv6 是否变化的间隔，30 到 86400 秒
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 240
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 31
+  key: ddns.ipv6_source
+  name: IPv6 获取方式
+  group_key: ddns
+  value: auto
+  value_type: string
+  default_value: auto
+  description: auto：优先读取网卡，失败再查外部地址；interface：只读网卡；url：只通过外部地址查询；manual：使用手动指定的地址
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 245
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 32
+  key: ddns.interface_name
+  name: 指定网卡
+  group_key: ddns
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 只使用该网卡上的 IPv6（如 eth0、en0、以太网），留空自动选择稳定的公网地址
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 250
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 33
+  key: ddns.ipv6_lookup_url
+  name: IPv6 查询地址
+  group_key: ddns
+  value: https://api6.ipify.org
+  value_type: string
+  default_value: https://api6.ipify.org
+  description: 返回纯文本 IPv6 的查询地址，url/auto 模式使用
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 255
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 34
+  key: ddns.cloudflare_api_base
+  name: Cloudflare API 地址
+  group_key: ddns
+  value: https://api.cloudflare.com/client/v4
+  value_type: string
+  default_value: https://api.cloudflare.com/client/v4
+  description: Cloudflare API 根地址，一般无需修改
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 260
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 35
+  key: ddns.manual_ipv6
+  name: 手动指定 IPv6
+  group_key: ddns
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 获取方式为 manual 时同步到域名的固定 IPv6 地址
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 265
   created_by:
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"

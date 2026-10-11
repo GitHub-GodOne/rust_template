@@ -10,7 +10,15 @@
     "lint": "biome check src/",
     "preview": "rsbuild preview",
     "test:auth": "node --test tests/auth-client.test.cjs",
-    "test:temperature": "node --test tests/temperature-panel.test.cjs"
+    "test:temperature": "node --test tests/temperature-panel.test.cjs",
+    "test:home": "node --test tests/home-overview.test.cjs",
+    "test:ddns": "node --test tests/ddns-ipv6.test.cjs",
+    "test:ssh": "node --test tests/ssh-session.test.cjs",
+    "test:finder": "node --test tests/finder-model.test.cjs",
+    "test:dock": "node --test tests/dock-config.test.cjs",
+    "test:project-cli": "node --test tests/project-cli.test.cjs",
+    "test:audit": "node --test tests/audit-rules.test.cjs",
+    "test:menu-trail": "node --test tests/menu-trail.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5",
@@ -20,6 +28,7 @@
     "@xterm/xterm": "^5",
     "antd": "^5",
     "axios": "^1",
+    "dayjs": "^1.11.21",
     "guacamole-common-js": "1.5.0",
     "react": "^18",
     "react-dom": "^18",

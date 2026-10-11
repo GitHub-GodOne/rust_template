@@ -1,41 +1,26 @@
-import { Breadcrumb, Space, Typography } from "antd";
 import type { ReactNode } from "react";
 
+/**
+ * Page heading. The visible title, description and breadcrumb are gone: the
+ * selected menu item and the open tab already say where you are, so pages
+ * get the full height for their content. The title stays available to screen
+ * readers, and `extra` (page actions) still renders as a slim bar.
+ */
 export function PageHeader({
   title,
-  subtitle,
-  icon,
-  breadcrumb,
   extra,
 }: {
   title: string;
+  /** Kept for callers; no longer shown. */
   subtitle?: string;
   icon?: ReactNode;
   breadcrumb?: string[];
   extra?: ReactNode;
 }) {
   return (
-    <div className="page-header">
-      <div>
-        {breadcrumb && (
-          <Breadcrumb
-            className="page-breadcrumb"
-            items={breadcrumb.map((item) => ({ title: item }))}
-          />
-        )}
-        <Space align="center" size={12}>
-          {icon && <span className="page-header-icon">{icon}</span>}
-          <div>
-            <Typography.Title level={3} className="page-title">
-              {title}
-            </Typography.Title>
-            {subtitle && (
-              <Typography.Text type="secondary">{subtitle}</Typography.Text>
-            )}
-          </div>
-        </Space>
-      </div>
-      {extra && <div className="page-header-extra">{extra}</div>}
-    </div>
+    <>
+      <h1 className="visually-hidden">{title}</h1>
+      {extra ? <div className="page-actions">{extra}</div> : null}
+    </>
   );
 }

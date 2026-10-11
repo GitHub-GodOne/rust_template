@@ -6,7 +6,7 @@ use std::{
 
 use axum::{
     extract::{Request, State},
-    http::{header::HeaderMap, StatusCode},
+    http::StatusCode,
     middleware::Next,
     response::Response,
     Router as AXRouter,
@@ -61,7 +61,7 @@ async fn handle_rate_limit(
 
     let method = request.method().as_str().to_string();
     let path = request.uri().path().to_string();
-    let ip = client_ip(request.headers());
+    let ip = super::access_log::client_ip(&request).unwrap_or_else(|| "unknown".to_string());
 
     match limited_rule(&ctx, &ip, &method, &path).await {
         Ok(Some(rule_id)) => {
@@ -159,20 +159,4 @@ async fn record_rate_limit_event(
             "failed to record rate limit event"
         );
     }
-}
-
-fn client_ip(headers: &HeaderMap) -> String {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|value| value.to_str().ok())
-        })
-        .unwrap_or("unknown")
-        .to_string()
 }

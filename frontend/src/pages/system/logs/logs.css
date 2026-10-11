@@ -1,0 +1,194 @@
+.audit-loading {
+	display: grid;
+	padding: 48px 0;
+	place-items: center;
+}
+
+.audit-global {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 14px 16px;
+	background: #f7f4ef;
+	border: 1px solid #e6e1d9;
+	border-radius: 8px;
+}
+
+.audit-global .ant-typography {
+	margin: 4px 0 0;
+	font-size: 12px;
+}
+
+.audit-alert.ant-alert {
+	margin-top: 12px;
+}
+
+.audit-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+.audit-toolbar .ant-input-affix-wrapper {
+	flex: 1 1 220px;
+}
+
+.audit-summary.ant-typography {
+	display: block;
+	margin: 8px 0 4px;
+	font-size: 12px;
+}
+
+.audit-group {
+	margin-top: 14px;
+}
+
+.audit-group-title {
+	margin-bottom: 4px;
+	color: #a29a90;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.audit-head,
+.audit-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 64px 64px 72px;
+	align-items: center;
+	column-gap: 8px;
+}
+
+.audit-head {
+	padding: 0 10px 4px;
+	color: #a29a90;
+	font-size: 12px;
+}
+
+.audit-head span:not(:first-child),
+.audit-switch {
+	justify-self: center;
+}
+
+.audit-row {
+	padding: 8px 10px;
+	border-top: 1px solid #efebe4;
+}
+
+.audit-name {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.audit-name strong {
+	font-weight: 500;
+}
+
+.audit-name code {
+	overflow: hidden;
+	color: #8b8177;
+	font-size: 12px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.audit-switch {
+	display: inline-flex;
+	align-items: center;
+}
+
+/* The column header names each switch on wide screens. */
+.audit-switch > span {
+	display: none;
+}
+
+.audit-drawer-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+@media (max-width: 767px) {
+	.audit-head {
+		display: none;
+	}
+
+	.audit-row {
+		grid-template-columns: repeat(3, auto);
+		justify-content: start;
+		row-gap: 6px;
+		column-gap: 16px;
+	}
+
+	.audit-name {
+		grid-column: 1 / -1;
+	}
+
+	.audit-switch {
+		gap: 6px;
+		justify-self: start;
+	}
+
+	.audit-switch > span {
+		display: inline;
+		color: #756f67;
+		font-size: 12px;
+	}
+}
+
+.audit-request-summary {
+	display: block;
+	max-height: 240px;
+	overflow: auto;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.logs-range-picker.ant-picker {
+	width: 340px;
+	max-width: 100%;
+}
+
+@media (max-width: 767px) {
+	.logs-range-picker.ant-picker {
+		width: 100%;
+	}
+}
+
+.retention-panel {
+	margin-bottom: 14px;
+	padding: 14px 16px;
+	background: #f7f4ef;
+	border: 1px solid #e6e1d9;
+	border-radius: 8px;
+}
+
+.retention-head .ant-typography {
+	margin: 4px 0 10px;
+	font-size: 12px;
+}
+
+.retention-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.retention-days.ant-input-number-group-wrapper {
+	width: 140px;
+}
+
+.retention-facts {
+	margin: 12px 0 0;
+	padding-left: 18px;
+	color: #756f67;
+	font-size: 12px;
+	line-height: 1.8;
+}

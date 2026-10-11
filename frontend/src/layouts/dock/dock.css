@@ -1,0 +1,294 @@
+/* Configurable quick-launch dock. Base look lives in index.css; this file
+   adds the user-selectable size, position and behaviours. */
+
+.admin-dock-anchor {
+	display: contents;
+}
+
+/* nav.admin-dock outranks index.css's .admin-dock, whatever the load order. */
+nav.admin-dock {
+	--dock-item: 50px;
+	--dock-icon: 43px;
+	--dock-font: 20px;
+	/* Keep the resting transform below once the entrance animation ends. */
+	animation-fill-mode: backwards;
+	transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
+}
+
+.admin-dock .admin-dock-item {
+	width: var(--dock-item);
+	height: var(--dock-item);
+	flex: 0 0 var(--dock-item);
+}
+
+.admin-dock .admin-dock-item-icon {
+	width: var(--dock-icon);
+	height: var(--dock-icon);
+	font-size: var(--dock-font);
+}
+
+.admin-dock:not(.is-magnify) .admin-dock-item:hover,
+.admin-dock:not(.is-magnify) .admin-dock-item:focus-visible {
+	transform: none;
+}
+
+/* The icon row scrolls sideways, which also clips vertically; give hovered
+   icons (raised and scaled) room inside it, offset by a negative margin so
+   the Dock itself does not grow. */
+nav.admin-dock .admin-dock-items {
+	margin: -14px -6px 0;
+	padding: 14px 6px 0;
+}
+
+nav.admin-dock.is-left .admin-dock-items,
+nav.admin-dock.is-right .admin-dock-items {
+	margin: -6px -14px;
+	padding: 6px 14px;
+}
+
+/* Labels under the icons */
+.admin-dock.has-labels .admin-dock-item {
+	height: calc(var(--dock-item) + 16px);
+	align-content: start;
+	gap: 2px;
+	padding-top: 3px;
+}
+
+.admin-dock-item-label {
+	display: block;
+	max-width: calc(var(--dock-item) + 10px);
+	overflow: hidden;
+	color: #4d4842;
+	font-size: 10px;
+	line-height: 13px;
+	text-align: center;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Vertical docks */
+.admin-dock.is-left,
+.admin-dock.is-right {
+	top: 50%;
+	bottom: auto;
+	flex-direction: column;
+	max-width: none;
+	max-height: calc(100dvh - 120px);
+	padding: 8px 7px;
+	animation-name: dock-enter-vertical;
+}
+
+.admin-dock.is-left {
+	right: auto;
+	left: calc(var(--dock-left-offset, 0px) + 12px);
+	transform: translateY(-50%);
+}
+
+.admin-dock.is-right {
+	right: 12px;
+	left: auto;
+	transform: translateY(-50%);
+}
+
+.admin-dock.is-left .admin-dock-items,
+.admin-dock.is-right .admin-dock-items {
+	flex-direction: column;
+	align-items: center;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.admin-dock.is-left.is-magnify .admin-dock-item:hover,
+.admin-dock.is-left.is-magnify .admin-dock-item:focus-visible {
+	transform: translateX(7px) scale(1.1);
+}
+
+.admin-dock.is-right.is-magnify .admin-dock-item:hover,
+.admin-dock.is-right.is-magnify .admin-dock-item:focus-visible {
+	transform: translateX(-7px) scale(1.1);
+}
+
+.admin-dock.is-left .admin-dock-divider,
+.admin-dock.is-right .admin-dock-divider {
+	width: 30px;
+	height: 1px;
+	flex-basis: 1px;
+}
+
+.admin-dock.is-left .admin-dock-hide.ant-btn,
+.admin-dock.is-right .admin-dock-hide.ant-btn {
+	width: 38px;
+	height: 30px;
+	flex: 0 0 30px;
+}
+
+.admin-dock.is-left .admin-dock-active-dot {
+	top: 50%;
+	right: auto;
+	bottom: auto;
+	left: -4px;
+	transform: translateY(-50%) scale(0);
+}
+
+.admin-dock.is-right .admin-dock-active-dot {
+	top: 50%;
+	right: -4px;
+	bottom: auto;
+	transform: translateY(-50%) scale(0);
+}
+
+.admin-dock.is-left .admin-dock-item.is-active .admin-dock-active-dot,
+.admin-dock.is-right .admin-dock-item.is-active .admin-dock-active-dot {
+	transform: translateY(-50%) scale(1);
+}
+
+.admin-dock-settings.ant-btn {
+	color: #8b8177;
+}
+
+/* Auto-hide: slide off screen until the pointer reaches the edge. */
+.admin-dock.is-autohide.is-bottom:not(.is-revealed) {
+	transform: translate(-50%, calc(100% + 24px));
+}
+
+.admin-dock.is-autohide.is-left:not(.is-revealed) {
+	transform: translate(calc(-100% - 24px - var(--dock-left-offset, 0px)), -50%);
+}
+
+.admin-dock.is-autohide.is-right:not(.is-revealed) {
+	transform: translate(calc(100% + 24px), -50%);
+}
+
+.admin-dock-hotzone {
+	position: fixed;
+	z-index: 849;
+}
+
+.admin-dock-hotzone.is-bottom {
+	right: 0;
+	bottom: 0;
+	left: 0;
+	height: 8px;
+}
+
+.admin-dock-hotzone.is-left {
+	top: 0;
+	bottom: 0;
+	left: var(--dock-left-offset, 0px);
+	width: 8px;
+}
+
+.admin-dock-hotzone.is-right {
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 8px;
+}
+
+/* Static copy rendered on the settings page */
+.admin-dock.is-preview {
+	position: relative;
+	inset: auto;
+	z-index: auto;
+	margin: 0 auto;
+	transform: none;
+	animation: none;
+}
+
+.admin-dock.is-preview.is-left,
+.admin-dock.is-preview.is-right {
+	max-height: none;
+}
+
+/* Layout room for an always-visible dock */
+body:not(.dock-reserve) .admin-dock-visible .admin-content-frame,
+body.dock-pos-left .admin-dock-visible .admin-content-frame,
+body.dock-pos-right .admin-dock-visible .admin-content-frame {
+	margin-bottom: 24px;
+}
+
+body.dock-reserve.dock-pos-bottom .admin-dock-visible .admin-content-frame {
+	margin-bottom: calc(var(--dock-space, 72px) + 40px);
+}
+
+body.dock-reserve.dock-pos-left .admin-dock-visible .admin-content-frame {
+	/* Shrink instead of overflowing: the frame is width: 100% by default. */
+	width: auto;
+	margin-left: calc(var(--dock-space, 72px) + 12px);
+}
+
+body.dock-reserve.dock-pos-right .admin-dock-visible .admin-content-frame {
+	/* Shrink instead of overflowing: the frame is width: 100% by default. */
+	width: auto;
+	margin-right: calc(var(--dock-space, 72px) + 12px);
+}
+
+@keyframes dock-enter-vertical {
+	from {
+		opacity: 0;
+		transform: translateY(-50%) scale(0.97);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(-50%) scale(1);
+	}
+}
+
+@media (max-width: 768px) {
+	/* Phones: a vertical dock would cover content; keep it at the bottom. */
+	.admin-dock.is-left:not(.is-preview),
+	.admin-dock.is-right:not(.is-preview) {
+		top: auto;
+		right: 8px;
+		bottom: 8px;
+		left: 50%;
+		flex-direction: row;
+		max-height: none;
+		transform: translateX(-50%);
+		animation-name: dock-enter;
+	}
+
+	.admin-dock.is-left:not(.is-preview) .admin-dock-items,
+	.admin-dock.is-right:not(.is-preview) .admin-dock-items {
+		flex-direction: row;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
+	nav.admin-dock.is-left:not(.is-preview) .admin-dock-items,
+	nav.admin-dock.is-right:not(.is-preview) .admin-dock-items {
+		margin: -14px -6px 0;
+		padding: 14px 6px 0;
+	}
+
+	.admin-dock .admin-dock-item {
+		width: min(var(--dock-item), 44px);
+		height: min(var(--dock-item), 44px);
+		flex-basis: min(var(--dock-item), 44px);
+	}
+
+	.admin-dock .admin-dock-item-icon {
+		width: min(var(--dock-icon), 36px);
+		height: min(var(--dock-icon), 36px);
+		font-size: min(var(--dock-font), 17px);
+	}
+
+	body.dock-reserve.dock-pos-left .admin-dock-visible .admin-content-frame,
+	body.dock-reserve.dock-pos-right .admin-dock-visible .admin-content-frame {
+		margin-right: 0;
+		margin-bottom: 88px;
+		margin-left: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.admin-dock {
+		transition: none;
+	}
+}
+
+/* Keeps unchecked options aligned with the checked one in the dock menu. */
+.admin-dock-menu-check {
+	display: inline-block;
+	width: 14px;
+}

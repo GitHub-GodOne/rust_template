@@ -6,7 +6,7 @@ import { current } from "../api/auth";
 import { getSetupStatus } from "../api/setup";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
-import { DashboardPage } from "../pages/auth/dashboard/DashboardPage";
+import { HomePage } from "../pages/home/HomePage";
 import { SetupPage } from "../pages/setup/SetupPage";
 import { AiImagesPage } from "../pages/system/ai-images/AiImagesPage";
 import { ApiKeysPage } from "../pages/system/api-keys/ApiKeysPage";
@@ -14,7 +14,9 @@ import { BackupsPage } from "../pages/system/backups/BackupsPage";
 import { ChatMessagesPage } from "../pages/system/chat-messages/ChatMessagesPage";
 import { CommandsPage } from "../pages/system/commands/CommandsPage";
 import { ContentPage } from "../pages/system/content/ContentPage";
+import { DdnsPage } from "../pages/system/ddns/DdnsPage";
 import { DepartmentsPage } from "../pages/system/departments/DepartmentsPage";
+import { DockSettingsPage } from "../pages/system/dock/DockSettingsPage";
 import { DocsPage } from "../pages/system/docs/DocsPage";
 import { EmailTemplatesPage } from "../pages/system/email-templates/EmailTemplatesPage";
 import { FilesPage } from "../pages/system/files/FilesPage";
@@ -25,6 +27,7 @@ import { MonitoringPage } from "../pages/system/monitoring/MonitoringPage";
 import { NotificationsPage } from "../pages/system/notifications/NotificationsPage";
 import { PaymentsPage } from "../pages/system/payments/PaymentsPage";
 import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
+import { ProjectCliPage } from "../pages/system/project-cli/ProjectCliPage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
 import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
 import { SettingsPage } from "../pages/system/settings/SettingsPage";
@@ -197,7 +200,7 @@ export function AppRouter() {
             path="dashboard"
             element={
               <RequirePermission permission="dashboard:view">
-                <DashboardPage />
+                <HomePage />
               </RequirePermission>
             }
           />
@@ -310,6 +313,23 @@ export function AppRouter() {
             element={
               <RequirePermission permission="system:setting:list">
                 <SettingsPage />
+              </RequirePermission>
+            }
+          />
+          <Route path="system/dock" element={<DockSettingsPage />} />
+          <Route
+            path="system/project-cli"
+            element={
+              <RequirePermission permission="system:project_cli:view">
+                <ProjectCliPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/ddns"
+            element={
+              <RequirePermission permission="system:ddns:view">
+                <DdnsPage />
               </RequirePermission>
             }
           />
