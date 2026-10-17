@@ -1,0 +1,85 @@
+/* Password protection and listing options for hosted static sites. */
+.sh-option.is-nested {
+	padding-left: 28px;
+	background: #fcfaf7;
+}
+
+.sh-option.is-disabled .sh-option-title,
+.sh-option.is-disabled .sh-option-description {
+	opacity: 0.55;
+}
+
+.sh-access {
+	margin-top: 14px;
+	padding: 12px 14px;
+	border: 1px solid #ebe5dd;
+	border-radius: 8px;
+}
+
+.sh-access-head {
+	margin-bottom: 10px;
+}
+
+.sh-access-head .sh-option-title .anticon {
+	margin-right: 4px;
+	color: #b45f3c;
+}
+
+.sh-access-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 32px;
+	align-items: start;
+	gap: 8px;
+}
+
+.sh-access-row .ant-form-item {
+	margin-bottom: 10px;
+}
+
+.sh-pill.is-locked {
+	color: #8a4a2c;
+	background: #f8e9df;
+}
+
+.sh-lock {
+	flex: 0 0 auto;
+	margin-left: 6px;
+	color: #b45f3c;
+	font-size: 12px;
+}
+
+.sh-tile-name .sh-lock {
+	margin: 0 4px 0 0;
+}
+
+.sh-access-notice {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 10px;
+	padding: 7px 12px;
+	color: #8a4a2c;
+	font-size: 12.5px;
+	background: #fbf1ea;
+	border-radius: 6px;
+}
+
+@media (max-width: 640px) {
+	.sh-access-row {
+		grid-template-columns: minmax(0, 1fr) 32px;
+		padding-bottom: 10px;
+		border-bottom: 1px dashed #ebe5dd;
+		margin-bottom: 10px;
+	}
+
+	.sh-access-row .sh-access-path,
+	.sh-access-row .sh-access-user,
+	.sh-access-row .sh-access-password {
+		grid-column: 1;
+	}
+
+	.sh-access-row > .ant-btn {
+		grid-column: 2;
+		grid-row: 1;
+	}
+}

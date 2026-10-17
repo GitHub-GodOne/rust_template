@@ -1,4 +1,5 @@
 import {
+  AppstoreOutlined,
   ArrowLeftOutlined,
   CloseOutlined,
   DeleteOutlined,
@@ -12,6 +13,7 @@ import {
   MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import RFB from "@novnc/novnc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,6 +59,18 @@ import {
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import "./vnc.css";
 import { createClientId } from "../../../utils/clientId";
+import { VncQuickBar, VncShortcutsDrawer } from "./VncQuickBar";
+import { useVncPointerModes } from "./useVncPointerModes";
+import {
+  KEYS,
+  type KeyStroke,
+  type ModifierName,
+  charStroke,
+  comboSequence,
+  letterKey,
+  textStrokes,
+  withModifiers,
+} from "./vncInput";
 
 type VncStatus =
   | "idle"
@@ -113,13 +127,41 @@ type VncViewerHostProps = {
   active: boolean;
   status: VncStatus;
   errorMessage?: string;
+  trackpad: boolean;
+  rightClickArmed: boolean;
+  showLocalPointer: boolean;
   onBind: (sessionId: string, host: HTMLDivElement | null) => void;
   onConnect: () => void;
+  onRightClickUsed: () => void;
 };
 
 const vncTargetKeyStorageKey = "gpt-images-admin-vnc-target";
 const vncSessionsStorageKey = "gpt-images-admin-vnc-sessions";
 const vncActiveSessionStorageKey = "gpt-images-admin-vnc-active-session";
+const vncTrackpadStorageKey = "gpt-images-admin-vnc-trackpad";
+const vncLocalPointerStorageKey = "gpt-images-admin-vnc-local-pointer";
+const vncQuickBarStorageKey = "gpt-images-admin-vnc-quickbar";
+
+function storedFlag(key: string, fallback: () => boolean) {
+  if (typeof localStorage === "undefined") {
+    return fallback();
+  }
+  const value = localStorage.getItem(key);
+  return value === null ? fallback() : value === "1";
+}
+
+function storeFlag(key: string, value: boolean) {
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(key, value ? "1" : "0");
+  }
+}
+
+function prefersTrackpad() {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.matchMedia?.("(pointer: coarse)").matches)
+  );
+}
 const insecureVncContextMessage =
   "VNC 需要 HTTPS 安全环境，请使用 HTTPS 域名访问，或在服务器本机通过 localhost 打开";
 
@@ -231,10 +273,24 @@ const VncViewerHost = memo(function VncViewerHost({
   active,
   status,
   errorMessage,
+  trackpad,
+  rightClickArmed,
+  showLocalPointer,
   onBind,
   onConnect,
+  onRightClickUsed,
 }: VncViewerHostProps) {
   const pointerRef = useRef<HTMLSpanElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const trackpadCursorRef = useRef<HTMLSpanElement | null>(null);
+  useVncPointerModes({
+    stageRef,
+    cursorRef: trackpadCursorRef,
+    enabled: active && status === "connected",
+    trackpad,
+    rightClickArmed,
+    onRightClickUsed,
+  });
   const bindRef = useCallback(
     (host: HTMLDivElement | null) => {
       onBind(sessionId, host);
@@ -247,12 +303,17 @@ const VncViewerHost = memo(function VncViewerHost({
       if (!pointer || status !== "connected") {
         return;
       }
+      // Trackpad mode draws its own cursor; the finger position is irrelevant.
+      if (!showLocalPointer || (trackpad && event.pointerType === "touch")) {
+        pointer.classList.remove("is-visible");
+        return;
+      }
       const bounds = event.currentTarget.getBoundingClientRect();
       pointer.style.transform = `translate3d(${event.clientX - bounds.left}px, ${event.clientY - bounds.top}px, 0) translate(-50%, -50%)`;
       pointer.classList.toggle("is-touch", event.pointerType === "touch");
       pointer.classList.add("is-visible");
     },
-    [status],
+    [showLocalPointer, status, trackpad],
   );
   const hidePointer = useCallback(() => {
     pointerRef.current?.classList.remove("is-visible");
@@ -260,7 +321,8 @@ const VncViewerHost = memo(function VncViewerHost({
 
   return (
     <div
-      className="vnc-viewer-stage"
+      ref={stageRef}
+      className={`vnc-viewer-stage${rightClickArmed ? " is-right-click-armed" : ""}${trackpad ? " is-trackpad" : ""}`}
       style={{ display: active ? "block" : "none" }}
       onPointerDown={updatePointer}
       onPointerMove={updatePointer}
@@ -274,6 +336,27 @@ const VncViewerHost = memo(function VncViewerHost({
     >
       <div ref={bindRef} className="vnc-viewer-host" />
       <span ref={pointerRef} className="vnc-local-pointer" aria-hidden="true" />
+      <span
+        ref={trackpadCursorRef}
+        className="vnc-trackpad-cursor"
+        aria-hidden="true"
+      >
+        <svg
+          viewBox="0 0 16 24"
+          width="18"
+          height="27"
+          focusable="false"
+          aria-hidden="true"
+        >
+          <path
+            d="M1.5 1.5v18.2l4.6-4.4 3.1 7.2 3-1.3-3.1-7.1h6.4z"
+            fill="#fff"
+            stroke="#151515"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
       {status !== "connected" ? (
         <div className="vnc-viewer-state" aria-live="polite">
           <DesktopOutlined />
@@ -323,6 +406,22 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
   const [rememberCredentials, setRememberCredentials] = useState(false);
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [viewerExpanded, setViewerExpanded] = useState(false);
+  const [trackpad, setTrackpad] = useState(() =>
+    storedFlag(vncTrackpadStorageKey, prefersTrackpad),
+  );
+  const [showLocalPointer, setShowLocalPointer] = useState(() =>
+    storedFlag(vncLocalPointerStorageKey, () => true),
+  );
+  const [showQuickBar, setShowQuickBar] = useState(() =>
+    storedFlag(vncQuickBarStorageKey, () => true),
+  );
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [rightClickArmed, setRightClickArmed] = useState(false);
+  const [latched, setLatchedState] = useState<ModifierName[]>([]);
+  const latchedRef = useRef<ModifierName[]>([]);
+  const [remoteClipboards, setRemoteClipboards] = useState<
+    Record<string, string>
+  >({});
   const runtimesRef = useRef(new Map<string, RfbRuntime>());
   const pendingCredentialSavesRef = useRef(
     new Map<string, PendingVncCredentialSave>(),
@@ -485,6 +584,15 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         rfb.resizeSession = true;
         rfb.showDotCursor = true;
         rfb.background = "#0b1020";
+        rfb.addEventListener("clipboard", (event: Event) => {
+          const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+          if (typeof text === "string") {
+            setRemoteClipboards((current) => ({
+              ...current,
+              [session.id]: text,
+            }));
+          }
+        });
         rfb.addEventListener("connect", () => {
           updateSession(session.id, {
             status: "connected",
@@ -723,10 +831,12 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
 
   useEffect(() => {
     return () => {
+      // Keep the host bindings: ref callbacks will not re-register them when
+      // StrictMode replays this effect, and unmounting hosts unbind themselves.
       for (const runtime of runtimesRef.current.values()) {
         runtime.rfb?.disconnect();
+        runtime.rfb = null;
       }
-      runtimesRef.current.clear();
     };
   }, []);
 
@@ -907,28 +1017,123 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
     rememberCredentials,
   ]);
 
-  const dispatchVirtualKey = useCallback(
-    (key: string, code = "Unidentified") => {
-      if (!activeSession || activeSession.status !== "connected") {
+  const setLatched = useCallback((next: ModifierName[]) => {
+    latchedRef.current = next;
+    setLatchedState(next);
+  }, []);
+
+  const activeRfb = useCallback(() => {
+    if (!activeSession || activeSession.status !== "connected") {
+      message.warning("请先连接 VNC 会话");
+      return null;
+    }
+    return runtimesRef.current.get(activeSession.id)?.rfb ?? null;
+  }, [activeSession]);
+
+  /** Sends one key combination, applying and then clearing latched modifiers. */
+  const sendStrokes = useCallback(
+    (strokes: KeyStroke[]) => {
+      const rfb = activeRfb();
+      if (!rfb) {
         return false;
       }
-      const canvas = runtimesRef.current
-        .get(activeSession.id)
-        ?.host?.querySelector("canvas");
-      if (!canvas) {
-        return false;
+      for (const { stroke, down } of comboSequence(
+        withModifiers(latchedRef.current, strokes),
+      )) {
+        rfb.sendKey(stroke.keysym, stroke.code, down);
       }
-      const eventOptions: KeyboardEventInit = {
-        key,
-        code,
-        bubbles: true,
-        cancelable: true,
-      };
-      canvas.dispatchEvent(new KeyboardEvent("keydown", eventOptions));
-      canvas.dispatchEvent(new KeyboardEvent("keyup", eventOptions));
+      if (latchedRef.current.length > 0) {
+        setLatched([]);
+      }
+      // Keep the phone keyboard open; otherwise give the remote screen focus
+      // so a physical keyboard keeps typing into it.
+      if (document.activeElement !== mobileKeyboardRef.current) {
+        rfb.focus({ preventScroll: true });
+      }
       return true;
     },
-    [activeSession],
+    [activeRfb, setLatched],
+  );
+
+  const sendCharacter = useCallback(
+    (character: string) => {
+      const stroke =
+        latchedRef.current.length > 0 && /^[a-z]$/i.test(character)
+          ? letterKey(character)
+          : charStroke(character);
+      return stroke ? sendStrokes([stroke]) : false;
+    },
+    [sendStrokes],
+  );
+
+  const toggleModifier = useCallback(
+    (name: ModifierName) => {
+      const current = latchedRef.current;
+      setLatched(
+        current.includes(name)
+          ? current.filter((item) => item !== name)
+          : [...current, name],
+      );
+    },
+    [setLatched],
+  );
+
+  const toggleTrackpad = useCallback(() => {
+    setTrackpad((current) => {
+      const next = !current;
+      storeFlag(vncTrackpadStorageKey, next);
+      message.info(
+        next
+          ? "触控板模式：拖动移动光标，轻点单击，双指轻点右键，长按拖拽"
+          : "触摸模式：点哪里就点击哪里",
+      );
+      return next;
+    });
+  }, []);
+
+  const toggleLocalPointer = useCallback(() => {
+    setShowLocalPointer((current) => {
+      storeFlag(vncLocalPointerStorageKey, !current);
+      return !current;
+    });
+  }, []);
+
+  const toggleQuickBar = useCallback(() => {
+    setShowQuickBar((current) => {
+      storeFlag(vncQuickBarStorageKey, !current);
+      return !current;
+    });
+  }, []);
+
+  const handleRightClickUsed = useCallback(() => {
+    setRightClickArmed(false);
+  }, []);
+
+  const pasteToRemote = useCallback(
+    (text: string) => {
+      const rfb = activeRfb();
+      if (!rfb) {
+        return false;
+      }
+      rfb.clipboardPasteFrom(text);
+      return true;
+    },
+    [activeRfb],
+  );
+
+  const typeText = useCallback(
+    (text: string) => {
+      const rfb = activeRfb();
+      if (!rfb) {
+        return false;
+      }
+      for (const stroke of textStrokes(text)) {
+        rfb.sendKey(stroke.keysym, stroke.code, true);
+        rfb.sendKey(stroke.keysym, stroke.code, false);
+      }
+      return true;
+    },
+    [activeRfb],
   );
 
   const openMobileKeyboard = useCallback(() => {
@@ -944,7 +1149,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
       const inputEvent = event.nativeEvent as InputEvent;
       if (inputEvent.inputType === "deleteContentBackward") {
         event.preventDefault();
-        dispatchVirtualKey("Backspace", "Backspace");
+        sendStrokes([KEYS.backspace]);
         return;
       }
       if (!inputEvent.data) {
@@ -952,28 +1157,28 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
       }
       event.preventDefault();
       for (const character of Array.from(inputEvent.data)) {
-        dispatchVirtualKey(character);
+        sendCharacter(character);
       }
       event.currentTarget.value = "";
     },
-    [dispatchVirtualKey],
+    [sendCharacter, sendStrokes],
   );
 
   const handleMobileKeyboardKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      const supportedKeys: Record<string, string> = {
-        Enter: "Enter",
-        Escape: "Escape",
-        Tab: "Tab",
+      const supportedKeys: Record<string, KeyStroke> = {
+        Enter: KEYS.enter,
+        Escape: KEYS.escape,
+        Tab: KEYS.tab,
       };
-      const code = supportedKeys[event.key];
-      if (!code) {
+      const stroke = supportedKeys[event.key];
+      if (!stroke) {
         return;
       }
       event.preventDefault();
-      dispatchVirtualKey(event.key, code);
+      sendStrokes([stroke]);
     },
-    [dispatchVirtualKey],
+    [sendStrokes],
   );
 
   const sessionTitle = (session: VncSession, index: number) => {
@@ -1165,6 +1370,28 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                     </Tooltip>
                   </Popconfirm>
                 ) : null}
+                <Tooltip title="快捷键与文本发送">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<AppstoreOutlined />}
+                    aria-label="快捷键与文本发送"
+                    onClick={() => setShortcutsOpen(true)}
+                  />
+                </Tooltip>
+                <Tooltip
+                  title={showQuickBar ? "隐藏快捷操作栏" : "显示快捷操作栏"}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    className={showQuickBar ? "is-active" : undefined}
+                    icon={<ThunderboltOutlined />}
+                    aria-label="快捷操作栏"
+                    aria-pressed={showQuickBar}
+                    onClick={toggleQuickBar}
+                  />
+                </Tooltip>
                 <Tooltip title={viewerExpanded ? "退出全屏" : "全屏显示"}>
                   <Button
                     type="text"
@@ -1213,14 +1440,38 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                     active={state.activeSessionId === session.id}
                     status={session.status}
                     errorMessage={session.errorMessage}
+                    trackpad={trackpad}
+                    rightClickArmed={rightClickArmed}
+                    showLocalPointer={showLocalPointer}
                     onBind={bindHost}
                     onConnect={connectActiveSession}
+                    onRightClickUsed={handleRightClickUsed}
                   />
                 ))
               ) : (
                 <Empty description="暂无 VNC 会话" />
               )}
             </div>
+            {activeConnected ? (
+              <div
+                className={`vnc-quickbar-shell${showQuickBar ? "" : " is-collapsed"}`}
+              >
+                <VncQuickBar
+                  connected={activeConnected}
+                  trackpad={trackpad}
+                  rightClickArmed={rightClickArmed}
+                  latched={latched}
+                  onOpenKeyboard={openMobileKeyboard}
+                  onToggleTrackpad={toggleTrackpad}
+                  onToggleRightClick={() =>
+                    setRightClickArmed((current) => !current)
+                  }
+                  onToggleModifier={toggleModifier}
+                  onStrokes={sendStrokes}
+                  onOpenShortcuts={() => setShortcutsOpen(true)}
+                />
+              </div>
+            ) : null}
             {activeSession ? (
               <div className="vnc-statusbar">
                 <span className="vnc-statusbar-item">
@@ -1354,6 +1605,21 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
           </div>
         </Space>
       </Drawer>
+      <VncShortcutsDrawer
+        open={shortcutsOpen}
+        connected={activeConnected}
+        trackpad={trackpad}
+        showLocalPointer={showLocalPointer}
+        remoteClipboard={
+          activeSession ? (remoteClipboards[activeSession.id] ?? "") : ""
+        }
+        onClose={() => setShortcutsOpen(false)}
+        onStrokes={sendStrokes}
+        onToggleTrackpad={toggleTrackpad}
+        onToggleLocalPointer={toggleLocalPointer}
+        onPasteToRemote={pasteToRemote}
+        onTypeText={typeText}
+      />
       <Modal
         title={
           <Space size={8}>

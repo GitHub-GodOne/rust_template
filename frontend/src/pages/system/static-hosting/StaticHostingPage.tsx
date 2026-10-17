@@ -13,6 +13,8 @@ import {
   FolderOpenOutlined,
   GlobalOutlined,
   HomeOutlined,
+  LockOutlined,
+  MinusCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -68,6 +70,13 @@ import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StandardTablePagination } from "../../../components/admin/StandardTablePagination";
 import { useAuthStore } from "../../../stores/auth";
 import { fileIcon, formatBytes } from "../uploads/uploadTaskManager";
+import "./static-hosting.css";
+import {
+  accessRuleLabel,
+  entersProtectedArea,
+  hasRuleAt,
+  ruleForPath,
+} from "./staticAccess";
 
 type SiteFormValues = SaveStaticSiteParams;
 
@@ -109,9 +118,23 @@ const defaultSiteValues: SiteFormValues = {
   index_file: "index.html",
   spa_fallback: false,
   directory_listing: false,
+  listing_overrides_index: false,
   enabled: true,
   cache_seconds: 300,
+  access_rules: [],
 };
+
+function siteFormValues(site: StaticSiteRecord): SiteFormValues {
+  return {
+    ...site,
+    listing_overrides_index: site.listing_overrides_index ?? false,
+    // Passwords are never returned; an empty field keeps the saved one.
+    access_rules: (site.access_rules ?? []).map((rule) => ({
+      path: rule.path,
+      username: rule.username,
+    })),
+  };
+}
 
 function joinRelativePath(prefix: string, name: string) {
   const cleanName = name.trim().replace(/^\/+|\/+$/g, "");
@@ -245,20 +268,131 @@ function SiteOption({
   name,
   title,
   description,
+  disabled,
+  nested,
 }: {
   name: keyof SiteFormValues;
   title: string;
   description: string;
+  disabled?: boolean;
+  nested?: boolean;
 }) {
   return (
-    <div className="sh-option">
+    <div
+      className={`sh-option${nested ? " is-nested" : ""}${disabled ? " is-disabled" : ""}`}
+    >
       <div className="sh-option-copy">
         <span className="sh-option-title">{title}</span>
         <span className="sh-option-description">{description}</span>
       </div>
       <Form.Item name={name} valuePropName="checked" noStyle>
-        <Switch aria-label={title} />
+        <Switch aria-label={title} disabled={disabled} />
       </Form.Item>
+    </div>
+  );
+}
+
+function AccessRulesField({ savedPaths }: { savedPaths: string[] }) {
+  return (
+    <div className="sh-access">
+      <div className="sh-access-head">
+        <div className="sh-option-copy">
+          <span className="sh-option-title">
+            <LockOutlined /> 密码访问
+          </span>
+          <span className="sh-option-description">
+            访问者打开这些目录时需要输入用户名和密码，子目录一并受保护；目录留空表示整个站点
+          </span>
+        </div>
+      </div>
+      <Form.List name="access_rules">
+        {(fields, { add, remove }) => (
+          <>
+            {fields.map((field) => (
+              <Form.Item
+                key={field.key}
+                noStyle
+                shouldUpdate={(previous, next) =>
+                  previous.access_rules?.[field.name]?.path !==
+                  next.access_rules?.[field.name]?.path
+                }
+              >
+                {({ getFieldValue }) => {
+                  const path: string =
+                    getFieldValue(["access_rules", field.name, "path"]) ?? "";
+                  const saved = hasRuleAt(
+                    savedPaths.map((savedPath) => ({ path: savedPath })),
+                    path,
+                  );
+                  return (
+                    <div className="sh-access-row">
+                      <Form.Item
+                        name={[field.name, "path"]}
+                        className="sh-access-path"
+                      >
+                        <Input
+                          prefix="/"
+                          placeholder="留空表示整个站点"
+                          aria-label="受保护目录"
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, "username"]}
+                        className="sh-access-user"
+                        rules={[
+                          { required: true, message: "请输入用户名" },
+                          {
+                            pattern: /^[^:]+$/,
+                            message: "用户名不能包含冒号",
+                          },
+                        ]}
+                      >
+                        <Input
+                          placeholder="用户名"
+                          autoComplete="off"
+                          aria-label="访问用户名"
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, "password"]}
+                        className="sh-access-password"
+                        rules={[
+                          {
+                            required: !saved,
+                            message: "请设置访问密码",
+                          },
+                          { min: 4, message: "密码至少 4 位" },
+                        ]}
+                      >
+                        <Input.Password
+                          placeholder={saved ? "留空保持原密码" : "访问密码"}
+                          autoComplete="new-password"
+                          aria-label="访问密码"
+                        />
+                      </Form.Item>
+                      <Button
+                        type="text"
+                        icon={<MinusCircleOutlined />}
+                        aria-label="移除受保护目录"
+                        title="移除"
+                        onClick={() => remove(field.name)}
+                      />
+                    </div>
+                  );
+                }}
+              </Form.Item>
+            ))}
+            <Button
+              type="dashed"
+              block
+              icon={<PlusOutlined />}
+              onClick={() => add({ path: "", username: "", password: "" })}
+            >
+              添加受保护目录
+            </Button>
+          </>
+        )}
+      </Form.List>
     </div>
   );
 }
@@ -402,10 +536,22 @@ export function StaticHostingPage() {
     },
   });
 
-  const openSiteModal = (site?: StaticSiteRecord) => {
+  const openSiteModal = (site?: StaticSiteRecord, protectPath?: string) => {
     setEditingSite(site ?? null);
     siteForm.resetFields();
-    siteForm.setFieldsValue(site ?? defaultSiteValues);
+    const values = site ? siteFormValues(site) : defaultSiteValues;
+    const rules = values.access_rules ?? [];
+    siteForm.setFieldsValue({
+      ...values,
+      access_rules:
+        protectPath !== undefined &&
+        !hasRuleAt(
+          rules.map((rule) => ({ path: rule.path ?? "" })),
+          protectPath,
+        )
+          ? [...rules, { path: protectPath, username: "", password: "" }]
+          : rules,
+    });
     setSiteModalOpen(true);
   };
 
@@ -598,6 +744,12 @@ export function StaticHostingPage() {
     return rows.slice(start, start + tablePageSize);
   }, [rows, tablePage, tablePageSize]);
 
+  const accessRules =
+    browserQuery.data?.site.access_rules ?? selectedSite?.access_rules ?? [];
+  const currentRule = ruleForPath(accessRules, currentPath);
+  const isLockedEntry = (record: StaticFileRecord) =>
+    record.is_dir && entersProtectedArea(accessRules, currentPath, record.path);
+
   const openRecord = (record: StaticFileRecord) => {
     if (record.is_dir) {
       openPath(record.path);
@@ -637,6 +789,21 @@ export function StaticHostingPage() {
         aria-label="复制公开链接"
         onClick={() => void copyUrl(record.url)}
       />
+      {record.is_dir && selectedSite ? (
+        <PermissionButton
+          size="small"
+          type="text"
+          icon={<LockOutlined />}
+          title={
+            hasRuleAt(accessRules, record.path)
+              ? "修改目录访问密码"
+              : "为该目录设置访问密码"
+          }
+          aria-label="设置目录访问密码"
+          permission="system:static_host:update"
+          onClick={() => openSiteModal(selectedSite, record.path)}
+        />
+      ) : null}
       <Popconfirm
         title={record.is_dir ? "删除该目录及其全部内容？" : "删除该文件？"}
         okButtonProps={{ danger: true }}
@@ -675,6 +842,9 @@ export function StaticHostingPage() {
             {record.is_dir ? <FolderFilled /> : fileIcon(record)}
           </span>
           <span className="sh-name-text">{value}</span>
+          {isLockedEntry(record) ? (
+            <LockOutlined className="sh-lock" aria-label="需要密码访问" />
+          ) : null}
         </button>
       ),
     },
@@ -710,7 +880,7 @@ export function StaticHostingPage() {
     {
       title: "操作",
       key: "actions",
-      width: 168,
+      width: 196,
       render: (_, record) => renderActions(record),
     },
   ];
@@ -857,6 +1027,12 @@ export function StaticHostingPage() {
                   {record.is_dir ? <FolderFilled /> : fileIcon(record)}
                 </span>
                 <span className="sh-tile-name" title={record.name}>
+                  {isLockedEntry(record) ? (
+                    <LockOutlined
+                      className="sh-lock"
+                      aria-label="需要密码访问"
+                    />
+                  ) : null}
                   {record.name}
                 </span>
                 <span className="sh-tile-meta">
@@ -923,7 +1099,17 @@ export function StaticHostingPage() {
                           {selectedSite.enabled ? "运行中" : "已停用"}
                         </span>
                         {selectedSite.directory_listing ? (
-                          <span className="sh-pill">目录列表</span>
+                          <span className="sh-pill">
+                            {selectedSite.listing_overrides_index
+                              ? "目录列表 · 优先"
+                              : "目录列表"}
+                          </span>
+                        ) : null}
+                        {selectedSite.access_rules?.length ? (
+                          <span className="sh-pill is-locked">
+                            <LockOutlined /> 密码保护{" "}
+                            {selectedSite.access_rules.length}
+                          </span>
                         ) : null}
                         {selectedSite.spa_fallback ? (
                           <span className="sh-pill">SPA 回退</span>
@@ -1095,6 +1281,16 @@ export function StaticHostingPage() {
                     ) : null}
                   </div>
                 </div>
+                {currentRule ? (
+                  <div className="sh-access-notice" role="note">
+                    <LockOutlined />
+                    <span>
+                      公开访问此目录需要密码（保护范围：
+                      {accessRuleLabel(currentRule.path)}，用户名{" "}
+                      {currentRule.username}）
+                    </span>
+                  </div>
+                ) : null}
 
                 <input
                   ref={fileInputRef}
@@ -1287,12 +1483,33 @@ export function StaticHostingPage() {
               title="目录列表"
               description="目录中没有默认首页时，列出其中的文件和子目录"
             />
+            <Form.Item
+              noStyle
+              shouldUpdate={(previous, next) =>
+                previous.directory_listing !== next.directory_listing
+              }
+            >
+              {({ getFieldValue }) => (
+                <SiteOption
+                  nested
+                  name="listing_overrides_index"
+                  title="有首页也显示列表"
+                  description="目录中存在默认首页时仍先显示文件列表，首页可从列表中打开"
+                  disabled={!getFieldValue("directory_listing")}
+                />
+              )}
+            </Form.Item>
             <SiteOption
               name="spa_fallback"
               title="SPA 回退"
               description="找不到的页面路径统一返回默认首页，适合前端路由应用"
             />
           </div>
+          <AccessRulesField
+            savedPaths={(editingSite?.access_rules ?? []).map(
+              (rule) => rule.path,
+            )}
+          />
         </Form>
       </Modal>
 

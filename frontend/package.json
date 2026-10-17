@@ -19,7 +19,9 @@
     "test:dock": "node --test tests/dock-config.test.cjs",
     "test:project-cli": "node --test tests/project-cli.test.cjs",
     "test:audit": "node --test tests/audit-rules.test.cjs",
-    "test:menu-trail": "node --test tests/menu-trail.test.cjs"
+    "test:menu-trail": "node --test tests/menu-trail.test.cjs",
+    "test:static-access": "node --test tests/static-access.test.cjs",
+    "test:vnc-input": "node --test tests/vnc-input.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5",

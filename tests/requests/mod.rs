@@ -9,4 +9,5 @@ mod preferences;
 mod prepare_data;
 mod project_cli;
 mod ssh;
+mod static_hosting;
 mod uploads;

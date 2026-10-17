@@ -12,8 +12,9 @@ use crate::{
     models::{admin_logs, system_settings},
     responses::{self, ApiResponse, EmptyData},
     services::static_hosting::{
-        load_sites, normalize_relative_path, normalize_required_relative_path, normalize_site,
-        prepare_site_root, public_file_url, resolve_existing_path, resolve_write_path, save_sites,
+        access_rule_label, hash_access_password, load_sites, normalize_relative_path,
+        normalize_required_relative_path, normalize_site, prepare_site_root, public_file_url,
+        redact_site, resolve_existing_path, resolve_write_path, save_sites, StaticAccessRule,
         StaticSiteConfig,
     },
 };
@@ -27,8 +28,21 @@ pub struct SaveStaticSiteParams {
     pub index_file: Option<String>,
     pub spa_fallback: Option<bool>,
     pub directory_listing: Option<bool>,
+    /// 有首页文件时仍显示目录列表；未传入时保留原值。
+    pub listing_overrides_index: Option<bool>,
     pub enabled: Option<bool>,
     pub cache_seconds: Option<u32>,
+    /// 受密码保护的目录；未传入时保留原有规则，传入空数组表示全部移除。
+    pub access_rules: Option<Vec<SaveStaticAccessRuleParams>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct SaveStaticAccessRuleParams {
+    /// 站点内的相对目录，留空表示整个站点。
+    pub path: Option<String>,
+    pub username: String,
+    /// 新密码；编辑已有目录时留空表示保持原密码。
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::IntoParams, utoipa::ToSchema)]
@@ -72,8 +86,14 @@ pub struct StaticBrowserRecord {
 }
 
 impl SaveStaticSiteParams {
-    fn into_config(self) -> StaticSiteConfig {
-        StaticSiteConfig {
+    fn into_config(self, existing: Option<&StaticSiteConfig>) -> ApiResult<StaticSiteConfig> {
+        let access_rules = match self.access_rules {
+            Some(rules) => resolve_access_rules(rules, existing)?,
+            None => existing
+                .map(|site| site.access_rules.clone())
+                .unwrap_or_default(),
+        };
+        Ok(StaticSiteConfig {
             key: self.key,
             name: self.name,
             url_path: self.url_path,
@@ -81,10 +101,49 @@ impl SaveStaticSiteParams {
             index_file: self.index_file.unwrap_or_else(|| "index.html".to_string()),
             spa_fallback: self.spa_fallback.unwrap_or(false),
             directory_listing: self.directory_listing.unwrap_or(false),
+            listing_overrides_index: self
+                .listing_overrides_index
+                .or_else(|| existing.map(|site| site.listing_overrides_index))
+                .unwrap_or(false),
             enabled: self.enabled.unwrap_or(true),
             cache_seconds: self.cache_seconds.unwrap_or(300),
-        }
+            access_rules,
+        })
     }
+}
+
+/// 新密码会被哈希；未填写密码的目录沿用同一目录已保存的密码。
+fn resolve_access_rules(
+    rules: Vec<SaveStaticAccessRuleParams>,
+    existing: Option<&StaticSiteConfig>,
+) -> ApiResult<Vec<StaticAccessRule>> {
+    rules
+        .into_iter()
+        .map(|rule| {
+            let path = normalize_relative_path(rule.path.as_deref())?;
+            let password_hash = match rule.password.filter(|password| !password.is_empty()) {
+                Some(password) => hash_access_password(&password)?,
+                None => existing
+                    .and_then(|site| {
+                        site.access_rules
+                            .iter()
+                            .find(|saved| saved.path.eq_ignore_ascii_case(&path))
+                    })
+                    .map(|saved| saved.password_hash.clone())
+                    .ok_or_else(|| {
+                        ApiError::bad_request(format!(
+                            "请为受保护目录「{}」设置访问密码",
+                            access_rule_label(&path)
+                        ))
+                    })?,
+            };
+            Ok(StaticAccessRule {
+                path,
+                username: rule.username,
+                password_hash,
+            })
+        })
+        .collect()
 }
 
 #[utoipa::path(
@@ -97,7 +156,10 @@ impl SaveStaticSiteParams {
 #[debug_handler]
 pub async fn list(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
     authorize(&ctx, &auth, "system:static_host:list").await?;
-    Ok(responses::ok(load_sites(&ctx).await?))
+    let sites = load_sites(&ctx).await?;
+    Ok(responses::ok(
+        sites.into_iter().map(redact_site).collect::<Vec<_>>(),
+    ))
 }
 
 #[utoipa::path(
@@ -115,7 +177,7 @@ pub async fn create(
     Json(params): Json<SaveStaticSiteParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:static_host:create").await?;
-    let site = normalize_site(params.into_config())?;
+    let site = normalize_site(params.into_config(None)?)?;
     let mut sites = load_sites(&ctx).await?;
     if sites.iter().any(|existing| existing.key == site.key) {
         return Err(ApiError::bad_request("站点标识已存在"));
@@ -136,7 +198,7 @@ pub async fn create(
         format!("新增静态托管站点：{} -> {}", site.url_path, site.local_root),
     )
     .await;
-    Ok(responses::ok(site))
+    Ok(responses::ok(redact_site(site)))
 }
 
 #[utoipa::path(
@@ -156,14 +218,15 @@ pub async fn update(
     Json(params): Json<SaveStaticSiteParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:static_host:update").await?;
-    let mut site = params.into_config();
-    site.key = key.trim().to_ascii_lowercase();
-    let site = normalize_site(site)?;
+    let key = key.trim().to_ascii_lowercase();
     let mut sites = load_sites(&ctx).await?;
     let index = sites
         .iter()
-        .position(|existing| existing.key == site.key)
+        .position(|existing| existing.key == key)
         .ok_or_else(|| ApiError::bad_request("静态托管站点不存在"))?;
+    let mut site = params.into_config(Some(&sites[index]))?;
+    site.key = key;
+    let site = normalize_site(site)?;
     if sites
         .iter()
         .enumerate()
@@ -178,10 +241,15 @@ pub async fn update(
         &ctx,
         &user,
         "update_site",
-        format!("更新静态托管站点：{} -> {}", site.url_path, site.local_root),
+        format!(
+            "更新静态托管站点：{} -> {}（密码保护目录 {} 个）",
+            site.url_path,
+            site.local_root,
+            site.access_rules.len()
+        ),
     )
     .await;
-    Ok(responses::ok(site))
+    Ok(responses::ok(redact_site(site)))
 }
 
 #[utoipa::path(
@@ -265,7 +333,7 @@ pub async fn browser(
     files.sort_by(|left, right| left.name.cmp(&right.name));
 
     Ok(responses::ok(StaticBrowserRecord {
-        site,
+        site: redact_site(site),
         path: relative,
         directories,
         files,

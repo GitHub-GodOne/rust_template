@@ -447,7 +447,19 @@ fn content_routes(routes: Routes) -> Routes {
 }
 
 fn extension_routes(routes: Routes) -> Routes {
-    let routes = routes
+    let routes = log_setting_routes(routes);
+    let routes = content_data_routes(routes);
+    let routes = file_manager_routes(routes);
+    let routes = static_hosting_routes(routes);
+    let routes = ssh_routes(routes);
+    let routes = vnc_routes(routes);
+    let routes = ai_image_routes(routes);
+    let routes = http_client_routes(routes);
+    upload_routes(routes)
+}
+
+fn log_setting_routes(routes: Routes) -> Routes {
+    routes
         .add("/api/admin/logs", get(logs::list))
         .add("/api/admin/logs/export", get(logs::export))
         .add(
@@ -488,6 +500,10 @@ fn extension_routes(routes: Routes) -> Routes {
             "/api/admin/email-templates/{id}/test-send",
             post(email_templates::test_send),
         )
+}
+
+fn content_data_routes(routes: Routes) -> Routes {
+    routes
         .add(
             "/api/admin/chat-messages",
             get(chat_messages::list).post(chat_messages::create),
@@ -543,14 +559,7 @@ fn extension_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/storage-buckets/{id}",
             put(storage_profiles::update_bucket).delete(storage_profiles::delete_bucket),
-        );
-    let routes = file_manager_routes(routes);
-    let routes = static_hosting_routes(routes);
-    let routes = ssh_routes(routes);
-    let routes = vnc_routes(routes);
-    let routes = ai_image_routes(routes);
-    let routes = http_client_routes(routes);
-    upload_routes(routes)
+        )
 }
 
 fn file_manager_routes(routes: Routes) -> Routes {

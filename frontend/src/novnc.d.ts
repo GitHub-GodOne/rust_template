@@ -9,8 +9,14 @@ declare module "@novnc/novnc" {
     scaleViewport: boolean;
     resizeSession: boolean;
     showDotCursor: boolean;
+    viewOnly: boolean;
     background: string;
     disconnect(): void;
     sendCredentials(credentials: Credentials): void;
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
+    sendCtrlAltDel(): void;
+    clipboardPasteFrom(text: string): void;
+    focus(options?: FocusOptions): void;
+    blur(): void;
   }
 }

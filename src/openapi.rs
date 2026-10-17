@@ -85,8 +85,8 @@ use crate::{
             settings::{SaveSettingParams, SettingQueryParams, SettingRecord},
             ssh::{CreateSshTicketParams, SshTargetConfig, SshTargetRecord, SshTicketRecord},
             static_hosting::{
-                CreateStaticFolderParams, SaveStaticSiteParams, StaticBrowserParams,
-                StaticBrowserRecord, StaticFileRecord, StaticPathParams,
+                CreateStaticFolderParams, SaveStaticAccessRuleParams, SaveStaticSiteParams,
+                StaticBrowserParams, StaticBrowserRecord, StaticFileRecord, StaticPathParams,
             },
             storage_profiles::{
                 SaveStorageBucketParams, SaveStorageProfileParams, StorageBucketRecord,
@@ -129,7 +129,7 @@ use crate::{
         CliArgKind, CliArgSpec, CliCommandSpec, CliRisk, ProjectCliCatalog, ProjectCliOutputChunk,
         ProjectCliRunDetail, ProjectCliRunStatus, ProjectCliRunSummary, RunProjectCliParams,
     },
-    services::static_hosting::StaticSiteConfig,
+    services::static_hosting::{StaticAccessRule, StaticSiteConfig},
     services::storage::{StorageBrowserRecord, StorageObjectRecord, StoragePrefixRecord},
     views::auth::{
         CurrentDataScope, CurrentDepartment, CurrentMenuActions, CurrentMenuItem, CurrentResponse,
@@ -525,7 +525,9 @@ use crate::{
         CreateManagedFileParams,
         RenameFileParams,
         StaticSiteConfig,
+        StaticAccessRule,
         SaveStaticSiteParams,
+        SaveStaticAccessRuleParams,
         StaticBrowserParams,
         StaticPathParams,
         CreateStaticFolderParams,

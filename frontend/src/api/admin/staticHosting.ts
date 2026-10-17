@@ -1,6 +1,12 @@
 import { type ApiResponse, unwrap } from "../auth";
 import { apiClient } from "../client";
 
+export type StaticAccessRuleRecord = {
+  /** Relative directory inside the site; empty means the whole site. */
+  path: string;
+  username: string;
+};
+
 export type StaticSiteRecord = {
   key: string;
   name: string;
@@ -9,8 +15,17 @@ export type StaticSiteRecord = {
   index_file: string;
   spa_fallback: boolean;
   directory_listing: boolean;
+  listing_overrides_index?: boolean;
   enabled: boolean;
   cache_seconds: number;
+  access_rules?: StaticAccessRuleRecord[];
+};
+
+export type SaveStaticAccessRuleParams = {
+  path?: string;
+  username: string;
+  /** Leave empty when editing to keep the saved password. */
+  password?: string;
 };
 
 export type SaveStaticSiteParams = {
@@ -21,8 +36,10 @@ export type SaveStaticSiteParams = {
   index_file?: string;
   spa_fallback?: boolean;
   directory_listing?: boolean;
+  listing_overrides_index?: boolean;
   enabled?: boolean;
   cache_seconds?: number;
+  access_rules?: SaveStaticAccessRuleParams[];
 };
 
 export type StaticFileRecord = {
