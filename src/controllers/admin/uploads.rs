@@ -115,6 +115,9 @@ pub struct UploadQueryParams {
     pub storage_bucket_id: Option<i32>,
     pub bucket: Option<String>,
     pub prefix: Option<String>,
+    /// Only items directly inside `prefix` (the bucket root when empty),
+    /// as a file browser shows them.
+    pub exact_prefix: Option<bool>,
 }
 
 impl UploadQueryParams {
@@ -583,9 +586,16 @@ pub async fn list(
     if let Some(bucket) = params.bucket.as_deref().filter(|value| !value.is_empty()) {
         query = query.filter(upload_files::Column::Bucket.eq(bucket));
     }
-    if let Some(prefix) = params.prefix.as_deref().filter(|value| !value.is_empty()) {
-        query =
-            query.filter(upload_files::Column::Prefix.eq(storage::normalize_prefix(Some(prefix))?));
+    match storage::normalize_prefix(params.prefix.as_deref())? {
+        Some(prefix) => query = query.filter(upload_files::Column::Prefix.eq(prefix)),
+        None if params.exact_prefix == Some(true) => {
+            query = query.filter(
+                Condition::any()
+                    .add(upload_files::Column::Prefix.is_null())
+                    .add(upload_files::Column::Prefix.eq("")),
+            );
+        }
+        None => {}
     }
 
     let total = query.clone().count(&ctx.db).await?;
@@ -2325,13 +2335,18 @@ struct UploadPayload {
 impl UploadPayload {
     fn set_field(&mut self, name: &str, value: &str) -> ApiResult<()> {
         let value = value.trim().to_string();
+        if name == "prefix" {
+            // An explicit empty prefix means the bucket root; only a missing
+            // field falls back to the dated upload prefix.
+            self.prefix = Some(storage::normalize_prefix(Some(&value))?.unwrap_or_default());
+            return Ok(());
+        }
         if value.is_empty() {
             return Ok(());
         }
         match name {
             "storage_profile_id" => self.storage_profile_id = Some(parse_i32(&value, name)?),
             "storage_bucket_id" => self.storage_bucket_id = Some(parse_i32(&value, name)?),
-            "prefix" => self.prefix = storage::normalize_prefix(Some(&value))?,
             "category" => self.category = Some(value),
             "tags" => self.tags = Some(value),
             "visibility" => {

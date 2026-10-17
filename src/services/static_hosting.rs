@@ -5,7 +5,7 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     sync::OnceLock,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use loco_rs::app::AppContext;
@@ -41,11 +41,37 @@ pub struct StaticSiteConfig {
     pub index_file: String,
     #[serde(default)]
     pub spa_fallback: bool,
+    /// 目录中没有首页文件时，是否生成文件列表页面。
+    #[serde(default)]
+    pub directory_listing: bool,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
     #[serde(default = "default_cache_seconds")]
     pub cache_seconds: u32,
 }
+
+/// 公开请求解析出的目标：具体文件，或需要生成列表的目录。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublicTarget {
+    File(PathBuf),
+    Directory { path: PathBuf, relative: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct DirectoryListingEntry {
+    pub name: String,
+    pub relative: String,
+    pub is_dir: bool,
+    pub size_bytes: u64,
+    pub modified: Option<SystemTime>,
+}
+
+pub struct DirectoryListing {
+    pub entries: Vec<DirectoryListingEntry>,
+    pub truncated: bool,
+}
+
+const MAX_LISTING_ENTRIES: usize = 5000;
 
 struct CachedSites {
     loaded_at: Instant,
@@ -291,31 +317,238 @@ pub fn match_site<'a>(
         .max_by_key(|(site, _)| site.url_path.len())
 }
 
-pub fn resolve_public_file(
+/// 解析公开访问路径：优先返回文件，其次目录首页；
+/// 目录没有首页且开启了目录列表时返回目录目标，最后才走 SPA 回退。
+pub fn resolve_public_target(
     site: &StaticSiteConfig,
     relative: &str,
     allow_spa_fallback: bool,
-) -> ApiResult<Option<PathBuf>> {
+) -> ApiResult<Option<PublicTarget>> {
     let root = canonical_site_root(site)?;
     let relative = normalize_relative_path(Some(relative))?;
     let requested = if relative.is_empty() {
-        root.join(&site.index_file)
+        root.clone()
     } else {
         root.join(&relative)
     };
 
     if let Some(file) = canonical_file_under_root(&root, &requested)? {
-        return Ok(Some(file));
+        return Ok(Some(PublicTarget::File(file)));
     }
-    if requested.is_dir() {
-        if let Some(file) = canonical_file_under_root(&root, &requested.join(&site.index_file))? {
-            return Ok(Some(file));
+    if let Some(directory) = canonical_dir_under_root(&root, &requested)? {
+        if let Some(file) = canonical_file_under_root(&root, &directory.join(&site.index_file))? {
+            return Ok(Some(PublicTarget::File(file)));
+        }
+        if site.directory_listing {
+            return Ok(Some(PublicTarget::Directory {
+                path: directory,
+                relative,
+            }));
         }
     }
     if site.spa_fallback && allow_spa_fallback {
-        return canonical_file_under_root(&root, &root.join(&site.index_file));
+        return Ok(
+            canonical_file_under_root(&root, &root.join(&site.index_file))?.map(PublicTarget::File),
+        );
     }
     Ok(None)
+}
+
+/// 读取目录内容用于公开列表：跳过隐藏文件和符号链接，目录在前、按名称排序。
+pub fn list_public_directory(directory: &Path, relative: &str) -> ApiResult<DirectoryListing> {
+    let reader = fs::read_dir(directory).map_err(|_| ApiError::internal("读取托管目录失败"))?;
+    let mut entries = Vec::new();
+    for entry in reader {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || validate_relative_path(&name).is_err() {
+            continue;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_dir() && !metadata.is_file() {
+            continue;
+        }
+        let relative = if relative.is_empty() {
+            name.clone()
+        } else {
+            format!("{relative}/{name}")
+        };
+        entries.push(DirectoryListingEntry {
+            name,
+            relative,
+            is_dir: metadata.is_dir(),
+            size_bytes: if metadata.is_file() {
+                metadata.len()
+            } else {
+                0
+            },
+            modified: metadata.modified().ok(),
+        });
+    }
+    entries.sort_by(|left, right| {
+        right
+            .is_dir
+            .cmp(&left.is_dir)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    let truncated = entries.len() > MAX_LISTING_ENTRIES;
+    entries.truncate(MAX_LISTING_ENTRIES);
+    Ok(DirectoryListing { entries, truncated })
+}
+
+/// 生成目录列表 HTML 页面，所有链接均为站点绝对路径。
+#[must_use]
+pub fn render_directory_listing(
+    site: &StaticSiteConfig,
+    relative: &str,
+    listing: &DirectoryListing,
+) -> String {
+    use std::fmt::Write as _;
+
+    let current_url = public_dir_url(site, relative);
+    let title = escape_html(&percent_decode_path(&current_url).unwrap_or(current_url));
+    let mut rows = String::new();
+    if !relative.is_empty() {
+        let parent = relative.rsplit_once('/').map_or("", |(parent, _)| parent);
+        let _ = write!(
+            rows,
+            r#"<tr class="up"><td><a href="{}"><span class="icon">↩</span>返回上级</a></td><td></td><td></td></tr>"#,
+            escape_html(&public_dir_url(site, parent))
+        );
+    }
+    for entry in &listing.entries {
+        let (href, icon, size_label) = if entry.is_dir {
+            (public_dir_url(site, &entry.relative), "📁", "—".to_string())
+        } else {
+            (
+                public_file_url(site, &entry.relative),
+                "📄",
+                format_size(entry.size_bytes),
+            )
+        };
+        let modified = entry.modified.map_or_else(
+            || "—".to_string(),
+            |time| {
+                chrono::DateTime::<chrono::Local>::from(time)
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string()
+            },
+        );
+        let _ = write!(
+            rows,
+            r#"<tr><td><a href="{href}"><span class="icon">{icon}</span>{name}{slash}</a></td><td class="num">{size_label}</td><td class="num">{modified}</td></tr>"#,
+            href = escape_html(&href),
+            name = escape_html(&entry.name),
+            slash = if entry.is_dir { "/" } else { "" },
+        );
+    }
+    if listing.entries.is_empty() {
+        rows.push_str(r#"<tr><td colspan="3" class="empty">此目录为空</td></tr>"#);
+    }
+    let summary = {
+        let directories = listing.entries.iter().filter(|entry| entry.is_dir).count();
+        let files = listing.entries.len() - directories;
+        let mut summary = format!("{directories} 个目录 · {files} 个文件");
+        if listing.truncated {
+            let _ = write!(summary, " · 仅显示前 {MAX_LISTING_ENTRIES} 项");
+        }
+        summary
+    };
+
+    format!(
+        r#"<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>目录 {title}</title>
+<style>
+:root {{ color-scheme: light dark; --bg:#f6f4f0; --card:#fff; --text:#2b2723; --muted:#857c72; --line:#e8e2da; --hover:#faf6f1; --accent:#b45f3c; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg:#1e1c1a; --card:#262320; --text:#ece6de; --muted:#a39a90; --line:#38332e; --hover:#2e2a26; --accent:#e08a63; }} }}
+* {{ box-sizing: border-box; }}
+body {{ margin:0; padding:32px 16px; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif; }}
+main {{ max-width:960px; margin:0 auto; }}
+h1 {{ margin:0 0 4px; font-size:18px; font-weight:600; word-break:break-all; }}
+p {{ margin:0 0 16px; color:var(--muted); font-size:12px; }}
+.card {{ overflow:hidden; background:var(--card); border:1px solid var(--line); border-radius:10px; }}
+table {{ width:100%; border-collapse:collapse; }}
+th, td {{ padding:9px 14px; text-align:left; border-bottom:1px solid var(--line); }}
+th {{ color:var(--muted); font-size:12px; font-weight:500; }}
+tr:last-child td {{ border-bottom:0; }}
+tbody tr:hover {{ background:var(--hover); }}
+td a {{ display:flex; align-items:center; gap:8px; color:inherit; text-decoration:none; word-break:break-all; }}
+td a:hover {{ color:var(--accent); }}
+.icon {{ width:18px; flex:0 0 18px; text-align:center; }}
+.num {{ width:1%; white-space:nowrap; color:var(--muted); font-variant-numeric:tabular-nums; }}
+.up a {{ color:var(--muted); }}
+.empty {{ padding:32px 14px; text-align:center; color:var(--muted); }}
+@media (max-width:600px) {{ body {{ padding:20px 12px; }} th:nth-child(3), td:nth-child(3) {{ display:none; }} }}
+</style>
+</head>
+<body>
+<main>
+<h1>{title}</h1>
+<p>{summary}</p>
+<div class="card">
+<table>
+<thead><tr><th>名称</th><th class="num">大小</th><th class="num">修改时间</th></tr></thead>
+<tbody>{rows}</tbody>
+</table>
+</div>
+</main>
+</body>
+</html>
+"#
+    )
+}
+
+fn public_dir_url(site: &StaticSiteConfig, relative: &str) -> String {
+    let url = public_file_url(site, relative);
+    if url.ends_with('/') {
+        url
+    } else {
+        format!("{url}/")
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn format_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
 }
 
 #[must_use]
@@ -431,6 +664,15 @@ fn canonical_file_under_root(root: &Path, target: &Path) -> ApiResult<Option<Pat
     }
 }
 
+fn canonical_dir_under_root(root: &Path, target: &Path) -> ApiResult<Option<PathBuf>> {
+    if !target.is_dir() {
+        return Ok(None);
+    }
+    let target = fs::canonicalize(target).map_err(|_| ApiError::bad_request("静态目录不存在"))?;
+    ensure_under_root(root, &target)?;
+    Ok(target.is_dir().then_some(target))
+}
+
 fn decode_hex(value: u8) -> ApiResult<u8> {
     match value {
         b'0'..=b'9' => Ok(value - b'0'),
@@ -466,9 +708,14 @@ mod tests {
             local_root: "storage/static-hosting/test".to_string(),
             index_file: "index.html".to_string(),
             spa_fallback: false,
+            directory_listing: false,
             enabled: true,
             cache_seconds: 300,
         }
+    }
+
+    fn file_target(path: &Path) -> Option<PublicTarget> {
+        fs::canonicalize(path).ok().map(PublicTarget::File)
     }
 
     #[test]
@@ -506,16 +753,14 @@ mod tests {
         site.spa_fallback = true;
 
         assert_eq!(
-            resolve_public_file(&site, "", true).unwrap().unwrap(),
-            fs::canonicalize(root.join("index.html")).unwrap()
+            resolve_public_target(&site, "", true).unwrap(),
+            file_target(&root.join("index.html"))
         );
         assert_eq!(
-            resolve_public_file(&site, "dashboard/report", true)
-                .unwrap()
-                .unwrap(),
-            fs::canonicalize(root.join("index.html")).unwrap()
+            resolve_public_target(&site, "dashboard/report", true).unwrap(),
+            file_target(&root.join("index.html"))
         );
-        assert!(resolve_public_file(&site, "missing.png", false)
+        assert!(resolve_public_target(&site, "missing.png", false)
             .unwrap()
             .is_none());
 
@@ -525,6 +770,50 @@ mod tests {
             fs::canonicalize(&root).unwrap().join("assets/js/app.js")
         );
         assert!(root.join("assets/js").is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn directory_without_index_is_listed_only_when_enabled() {
+        let root = std::env::temp_dir().join(format!("gpt-images-listing-{}", Uuid::new_v4()));
+        fs::create_dir_all(root.join("docs/guide")).unwrap();
+        fs::write(root.join("docs/b <script>.txt"), b"hello").unwrap();
+        fs::write(root.join("docs/.secret"), b"hidden").unwrap();
+        fs::write(root.join("docs/guide/index.html"), b"guide").unwrap();
+        let mut site = site("files", "/files");
+        site.local_root = root.to_string_lossy().to_string();
+
+        assert!(resolve_public_target(&site, "docs", false)
+            .unwrap()
+            .is_none());
+
+        site.directory_listing = true;
+        let Some(PublicTarget::Directory { path, relative }) =
+            resolve_public_target(&site, "docs", false).unwrap()
+        else {
+            panic!("expected directory listing target");
+        };
+        assert_eq!(relative, "docs");
+        // 有首页的子目录仍然返回首页文件
+        assert_eq!(
+            resolve_public_target(&site, "docs/guide", false).unwrap(),
+            file_target(&root.join("docs/guide/index.html"))
+        );
+
+        let listing = list_public_directory(&path, &relative).unwrap();
+        let names = listing
+            .entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["guide", "b <script>.txt"]);
+
+        let html = render_directory_listing(&site, &relative, &listing);
+        assert!(html.contains(r#"href="/files/docs/guide/""#));
+        assert!(html.contains(r#"href="/files/docs/b%20%3Cscript%3E.txt""#));
+        assert!(html.contains("b &lt;script&gt;.txt"));
+        assert!(html.contains(r#"href="/files/""#));
+        assert!(!html.contains(".secret"));
         fs::remove_dir_all(root).unwrap();
     }
 }

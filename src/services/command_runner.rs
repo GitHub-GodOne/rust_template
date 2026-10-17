@@ -598,7 +598,10 @@ async fn drain_output(
     }
 }
 
-async fn terminate_process_tree(child: &mut Child, process_id: Option<u32>) -> Result<(), String> {
+pub(crate) async fn terminate_process_tree(
+    child: &mut Child,
+    process_id: Option<u32>,
+) -> Result<(), String> {
     #[cfg(unix)]
     if let Some(process_id) = process_id {
         let group = i32::try_from(process_id)

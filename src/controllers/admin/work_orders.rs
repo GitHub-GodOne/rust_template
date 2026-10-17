@@ -680,7 +680,7 @@ async fn find_visible_work_order(
     }
 }
 
-fn visible_condition(actor: &users::Model) -> Condition {
+pub(crate) fn visible_condition(actor: &users::Model) -> Condition {
     let mut condition = Condition::any()
         .add(work_orders::Column::CreatorId.eq(actor.id))
         .add(work_orders::Column::AssigneeId.eq(actor.id));

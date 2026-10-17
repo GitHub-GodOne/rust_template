@@ -201,12 +201,17 @@ pub async fn targets(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResul
 #[debug_handler]
 pub async fn sessions(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
     authorize(&ctx, &auth, "system:ssh:list").await?;
-    let sessions = session_store()
+    let mut store = session_store()
         .lock()
-        .map_err(|_| ApiError::internal("failed to lock ssh session store"))?
+        .map_err(|_| ApiError::internal("failed to lock ssh session store"))?;
+    // Sessions whose shell has exited cannot be resumed; drop them so clients
+    // stop offering them as reconnect targets.
+    store.retain(|_, session| session.status() != "closed");
+    let sessions = store
         .values()
         .map(|session| session.record())
         .collect::<Vec<_>>();
+    drop(store);
     Ok(responses::ok(sessions))
 }
 
@@ -302,7 +307,7 @@ pub async fn create_session_ticket(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:ssh:connect").await?;
-    let session = find_session(&id)?;
+    let session = find_live_session(&id)?;
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| user.email.clone());
@@ -425,7 +430,7 @@ pub async fn preview_session_file(
 #[debug_handler]
 pub async fn terminal_ws(Path(ticket): Path<String>, ws: WebSocketUpgrade) -> ApiResult<Response> {
     let ticket = consume_ticket(&ticket)?;
-    let session = find_session(&ticket.session_id)?;
+    let session = find_live_session(&ticket.session_id)?;
     Ok(ws
         .on_upgrade(move |socket| handle_terminal_socket(socket, session, ticket))
         .into_response())
@@ -440,7 +445,7 @@ pub async fn session_ws(
     if ticket.session_id != id {
         return Err(ApiError::unauthorized("invalid ssh session ticket"));
     }
-    let session = find_session(&id)?;
+    let session = find_live_session(&id)?;
     Ok(ws
         .on_upgrade(move |socket| handle_terminal_socket(socket, session, ticket))
         .into_response())
@@ -970,13 +975,32 @@ fn consume_ticket(ticket: &str) -> ApiResult<SshTicket> {
     Ok(ticket)
 }
 
+/// Error code clients use to recreate a session that no longer exists, e.g.
+/// after a server restart or once its shell has exited.
+pub const SESSION_NOT_FOUND_CODE: &str = "SSH_SESSION_NOT_FOUND";
+
+fn session_not_found(message: &str) -> ApiError {
+    ApiError::not_found(message).with_code(SESSION_NOT_FOUND_CODE)
+}
+
 fn find_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
     session_store()
         .lock()
         .map_err(|_| ApiError::internal("failed to lock ssh session store"))?
         .get(id)
         .cloned()
-        .ok_or_else(|| ApiError::bad_request("ssh session not found"))
+        .ok_or_else(|| session_not_found("ssh session not found"))
+}
+
+/// Like [`find_session`], but treats a session whose shell has exited as
+/// gone and drops it, so attaching never lands on a dead terminal.
+fn find_live_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
+    let session = find_session(id)?;
+    if session.status() == "closed" {
+        let _ = remove_session(id);
+        return Err(session_not_found("ssh session has ended"));
+    }
+    Ok(session)
 }
 
 fn remove_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
@@ -984,7 +1008,7 @@ fn remove_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
         .lock()
         .map_err(|_| ApiError::internal("failed to lock ssh session store"))?
         .remove(id)
-        .ok_or_else(|| ApiError::bad_request("ssh session not found"))
+        .ok_or_else(|| session_not_found("ssh session not found"))
 }
 
 async fn handle_terminal_socket(

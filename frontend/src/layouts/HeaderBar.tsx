@@ -22,11 +22,13 @@ import {
   message,
 } from "antd";
 import type { MenuProps } from "antd";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Fragment, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { current, logout, switchCurrentDepartment } from "../api/auth";
+import { defaultAdminMenus, mergeMenuItems } from "../app/menu";
 import { useAuthStore } from "../stores/auth";
 import { useUiStore } from "../stores/ui";
+import { findMenuTrail, menuLabel } from "./menuTrail";
 
 const { Header } = Layout;
 
@@ -142,14 +144,7 @@ export function HeaderBar({
             onClick={onToggle}
           />
         </Tooltip>
-        <div className="admin-header-title-wrap">
-          <Typography.Text strong className="admin-header-title">
-            后台管理
-          </Typography.Text>
-          <Typography.Text type="secondary" className="admin-header-subtitle">
-            管理平台
-          </Typography.Text>
-        </div>
+        <PageTrail />
       </Space>
       <Space size={12} className="admin-header-actions">
         <Tooltip title="搜索菜单">
@@ -218,5 +213,52 @@ export function HeaderBar({
         </Dropdown>
       </Space>
     </Header>
+  );
+}
+
+/** Where the current page sits in the menu, e.g. 系统管理 / 素材库. */
+function PageTrail() {
+  const menus = useAuthStore((state) => state.menus);
+  const { pathname } = useLocation();
+  const trail = useMemo(() => {
+    const items =
+      menus.length > 0
+        ? mergeMenuItems(menus, defaultAdminMenus)
+        : defaultAdminMenus;
+    return findMenuTrail(pathname, items);
+  }, [menus, pathname]);
+
+  if (trail.length === 0) {
+    return (
+      <div className="admin-header-title-wrap">
+        <Typography.Text strong className="admin-header-title">
+          后台管理
+        </Typography.Text>
+      </div>
+    );
+  }
+  return (
+    <nav className="admin-page-trail" aria-label="当前位置">
+      {trail.map((item, index) => {
+        const last = index === trail.length - 1;
+        return (
+          <Fragment key={item.key}>
+            {index > 0 ? (
+              <span className="admin-page-trail-sep" aria-hidden="true">
+                /
+              </span>
+            ) : null}
+            <span
+              className={
+                last ? "admin-page-trail-current" : "admin-page-trail-parent"
+              }
+              aria-current={last ? "page" : undefined}
+            >
+              {menuLabel(item)}
+            </span>
+          </Fragment>
+        );
+      })}
+    </nav>
   );
 }

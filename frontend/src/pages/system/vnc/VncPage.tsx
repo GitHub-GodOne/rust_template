@@ -25,19 +25,24 @@ import {
   Popconfirm,
   Select,
   Space,
-  Tabs,
-  Tag,
   Tooltip,
   Typography,
   message,
 } from "antd";
-import type { TabsProps } from "antd";
 import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   buildVncSessionWebSocketUrl,
@@ -49,8 +54,8 @@ import {
   fetchVncTargets,
   saveVncCredentials,
 } from "../../../api/admin/vnc";
-import { CrudPage } from "../../../components/admin/CrudPage";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import "./vnc.css";
 import { createClientId } from "../../../utils/clientId";
 
 type VncStatus =
@@ -109,6 +114,7 @@ type VncViewerHostProps = {
   status: VncStatus;
   errorMessage?: string;
   onBind: (sessionId: string, host: HTMLDivElement | null) => void;
+  onConnect: () => void;
 };
 
 const vncTargetKeyStorageKey = "gpt-images-admin-vnc-target";
@@ -127,22 +133,6 @@ function sessionId() {
   return createClientId("vnc-session");
 }
 
-function statusColor(status: VncStatus) {
-  if (status === "connected") {
-    return "green";
-  }
-  if (status === "connecting") {
-    return "processing";
-  }
-  if (status === "disconnected") {
-    return "blue";
-  }
-  if (status === "error") {
-    return "red";
-  }
-  return "default";
-}
-
 function statusLabel(status: VncStatus) {
   if (status === "connected") {
     return "已连接";
@@ -151,7 +141,7 @@ function statusLabel(status: VncStatus) {
     return "连接中";
   }
   if (status === "disconnected") {
-    return "已断开本机";
+    return "已断开";
   }
   if (status === "closed") {
     return "已关闭";
@@ -242,6 +232,7 @@ const VncViewerHost = memo(function VncViewerHost({
   status,
   errorMessage,
   onBind,
+  onConnect,
 }: VncViewerHostProps) {
   const pointerRef = useRef<HTMLSpanElement | null>(null);
   const bindRef = useCallback(
@@ -299,6 +290,17 @@ const VncViewerHost = memo(function VncViewerHost({
                 ? "正在等待目标响应或登录凭据"
                 : "请选择目标后连接当前会话")}
           </span>
+          {status !== "connecting" ? (
+            <PermissionButton
+              permission="system:vnc:connect"
+              type="primary"
+              icon={<LinkOutlined />}
+              className="vnc-viewer-connect"
+              onClick={onConnect}
+            >
+              {status === "error" ? "重试" : "连接"}
+            </PermissionButton>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -326,6 +328,42 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
     new Map<string, PendingVncCredentialSave>(),
   );
   const mobileKeyboardRef = useRef<HTMLInputElement | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+
+  // The viewer fills the space left below the admin header.
+  useLayoutEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace || !visible) {
+      return;
+    }
+    const measure = () => {
+      const top = Math.max(
+        0,
+        Math.round(workspace.getBoundingClientRect().top),
+      );
+      workspace.style.setProperty("--vnc-workspace-top", `${top}px`);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [visible]);
+
+  // Hides the admin chrome (header, dock) that would cover the remote screen.
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    document.body.classList.add("vnc-viewer-open");
+    return () => document.body.classList.remove("vnc-viewer-open");
+  }, [visible]);
+
+  useEffect(() => {
+    document.body.classList.toggle(
+      "vnc-viewer-expanded",
+      visible && viewerExpanded,
+    );
+    return () => document.body.classList.remove("vnc-viewer-expanded");
+  }, [visible, viewerExpanded]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -938,217 +976,274 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
     [dispatchVirtualKey],
   );
 
-  const tabItems: TabsProps["items"] = state.sessions.map((session, index) => {
+  const sessionTitle = (session: VncSession, index: number) => {
     const serverSession = session.serverSessionId
       ? serverSessionsById.get(session.serverSessionId)
       : undefined;
-    const title =
-      session.targetName ?? serverSession?.target_name ?? `VNC ${index + 1}`;
-    return {
-      key: session.id,
-      label: (
-        <Space size={6} className="vnc-tab-label">
-          <span>{title}</span>
-          <Tag color={statusColor(session.status)}>
-            {statusLabel(session.status)}
-          </Tag>
-        </Space>
-      ),
-      children: (
-        <VncViewerHost
-          sessionId={session.id}
-          active={state.activeSessionId === session.id}
-          status={session.status}
-          errorMessage={session.errorMessage}
-          onBind={bindHost}
-        />
-      ),
-    };
-  });
+    return (
+      session.targetName ?? serverSession?.target_name ?? `VNC ${index + 1}`
+    );
+  };
+  const activeConnected = activeSession?.status === "connected";
 
   return (
-    <CrudPage
-      title="VNC 管理"
-      subtitle="集中管理本机和远程 VNC 连接，支持多会话标签和跨设备共享会话列表"
-      breadcrumb={["远程管理", "VNC 管理"]}
-      icon={<DesktopOutlined />}
-      className="vnc-page"
-      toolbar={
-        <Space wrap>
-          <Select
-            className="vnc-target-select"
-            value={selectedTargetKey}
-            options={targetOptions}
-            loading={targetsQuery.isLoading}
-            onChange={setSelectedTargetKey}
-          />
-          {selectedCredentialTarget?.credentials_saved ? (
-            <Popconfirm
-              title="清除已保存的 VNC 凭据？"
-              okText="清除"
-              cancelText="取消"
-              onConfirm={() =>
-                deleteCredentialsMutation.mutate(selectedTargetKey)
-              }
-            >
-              <Tooltip title="清除已保存凭据">
-                <Button
-                  danger
-                  aria-label="清除已保存的 VNC 凭据"
-                  icon={<DeleteOutlined />}
-                  loading={deleteCredentialsMutation.isPending}
-                />
-              </Tooltip>
-            </Popconfirm>
-          ) : null}
-          <PermissionButton
-            permission="system:vnc:connect"
-            type="primary"
-            icon={<PlusOutlined />}
-            loading={createSessionMutation.isPending}
-            onClick={() =>
-              createSessionMutation.mutate({ target_key: selectedTargetKey })
-            }
-          >
-            新建连接
-          </PermissionButton>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => void sessionsQuery.refetch()}
-          >
-            刷新会话
-          </Button>
-        </Space>
-      }
-    >
-      <div
-        className={`vnc-viewer-shell${viewerExpanded ? " is-expanded" : ""}`}
-      >
-        <section className="vnc-viewer-card">
-          <div className="vnc-mobile-header">
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              aria-label="退出 VNC"
-              onClick={() => navigate("/admin/dashboard")}
-            />
-            <div className="vnc-mobile-title">
-              <Typography.Text strong>
-                {selectedTarget?.name ?? activeSession?.targetName ?? "VNC"}
-              </Typography.Text>
-              <Typography.Text type="secondary">
-                {activeSession ? statusLabel(activeSession.status) : "无会话"}
-              </Typography.Text>
-            </div>
-            <Space size={2}>
+    <div className="vnc-page">
+      <div ref={workspaceRef} className="vnc-workspace">
+        <div
+          className={`vnc-viewer-shell${viewerExpanded ? " is-expanded" : ""}`}
+        >
+          <section className="vnc-viewer-card">
+            <div className="vnc-mobile-header">
               <Button
                 type="text"
-                icon={<DesktopOutlined />}
-                aria-label="连接当前 VNC"
-                loading={createSessionMutation.isPending}
-                onClick={connectActiveSession}
+                icon={<ArrowLeftOutlined />}
+                aria-label="退出 VNC"
+                onClick={() => navigate("/admin/dashboard")}
               />
-              <Button
-                type="text"
-                icon={<FontSizeOutlined />}
-                aria-label="打开键盘"
-                disabled={activeSession?.status !== "connected"}
-                onClick={openMobileKeyboard}
-              />
-              <Button
-                type="text"
-                icon={<MoreOutlined />}
-                aria-label="VNC 控制"
-                onPointerDown={(event) => event.stopPropagation()}
-                onPointerUp={(event) => {
-                  event.stopPropagation();
-                  if (event.pointerType !== "mouse") {
-                    setMobileControlsOpen(true);
-                  }
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setMobileControlsOpen(true);
-                }}
-              />
-            </Space>
-          </div>
-          <Space className="vnc-toolbar" wrap>
-            <Button
-              icon={<DesktopOutlined />}
-              type="primary"
-              onClick={connectActiveSession}
-            >
-              <span className="vnc-action-label">连接当前</span>
-            </Button>
-            <Button icon={<LinkOutlined />} onClick={addBlankSession}>
-              <span className="vnc-action-label">新建标签</span>
-            </Button>
-            <Button
-              icon={<DisconnectOutlined />}
-              danger
-              disabled={!activeSession?.serverSessionId}
-              loading={closeSessionMutation.isPending}
-              onClick={() =>
-                activeSession && void closeServerSession(activeSession)
-              }
-            >
-              <span className="vnc-action-label">关闭共享会话</span>
-            </Button>
-            <Button
-              icon={<CloseOutlined />}
-              disabled={!activeSession}
-              onClick={() => activeSession && removeLocalTab(activeSession.id)}
-            >
-              <span className="vnc-action-label">关闭标签</span>
-            </Button>
-            <Button
-              icon={
-                viewerExpanded ? (
-                  <FullscreenExitOutlined />
-                ) : (
-                  <FullscreenOutlined />
-                )
-              }
-              aria-label={viewerExpanded ? "退出全屏" : "全屏显示"}
-              onClick={() => setViewerExpanded((current) => !current)}
-            >
-              <span className="vnc-action-label">
-                {viewerExpanded ? "退出全屏" : "全屏显示"}
-              </span>
-            </Button>
-            {activeSession ? (
-              <Space
-                direction="vertical"
-                size={0}
-                className="vnc-toolbar-status"
-              >
-                <Typography.Text type="secondary">
-                  当前目标：{activeSession.targetName ?? selectedTargetKey}
+              <div className="vnc-mobile-title">
+                <Typography.Text strong>
+                  {selectedTarget?.name ?? activeSession?.targetName ?? "VNC"}
                 </Typography.Text>
-                {activeSession.errorMessage ? (
-                  <Typography.Text type="danger">
-                    {activeSession.errorMessage}
-                  </Typography.Text>
-                ) : null}
+                <Typography.Text type="secondary">
+                  {activeSession ? statusLabel(activeSession.status) : "无会话"}
+                </Typography.Text>
+              </div>
+              <Space size={2}>
+                <Button
+                  type="text"
+                  icon={<DesktopOutlined />}
+                  aria-label="连接当前 VNC"
+                  loading={createSessionMutation.isPending}
+                  onClick={connectActiveSession}
+                />
+                <Button
+                  type="text"
+                  icon={<FontSizeOutlined />}
+                  aria-label="打开键盘"
+                  disabled={activeSession?.status !== "connected"}
+                  onClick={openMobileKeyboard}
+                />
+                <Button
+                  type="text"
+                  icon={<MoreOutlined />}
+                  aria-label="VNC 控制"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerUp={(event) => {
+                    event.stopPropagation();
+                    if (event.pointerType !== "mouse") {
+                      setMobileControlsOpen(true);
+                    }
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setMobileControlsOpen(true);
+                  }}
+                />
               </Space>
+            </div>
+            <div
+              className={`vnc-window-bar${state.sessions.length <= 1 ? " is-single" : ""}`}
+            >
+              <div
+                className="vnc-tabstrip"
+                role="tablist"
+                aria-label="VNC 会话"
+              >
+                {state.sessions.map((session, index) => {
+                  const active = session.id === state.activeSessionId;
+                  const title = sessionTitle(session, index);
+                  return (
+                    <div
+                      key={session.id}
+                      className={`vnc-tab${active ? " is-active" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        className="vnc-tab-main"
+                        title={`${title} · ${statusLabel(session.status)}`}
+                        onClick={() =>
+                          setState((current) => ({
+                            ...current,
+                            activeSessionId: session.id,
+                          }))
+                        }
+                      >
+                        <span
+                          className={`vnc-status-dot is-${session.status}`}
+                          aria-label={statusLabel(session.status)}
+                        />
+                        <span className="vnc-tab-title">{title}</span>
+                      </button>
+                      {state.sessions.length > 1 && (
+                        <button
+                          type="button"
+                          className="vnc-tab-close"
+                          aria-label="关闭标签"
+                          onClick={() => removeLocalTab(session.id)}
+                        >
+                          <CloseOutlined />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                <Tooltip title="新建标签">
+                  <Button
+                    type="text"
+                    size="small"
+                    className="vnc-tab-add"
+                    icon={<PlusOutlined />}
+                    aria-label="新建标签"
+                    onClick={addBlankSession}
+                  />
+                </Tooltip>
+              </div>
+              <div className="vnc-window-actions">
+                <Select
+                  size="small"
+                  variant="borderless"
+                  className="vnc-target-select"
+                  popupMatchSelectWidth={false}
+                  value={selectedTargetKey}
+                  options={targetOptions}
+                  loading={targetsQuery.isLoading}
+                  onChange={setSelectedTargetKey}
+                />
+                <Tooltip title={activeConnected ? "重新连接" : "连接当前标签"}>
+                  <PermissionButton
+                    permission="system:vnc:connect"
+                    type="text"
+                    size="small"
+                    icon={<LinkOutlined />}
+                    aria-label="连接当前标签"
+                    loading={createSessionMutation.isPending}
+                    onClick={connectActiveSession}
+                  />
+                </Tooltip>
+                <Tooltip title="在新标签中连接所选目标">
+                  <PermissionButton
+                    permission="system:vnc:connect"
+                    type="text"
+                    size="small"
+                    icon={<DesktopOutlined />}
+                    aria-label="新建连接"
+                    onClick={() =>
+                      createSessionMutation.mutate({
+                        target_key: selectedTargetKey,
+                      })
+                    }
+                  />
+                </Tooltip>
+                <Tooltip title="刷新会话">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    aria-label="刷新会话"
+                    onClick={() => void sessionsQuery.refetch()}
+                  />
+                </Tooltip>
+                {selectedCredentialTarget?.credentials_saved ? (
+                  <Popconfirm
+                    title="清除已保存的 VNC 凭据？"
+                    okText="清除"
+                    cancelText="取消"
+                    onConfirm={() =>
+                      deleteCredentialsMutation.mutate(selectedTargetKey)
+                    }
+                  >
+                    <Tooltip title="清除已保存凭据">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<KeyOutlined />}
+                        aria-label="清除已保存的 VNC 凭据"
+                        loading={deleteCredentialsMutation.isPending}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                ) : null}
+                <Tooltip title={viewerExpanded ? "退出全屏" : "全屏显示"}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={
+                      viewerExpanded ? (
+                        <FullscreenExitOutlined />
+                      ) : (
+                        <FullscreenOutlined />
+                      )
+                    }
+                    aria-label={viewerExpanded ? "退出全屏" : "全屏显示"}
+                    onClick={() => setViewerExpanded((current) => !current)}
+                  />
+                </Tooltip>
+                <Popconfirm
+                  title="关闭共享会话？"
+                  description="其他设备上打开的这个会话也会断开"
+                  okText="关闭"
+                  cancelText="取消"
+                  disabled={!activeSession?.serverSessionId}
+                  onConfirm={() =>
+                    activeSession && void closeServerSession(activeSession)
+                  }
+                >
+                  <Tooltip title="关闭共享会话">
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DisconnectOutlined />}
+                      aria-label="关闭共享会话"
+                      disabled={!activeSession?.serverSessionId}
+                      loading={closeSessionMutation.isPending}
+                    />
+                  </Tooltip>
+                </Popconfirm>
+              </div>
+            </div>
+            <div className="vnc-viewer-area">
+              {state.sessions.length > 0 ? (
+                state.sessions.map((session) => (
+                  <VncViewerHost
+                    key={session.id}
+                    sessionId={session.id}
+                    active={state.activeSessionId === session.id}
+                    status={session.status}
+                    errorMessage={session.errorMessage}
+                    onBind={bindHost}
+                    onConnect={connectActiveSession}
+                  />
+                ))
+              ) : (
+                <Empty description="暂无 VNC 会话" />
+              )}
+            </div>
+            {activeSession ? (
+              <div className="vnc-statusbar">
+                <span className="vnc-statusbar-item">
+                  <DesktopOutlined />{" "}
+                  {activeSession.targetName ??
+                    selectedTarget?.name ??
+                    selectedTargetKey}
+                </span>
+                <span className="vnc-statusbar-item">
+                  <span
+                    className={`vnc-status-dot is-${activeSession.status}`}
+                  />
+                  {statusLabel(activeSession.status)}
+                </span>
+                {activeSession.errorMessage ? (
+                  <span className="vnc-statusbar-item is-error">
+                    {activeSession.errorMessage}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
-          </Space>
-
-          {state.sessions.length > 0 ? (
-            <Tabs
-              className="vnc-session-tabs"
-              type="card"
-              activeKey={state.activeSessionId}
-              items={tabItems}
-              onChange={(activeSessionId) =>
-                setState((current) => ({ ...current, activeSessionId }))
-              }
-            />
-          ) : (
-            <Empty description="暂无 VNC 会话" />
-          )}
-        </section>
+          </section>
+        </div>
       </div>
       <input
         ref={mobileKeyboardRef}
@@ -1318,6 +1413,6 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
           </Checkbox>
         </Space>
       </Modal>
-    </CrudPage>
+    </div>
   );
 }

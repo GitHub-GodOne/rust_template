@@ -171,6 +171,8 @@ export async function fetchUploads(params?: {
   storage_bucket_id?: number;
   bucket?: string;
   prefix?: string;
+  /** Only items directly inside `prefix` (the bucket root when empty). */
+  exact_prefix?: boolean;
 }) {
   const response = await apiClient.get<ApiResponse<PageResponse<UploadRecord>>>(
     "/admin/uploads",
@@ -198,8 +200,14 @@ export async function uploadMaterial(
   const formData = new FormData();
   formData.append("file", file);
   for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined && value !== null && value !== "") {
-      formData.append(key, String(value));
+    // An explicit empty prefix uploads to the bucket root; omitting it lets
+    // the server pick its dated default folder.
+    if (
+      key === "prefix"
+        ? value !== undefined
+        : value !== undefined && value !== null && value !== ""
+    ) {
+      formData.append(key, String(value ?? ""));
     }
   }
   const response = await apiClient.post<ApiResponse<UploadRecord>>(

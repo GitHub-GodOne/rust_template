@@ -1,6 +1,8 @@
 #![allow(elided_lifetimes_in_paths)]
 #![allow(clippy::wildcard_imports)]
 pub use sea_orm_migration::prelude::*;
+
+mod data;
 mod m20220101_000001_users;
 mod m20260527_000001_refresh_tokens;
 mod m20260527_000002_rbac;
@@ -29,6 +31,14 @@ mod m20260916_000023_rdp_credentials;
 mod m20261007_000024_host_temperatures;
 
 mod m20261010_000025_command_retries;
+mod m20261010_000026_dashboard_home_title;
+mod m20261010_000027_ddns_module;
+mod m20261011_000028_user_preferences;
+mod m20261011_000029_project_cli_module;
+mod m20261011_000030_project_cli_runs;
+mod m20261011_000031_audit_log_rules;
+mod m20261011_000032_log_export_permission;
+mod m20261011_000033_log_retention_description;
 
 pub struct Migrator;
 
@@ -62,6 +72,14 @@ impl MigratorTrait for Migrator {
             Box::new(m20260916_000023_rdp_credentials::Migration),
             Box::new(m20261007_000024_host_temperatures::Migration),
             Box::new(m20261010_000025_command_retries::Migration),
+            Box::new(m20261010_000026_dashboard_home_title::Migration),
+            Box::new(m20261010_000027_ddns_module::Migration),
+            Box::new(m20261011_000028_user_preferences::Migration),
+            Box::new(m20261011_000029_project_cli_module::Migration),
+            Box::new(m20261011_000030_project_cli_runs::Migration),
+            Box::new(m20261011_000031_audit_log_rules::Migration),
+            Box::new(m20261011_000032_log_export_permission::Migration),
+            Box::new(m20261011_000033_log_retention_description::Migration),
             // inject-above (do not remove this comment)
         ]
     }

@@ -6,7 +6,7 @@ use std::env;
 #[cfg(target_os = "windows")]
 use std::process::Command;
 
-use clap::{error::ErrorKind, Args, Parser, Subcommand};
+use clap::{error::ErrorKind, Args, CommandFactory, Parser, Subcommand};
 use loco_rs::{Error, Result};
 
 #[derive(Debug, Parser)]
@@ -31,6 +31,12 @@ struct InstallArgs {
     /// Do not ask winget to install anything; only start and verify an existing service.
     #[arg(long)]
     no_install: bool,
+}
+
+/// Clap definition of this command, listed on the project CLI page.
+#[must_use]
+pub fn cli_command() -> clap::Command {
+    VncCli::command()
 }
 
 pub fn handle_if_requested() -> Result<bool> {

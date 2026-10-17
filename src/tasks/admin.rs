@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use async_trait::async_trait;
 use chrono::offset::Local;
 use loco_rs::{
@@ -102,11 +104,7 @@ impl Task for SyncFixtureBaseline {
             synced_permissions += 1;
         }
 
-        let mut synced_menus = 0usize;
-        for row in &menu_rows {
-            sync_menu(&txn, row).await?;
-            synced_menus += 1;
-        }
+        let menu_ids = sync_menu_layout(&txn, &menu_rows).await?;
 
         let mut synced_role_permissions = 0usize;
         for row in &role_permission_rows {
@@ -117,7 +115,14 @@ impl Task for SyncFixtureBaseline {
 
         let mut synced_role_menus = 0usize;
         for row in &role_menu_rows {
-            if sync_role_menu(&txn, row).await? {
+            let mut mapped = row.clone();
+            mapped.menu_id = *menu_ids.get(&row.menu_id).ok_or_else(|| {
+                Error::Message(format!(
+                    "role menu references missing fixture menu {}",
+                    row.menu_id
+                ))
+            })?;
+            if sync_role_menu(&txn, &mapped).await? {
                 synced_role_menus += 1;
             }
         }
@@ -129,7 +134,8 @@ impl Task for SyncFixtureBaseline {
 
         tracing::info!(
             permissions = synced_permissions,
-            menus = synced_menus,
+            menus = menu_ids.len(),
+            fixture_source = "embedded",
             role_permissions = synced_role_permissions,
             role_menus = synced_role_menus,
             "fixture baseline sync completed"
@@ -310,15 +316,82 @@ where
     Ok(())
 }
 
-async fn sync_menu<C>(db: &C, row: &menus::Model) -> Result<()>
+fn order_menu_rows(rows: &[menus::Model]) -> Result<Vec<&menus::Model>> {
+    let ids = rows.iter().map(|row| row.id).collect::<BTreeSet<_>>();
+    if ids.len() != rows.len() {
+        return Err(Error::Message("duplicate menu IDs in fixture".to_string()));
+    }
+    let mut ordered = Vec::with_capacity(rows.len());
+    let mut resolved = BTreeSet::new();
+    while ordered.len() < rows.len() {
+        let before = ordered.len();
+        for row in rows {
+            if !resolved.contains(&row.id)
+                && row
+                    .parent_id
+                    .is_none_or(|parent| resolved.contains(&parent))
+            {
+                ordered.push(row);
+                resolved.insert(row.id);
+            }
+        }
+        if before == ordered.len() {
+            return Err(Error::Message(
+                "menu fixture contains a cycle or a missing parent".to_string(),
+            ));
+        }
+    }
+    Ok(ordered)
+}
+
+async fn sync_menu_layout<C>(db: &C, rows: &[menus::Model]) -> Result<BTreeMap<i32, i32>>
 where
     C: ConnectionTrait,
 {
-    let existing = menus::Entity::find_by_id(row.id).one(db).await?;
-    if let Some(existing) = existing {
-        ensure_menu_identity(&existing, row)?;
+    let mut ids = BTreeMap::new();
+    for row in order_menu_rows(rows)? {
+        let parent_id = row.parent_id.map(|parent| ids[&parent]);
+        let actual_id = sync_menu(db, row, parent_id).await?;
+        if ids.values().any(|id| *id == actual_id) {
+            return Err(Error::Message(
+                "duplicate menu identity in fixture".to_string(),
+            ));
+        }
+        ids.insert(row.id, actual_id);
+    }
+    Ok(ids)
+}
+
+async fn sync_menu<C>(db: &C, row: &menus::Model, parent_id: Option<i32>) -> Result<i32>
+where
+    C: ConnectionTrait,
+{
+    // IDs can differ between machines. Routes identify pages; title and parent
+    // identify groups. Never overwrite a different menu just because its ID matches.
+    let query = menus::Entity::find();
+    let query = if let Some(path) = row.path.as_deref() {
+        query.filter(menus::Column::Path.eq(path))
+    } else {
+        let query = query
+            .filter(menus::Column::Path.is_null())
+            .filter(menus::Column::Title.eq(&row.title));
+        if let Some(parent) = parent_id {
+            query.filter(menus::Column::ParentId.eq(parent))
+        } else {
+            query.filter(menus::Column::ParentId.is_null())
+        }
+    };
+    let mut matches = query.all(db).await?;
+    if matches.len() > 1 {
+        return Err(Error::Message(format!(
+            "ambiguous menu identity: {}",
+            row.title
+        )));
+    }
+    if let Some(existing) = matches.pop() {
+        let id = existing.id;
         let mut active = existing.into_active_model();
-        active.parent_id = ActiveValue::set(row.parent_id);
+        active.parent_id = ActiveValue::set(parent_id);
         active.title = ActiveValue::set(row.title.clone());
         active.path = ActiveValue::set(row.path.clone());
         active.icon = ActiveValue::set(row.icon.clone());
@@ -329,24 +402,16 @@ where
         active.created_at = ActiveValue::set(row.created_at);
         active.updated_at = ActiveValue::set(row.updated_at);
         active.update(db).await?;
-        return Ok(());
+        return Ok(id);
     }
 
-    if let Some(path) = row.path.as_deref() {
-        if let Some(existing) = menus::Entity::find()
-            .filter(menus::Column::Path.eq(path))
-            .one(db)
-            .await?
-        {
-            return Err(Error::Message(format!(
-                "menu path {} already exists with id {}, expected {}",
-                path, existing.id, row.id
-            )));
-        }
+    let mut active = row.clone().into_active_model();
+    active.parent_id = ActiveValue::set(parent_id);
+    if menus::Entity::find_by_id(row.id).one(db).await?.is_some() {
+        reset_pk_sequence(db, "menus", "id").await?;
+        active.id = ActiveValue::NotSet;
     }
-
-    row.clone().into_active_model().insert(db).await?;
-    Ok(())
+    Ok(active.insert(db).await?.id)
 }
 
 async fn sync_role_permission<C>(db: &C, row: &role_permissions::Model) -> Result<bool>
@@ -446,16 +511,6 @@ fn ensure_permission_identity(
     Ok(())
 }
 
-fn ensure_menu_identity(existing: &menus::Model, row: &menus::Model) -> Result<()> {
-    if existing.path != row.path && existing.path.is_some() && row.path.is_some() {
-        return Err(Error::Message(format!(
-            "menu id {} has path {:?}, fixture expects {:?}",
-            existing.id, existing.path, row.path
-        )));
-    }
-    Ok(())
-}
-
 async fn reset_pk_sequence<C>(db: &C, table: &str, column: &str) -> Result<()>
 where
     C: ConnectionTrait,
@@ -472,4 +527,266 @@ where
     );
     db.execute(statement).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use migration::{Migrator, MigratorTrait, SchemaManager};
+    use sea_orm::{Database, DbBackend, PaginatorTrait};
+
+    async fn menu_database() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE users (id INTEGER PRIMARY KEY)".to_string(),
+        ))
+        .await
+        .unwrap();
+        let manager = SchemaManager::new(&db);
+        let migration = Migrator::migrations()
+            .into_iter()
+            .find(|migration| migration.name() == "m20260527_000002_rbac")
+            .unwrap();
+        migration.up(&manager).await.unwrap();
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "ALTER TABLE roles ADD COLUMN tenant_id INTEGER".to_string(),
+        ))
+        .await
+        .unwrap();
+        let role = parse_fixture::<roles::Model>(include_str!("../fixtures/roles.yaml"))
+            .unwrap()
+            .remove(0);
+        role.into_active_model().insert(&db).await.unwrap();
+        db
+    }
+
+    fn fixture_menus() -> Vec<menus::Model> {
+        parse_fixture(MENUS_FIXTURE).unwrap()
+    }
+
+    async fn apply_layout(db: &DatabaseConnection, rows: &[menus::Model]) -> BTreeMap<i32, i32> {
+        let txn = db.begin().await.unwrap();
+        let ids = sync_menu_layout(&txn, rows).await.unwrap();
+        for mut grant in parse_fixture::<role_menus::Model>(ROLE_MENUS_FIXTURE).unwrap() {
+            grant.menu_id = ids[&grant.menu_id];
+            assert!(sync_role_menu(&txn, &grant).await.unwrap());
+        }
+        txn.commit().await.unwrap();
+        ids
+    }
+
+    #[test]
+    fn embedded_layout_has_the_requested_groups_and_complete_grants() {
+        let rows = fixture_menus();
+        let mut roots = rows
+            .iter()
+            .filter(|row| row.parent_id.is_none())
+            .collect::<Vec<_>>();
+        roots.sort_by_key(|row| (row.sort_order, row.id));
+        assert_eq!(
+            roots
+                .iter()
+                .map(|row| row.title.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "首页",
+                "存储管理",
+                "接口管理",
+                "便捷管理",
+                "系统管理",
+                "远程管理"
+            ]
+        );
+        let grant_ids = parse_fixture::<role_menus::Model>(ROLE_MENUS_FIXTURE)
+            .unwrap()
+            .into_iter()
+            .filter(|row| row.role_id == 1)
+            .map(|row| row.menu_id)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            rows.iter().map(|row| row.id).collect::<BTreeSet<_>>(),
+            grant_ids
+        );
+        assert_eq!(
+            rows.iter()
+                .find(|row| row.path.as_deref() == Some("/admin/system/ssh"))
+                .unwrap()
+                .parent_id,
+            Some(43)
+        );
+        assert_eq!(
+            rows.iter()
+                .find(|row| row.path.as_deref() == Some("/admin/system/uploads"))
+                .unwrap()
+                .parent_id,
+            Some(40)
+        );
+    }
+
+    #[tokio::test]
+    async fn upgrades_flat_menus_and_preserves_existing_ids_and_grants() {
+        let db = menu_database().await;
+        let rows = fixture_menus();
+        for row in rows.iter().filter(|row| row.id <= 35) {
+            let mut old = row.clone();
+            if old.id > 2 {
+                old.parent_id = Some(2);
+            }
+            old.sort_order = old.id * 10;
+            old.into_active_model().insert(&db).await.unwrap();
+        }
+        let original = parse_fixture::<role_menus::Model>(ROLE_MENUS_FIXTURE)
+            .unwrap()
+            .into_iter()
+            .find(|row| row.menu_id == 24)
+            .unwrap();
+        original.into_active_model().insert(&db).await.unwrap();
+        let ids = apply_layout(&db, &rows).await;
+        assert!(ids.iter().all(|(fixture, actual)| fixture == actual));
+        let ssh = menus::Entity::find_by_id(24)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(ssh.parent_id, Some(43));
+        assert_eq!(ssh.sort_order, 10);
+        assert!(role_menus::Entity::find_by_id((1, 24))
+            .one(&db)
+            .await
+            .unwrap()
+            .is_some());
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 39);
+        assert_eq!(role_menus::Entity::find().count(&db).await.unwrap(), 39);
+        assert_eq!(apply_layout(&db, &rows).await, ids);
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 39);
+        assert_eq!(role_menus::Entity::find().count(&db).await.unwrap(), 39);
+    }
+
+    #[tokio::test]
+    async fn maps_different_menu_ids_without_overwriting_custom_menus() {
+        let db = menu_database().await;
+        let rows = fixture_menus();
+        // Simulate a second machine with different IDs, including a route whose
+        // fixture ID is occupied by a custom group. References must use actual IDs.
+        let group = rows.iter().find(|row| row.id == 43).unwrap();
+        let mut existing_group = group.clone();
+        existing_group.id = 100;
+        existing_group
+            .into_active_model()
+            .insert(&db)
+            .await
+            .unwrap();
+        let ssh = rows.iter().find(|row| row.id == 24).unwrap();
+        let mut existing_ssh = ssh.clone();
+        existing_ssh.id = 101;
+        existing_ssh.parent_id = Some(100);
+        existing_ssh.sort_order = 999;
+        existing_ssh.into_active_model().insert(&db).await.unwrap();
+        let mut custom = group.clone();
+        custom.id = 32;
+        custom.title = "自定义分组".to_string();
+        custom.into_active_model().insert(&db).await.unwrap();
+        let mut colliding_group = group.clone();
+        colliding_group.id = 40;
+        colliding_group.title = "其他自定义分组".to_string();
+        colliding_group
+            .into_active_model()
+            .insert(&db)
+            .await
+            .unwrap();
+        let mut reversed = rows.clone();
+        reversed.reverse();
+        let ids = apply_layout(&db, &reversed).await;
+        assert_eq!(ids[&43], 100);
+        assert_eq!(ids[&24], 101);
+        assert_ne!(ids[&32], 32);
+        assert_ne!(ids[&40], 40);
+        let actual_ssh = menus::Entity::find_by_id(101)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(actual_ssh.parent_id, Some(100));
+        assert_eq!(actual_ssh.sort_order, 10);
+        let uploads = menus::Entity::find_by_id(ids[&8])
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(uploads.parent_id, Some(ids[&40]));
+        assert_eq!(
+            menus::Entity::find_by_id(32)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .title,
+            "自定义分组"
+        );
+        assert_eq!(
+            menus::Entity::find_by_id(40)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .title,
+            "其他自定义分组"
+        );
+        assert!(role_menus::Entity::find_by_id((1, 101))
+            .one(&db)
+            .await
+            .unwrap()
+            .is_some());
+        assert!(role_menus::Entity::find_by_id((1, ids[&32]))
+            .one(&db)
+            .await
+            .unwrap()
+            .is_some());
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 41);
+        assert_eq!(apply_layout(&db, &rows).await, ids);
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 41);
+    }
+
+    #[test]
+    fn invalid_menu_parents_and_duplicate_ids_are_rejected() {
+        let mut rows = fixture_menus();
+        rows[0].parent_id = Some(9999);
+        assert!(order_menu_rows(&rows).is_err());
+        rows[0].parent_id = Some(rows[0].id);
+        assert!(order_menu_rows(&rows).is_err());
+        rows[0].parent_id = None;
+        rows.push(rows[0].clone());
+        assert!(order_menu_rows(&rows).is_err());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_menu_identity_rolls_back_prior_updates() {
+        let db = menu_database().await;
+        let rows = fixture_menus();
+        let mut root = rows[0].clone();
+        root.sort_order = 999;
+        root.into_active_model().insert(&db).await.unwrap();
+        let ssh = rows.iter().find(|row| row.id == 24).unwrap();
+        for id in [100, 101] {
+            let mut duplicate = ssh.clone();
+            duplicate.id = id;
+            duplicate.parent_id = None;
+            duplicate.into_active_model().insert(&db).await.unwrap();
+        }
+        let txn = db.begin().await.unwrap();
+        assert!(sync_menu_layout(&txn, &rows).await.is_err());
+        txn.rollback().await.unwrap();
+        assert_eq!(
+            menus::Entity::find_by_id(1)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .sort_order,
+            999
+        );
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 3);
+    }
 }

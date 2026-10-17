@@ -1,0 +1,368 @@
+/* Remote desktop window: the viewer fills everything below the admin header. */
+.vnc-workspace {
+	display: flex;
+	height: calc(100dvh - var(--vnc-workspace-top, 140px) - 24px);
+	min-height: 420px;
+	flex-direction: column;
+}
+
+.vnc-workspace .vnc-viewer-shell {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+}
+
+.vnc-workspace .vnc-viewer-card {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	overflow: hidden;
+	background: #0b0b0a;
+	border: 1px solid #23211d;
+	border-radius: 10px;
+	box-shadow: 0 14px 34px rgba(30, 24, 18, 0.16);
+}
+
+.vnc-window-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 40px;
+	flex: 0 0 40px;
+	padding: 0 8px;
+	background: #161513;
+	border-bottom: 1px solid #26241f;
+}
+
+.vnc-tabstrip {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.vnc-tabstrip::-webkit-scrollbar {
+	display: none;
+}
+
+.vnc-tab {
+	display: flex;
+	max-width: 220px;
+	height: 28px;
+	flex: 0 0 auto;
+	align-items: center;
+	color: #a8a39b;
+	border-radius: 6px;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vnc-tab:hover {
+	color: #e7e4de;
+	background: #211f1c;
+}
+
+.vnc-tab.is-active {
+	color: #f5f5f4;
+	background: #2c2925;
+}
+
+.vnc-tab-main {
+	display: flex;
+	min-width: 0;
+	height: 100%;
+	align-items: center;
+	gap: 7px;
+	padding: 0 8px 0 10px;
+	color: inherit;
+	font: inherit;
+	font-size: 12px;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+.vnc-tab-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.vnc-tab-close {
+	display: grid;
+	width: 20px;
+	height: 20px;
+	margin-right: 4px;
+	place-items: center;
+	color: #77736c;
+	font-size: 10px;
+	background: none;
+	border: 0;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.vnc-tab-close:hover {
+	color: #f5f5f4;
+	background: #3a3631;
+}
+
+.vnc-tab-main:focus-visible,
+.vnc-tab-close:focus-visible {
+	outline: 2px solid #c15f3c;
+	outline-offset: -2px;
+}
+
+.vnc-window-bar .ant-btn.ant-btn-text {
+	color: #bdb8b0;
+}
+
+.vnc-window-bar .ant-btn.ant-btn-text:not(:disabled):hover {
+	color: #ffffff;
+	background: #2c2925;
+}
+
+.vnc-window-bar .ant-btn.ant-btn-text:disabled {
+	color: #4d4a45;
+}
+
+.vnc-window-bar .ant-btn.ant-btn-dangerous:not(:disabled) {
+	color: #e0716b;
+}
+
+.vnc-window-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex: 0 0 auto;
+}
+
+.vnc-window-bar .vnc-target-select {
+	width: 220px;
+	min-width: 0;
+	margin-right: 4px;
+}
+
+.vnc-window-bar .vnc-target-select .ant-select-selector {
+	background: #1f1d1a !important;
+	border-radius: 6px !important;
+}
+
+.vnc-window-bar .vnc-target-select .ant-select-selection-item,
+.vnc-window-bar .vnc-target-select .ant-select-arrow {
+	color: #d6d3cd;
+	font-size: 12px;
+}
+
+.vnc-status-dot {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	flex: 0 0 auto;
+	background: #6f6b64;
+	border-radius: 50%;
+}
+
+.vnc-status-dot.is-connected {
+	background: #5fb57a;
+	box-shadow: 0 0 0 3px rgba(95, 181, 122, 0.16);
+}
+
+.vnc-status-dot.is-connecting {
+	background: #e0a84f;
+	animation: vnc-dot-pulse 1s ease-in-out infinite;
+}
+
+.vnc-status-dot.is-disconnected {
+	background: #c9a15b;
+}
+
+.vnc-status-dot.is-error {
+	background: #e0716b;
+}
+
+.vnc-viewer-area {
+	position: relative;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.vnc-workspace .vnc-viewer-stage {
+	height: 100%;
+	min-height: 0;
+	padding: 0;
+	background: #0b0b0a;
+}
+
+.vnc-workspace .vnc-viewer-host {
+	background: #050505;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.vnc-workspace .vnc-viewer-state {
+	inset: 0;
+}
+
+.vnc-workspace .vnc-viewer-state > .anticon {
+	color: #8b867e;
+}
+
+.vnc-workspace .vnc-viewer-state > span {
+	color: #8b867e;
+}
+
+.vnc-statusbar {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	height: 24px;
+	flex: 0 0 24px;
+	padding: 0 12px;
+	overflow: hidden;
+	color: #8b867e;
+	font-family: Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	background: #11110f;
+	border-top: 1px solid #1f1d1a;
+}
+
+.vnc-statusbar-item {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.vnc-statusbar-item.is-error {
+	color: #e0716b;
+}
+
+/* Leave a strip for an always-visible bottom dock (see ssh.css). */
+body.dock-reserve.dock-pos-bottom .vnc-workspace {
+	height: calc(
+		100dvh -
+		var(--vnc-workspace-top, 140px) -
+		var(--dock-space, 72px) -
+		40px
+	);
+}
+
+/* Full-screen viewer and phones: nothing may cover the remote screen. */
+body.vnc-viewer-expanded .admin-dock,
+body.vnc-viewer-expanded .admin-dock-hotzone,
+body.vnc-viewer-expanded .admin-dock-reveal {
+	display: none !important;
+}
+
+/* Full-screen viewer: lift it out of the layout's stacking context. */
+body.vnc-viewer-expanded .admin-main-layout,
+body.vnc-viewer-expanded .admin-content-shell {
+	z-index: auto;
+}
+
+body.vnc-viewer-expanded .admin-content {
+	transform: none;
+	animation: none;
+}
+
+.vnc-workspace .vnc-viewer-shell.is-expanded {
+	position: fixed;
+	inset: 0;
+	z-index: 1200;
+	height: 100dvh;
+}
+
+.vnc-workspace .vnc-viewer-shell.is-expanded .vnc-viewer-card {
+	border: 0;
+	border-radius: 0;
+}
+
+@keyframes vnc-dot-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+@media (max-width: 768px) {
+	body.vnc-viewer-open .admin-header,
+	body.vnc-viewer-open .admin-tabs-bar,
+	body.vnc-viewer-open .admin-dock,
+	body.vnc-viewer-open .admin-dock-hotzone,
+	body.vnc-viewer-open .admin-dock-reveal {
+		display: none !important;
+	}
+
+	.vnc-workspace {
+		height: 100%;
+		min-height: 0;
+	}
+
+	.vnc-workspace .vnc-viewer-card {
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.vnc-window-actions,
+	.vnc-statusbar,
+	.vnc-tab-add.ant-btn,
+	.vnc-window-bar.is-single {
+		display: none;
+	}
+
+	/* Compact session strip: just enough to switch sessions. */
+	.vnc-window-bar {
+		height: 34px;
+		flex: 0 0 34px;
+		padding: 0 6px;
+		background: #11110f;
+		border-bottom-color: #23211d;
+	}
+
+	.vnc-tab {
+		height: 24px;
+		max-width: 150px;
+	}
+
+	.vnc-tab-main {
+		gap: 6px;
+		padding: 0 6px 0 8px;
+		font-size: 11px;
+	}
+
+	.vnc-tab-close {
+		width: 18px;
+		height: 18px;
+		margin-right: 2px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.vnc-status-dot.is-connecting {
+		animation: none;
+	}
+}
+
+.vnc-viewer-state .vnc-viewer-connect {
+	min-width: 120px;
+	margin-top: 8px;
+	pointer-events: auto;
+}
+
+.vnc-viewer-state .vnc-viewer-connect span {
+	color: #ffffff;
+}
+
+/* See ssh.css: the viewer already fills the viewport. */
+body.vnc-viewer-open .admin-content {
+	min-height: 0;
+}

@@ -8,7 +8,7 @@ use std::{
     process::Command,
 };
 
-use clap::{error::ErrorKind, Args, Parser, Subcommand, ValueEnum};
+use clap::{error::ErrorKind, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use loco_rs::{Error, Result};
 
 const DEFAULT_SERVICE_NAME: &str = "gpt-images";
@@ -105,6 +105,12 @@ struct ServiceDefinition {
     arguments: Vec<String>,
     run_as: Option<String>,
     user_scope: bool,
+}
+
+/// Clap definition of this command, listed on the project CLI page.
+#[must_use]
+pub fn cli_command() -> clap::Command {
+    ServiceCli::command()
 }
 
 /// Handles the custom `service` command before Loco parses its own command set.

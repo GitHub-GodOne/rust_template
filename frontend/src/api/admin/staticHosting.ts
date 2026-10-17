@@ -8,6 +8,7 @@ export type StaticSiteRecord = {
   local_root: string;
   index_file: string;
   spa_fallback: boolean;
+  directory_listing: boolean;
   enabled: boolean;
   cache_seconds: number;
 };
@@ -19,6 +20,7 @@ export type SaveStaticSiteParams = {
   local_root: string;
   index_file?: string;
   spa_fallback?: boolean;
+  directory_listing?: boolean;
   enabled?: boolean;
   cache_seconds?: number;
 };

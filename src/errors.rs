@@ -53,6 +53,22 @@ impl ApiError {
         }
     }
 
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            code: "NOT_FOUND",
+            message: message.into(),
+        }
+    }
+
+    /// Replaces the generic error code with a machine-readable one that
+    /// clients can branch on.
+    #[must_use]
+    pub const fn with_code(mut self, code: &'static str) -> Self {
+        self.code = code;
+        self
+    }
+
     pub fn internal(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,

@@ -263,6 +263,7 @@ async fn find_setting(ctx: &AppContext, id: i32) -> ApiResult<system_settings::M
 }
 
 fn validate_setting(key: &str, value_type: &str, value: &str) -> ApiResult<()> {
+    crate::services::cloudflare_ddns::validate_setting(key, value)?;
     if key == "upload.max_size_mb" {
         let max_mb = value
             .trim()

@@ -1,11 +1,13 @@
 import {
-  AppstoreOutlined,
+  CheckOutlined,
   CloudDownloadOutlined,
   CloudServerOutlined,
   CloudSyncOutlined,
   CloudUploadOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
+  EllipsisOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
   FileAddOutlined,
@@ -14,41 +16,35 @@ import {
   FolderOpenOutlined,
   FolderOutlined,
   LinkOutlined,
-  MoreOutlined,
+  PlusOutlined,
+  ReloadOutlined,
   SaveOutlined,
   SoundOutlined,
-  TableOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Breadcrumb,
   Button,
-  Card,
   Descriptions,
   Drawer,
   Dropdown,
   Empty,
   Form,
-  Grid,
   Input,
   Modal,
-  Popconfirm,
-  Popover,
-  Progress,
+  Pagination,
   Segmented,
   Select,
   Space,
   Spin,
   Tag,
   Tooltip,
-  Tree,
   Typography,
   Upload,
   message,
 } from "antd";
 import type { MenuProps } from "antd";
 import type { UploadProps } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import {
   type Key,
@@ -85,18 +81,29 @@ import {
   updateUploadContent,
   uploadMaterial,
 } from "../../../api/admin/uploads";
-import { CrudPage } from "../../../components/admin/CrudPage";
-import { DataTable } from "../../../components/admin/DataTable";
-import { FinderWorkspace } from "../../../components/admin/FinderWorkspace";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
-import { StandardTablePagination } from "../../../components/admin/StandardTablePagination";
-import { TableScrollArea } from "../../../components/admin/TableScrollArea";
+import { FinderItems } from "../../../components/admin/finder/FinderItems";
+import {
+  FinderProgress,
+  FinderShell,
+  FinderSidebarItem,
+  FinderSidebarSection,
+  FinderTree,
+} from "../../../components/admin/finder/FinderShell";
+import {
+  type FinderItem,
+  finderKindOf,
+  parentPathOf,
+} from "../../../components/admin/finder/finderModel";
+import {
+  useFinderHistory,
+  useFinderView,
+} from "../../../components/admin/finder/useFinderHistory";
 import { useAuthStore } from "../../../stores/auth";
 import { decodeTextBlob } from "../../../utils/textEncoding";
 import {
   type ChunkUploadStage,
   extensionFromName,
-  fileIcon,
   fileKind,
   formatBytes,
   mimeFromExtension,
@@ -131,10 +138,6 @@ type ExternalObjectRow = StorageObjectRecord & {
   extension?: string | null;
   mime_type?: string | null;
 };
-
-type MobileMaterialAction =
-  | { kind: "managed"; record: UploadRecord }
-  | { kind: "external"; object: ExternalObjectRow };
 
 type FolderFormValues = {
   name: string;
@@ -304,13 +307,14 @@ function applyTreeChildren(
 
 export function UploadsPage() {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize] = useState(60);
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState<string>("active");
+  const [status, setStatus] = useState<string | undefined>("active");
   const [profileId, setProfileId] = useState<number>();
   const [bucketId, setBucketId] = useState<number>();
   const [prefix, setPrefix] = useState<string>();
-  const [layoutMode, setLayoutMode] = useState<"table" | "grid">("grid");
+  const [view, setView] = useFinderView("uploads");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<"normal" | "chunk">("chunk");
   const [uploadVisibility, setUploadVisibility] = useState<
     "private" | "public"
@@ -327,9 +331,6 @@ export function UploadsPage() {
   const [renaming, setRenaming] = useState<UploadRecord | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [fileModalOpen, setFileModalOpen] = useState(false);
-  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
-  const [mobileMaterialAction, setMobileMaterialAction] =
-    useState<MobileMaterialAction | null>(null);
   const [treeData, setTreeData] = useState<DataNode[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>([""]);
   const [previewing, setPreviewing] = useState<UploadRecord | null>(null);
@@ -354,11 +355,10 @@ export function UploadsPage() {
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const navigate = useNavigate();
-  const screens = Grid.useBreakpoint();
-  const effectiveLayoutMode = screens.md === false ? "grid" : layoutMode;
   const uploadTaskManager = useUploadTaskManager({
     bucketId,
-    prefix,
+    // Uploads land in the folder being viewed, the root included.
+    prefix: prefix ?? "",
     visibility: uploadVisibility,
   });
   const editorByteSize = useMemo(
@@ -553,6 +553,7 @@ export function UploadsPage() {
         storage_profile_id: profileId,
         storage_bucket_id: bucketId,
         prefix,
+        exact_prefix: true,
       }),
   });
 
@@ -561,7 +562,7 @@ export function UploadsPage() {
       uploadMaterial(file, {
         storage_profile_id: profileId,
         storage_bucket_id: bucketId,
-        prefix,
+        prefix: prefix ?? "",
         visibility: uploadVisibility,
         onUploadProgress: (percent) => {
           setUploadStage("uploading");
@@ -825,7 +826,20 @@ export function UploadsPage() {
   const openPrefix = (nextPrefix?: string) => {
     setPrefix(nextPrefix);
     setPage(1);
+    setSelectedKey(null);
   };
+
+  const history = useFinderHistory(
+    `${profileId ?? ""}|${bucketId ?? ""}|${prefix ?? ""}`,
+    (location) => {
+      const [profile, bucket, ...rest] = location.split("|");
+      setProfileId(profile ? Number(profile) : undefined);
+      setBucketId(bucket ? Number(bucket) : undefined);
+      setPrefix(rest.join("|") || undefined);
+      setPage(1);
+      setSelectedKey(null);
+    },
+  );
 
   const openRename = (record: UploadRecord) => {
     setRenaming(record);
@@ -905,7 +919,6 @@ export function UploadsPage() {
     const requestId = editorRequestId.current + 1;
     editorRequestId.current = requestId;
     closePreview();
-    setMobileMaterialAction(null);
     setContentEditing(record);
     setEditorContent("");
     setEditorOriginalContent("");
@@ -1072,132 +1085,24 @@ export function UploadsPage() {
     });
   };
 
-  const renderActions = (record: UploadRecord) => (
-    <Space wrap size={6} className="material-table-actions">
-      <PermissionButton
-        size="small"
-        icon={<EyeOutlined />}
-        permission="system:upload:download"
-        onClick={() => openPreview(record)}
-      >
-        预览
-      </PermissionButton>
-      {isEditableTextUpload(record) ? (
-        <PermissionButton
-          size="small"
-          icon={<FileTextOutlined />}
-          permission="system:upload:update"
-          onClick={() => openContentEditor(record)}
-        >
-          编辑文本
-        </PermissionButton>
-      ) : null}
-      <Tooltip title="复制公开分享链接">
-        <Button
-          size="small"
-          icon={<LinkOutlined />}
-          onClick={() => copyLink(record)}
-        >
-          复制链接
-        </Button>
-      </Tooltip>
-      <PermissionButton
-        size="small"
-        icon={<CloudDownloadOutlined />}
-        permission="system:upload:download"
-        loading={downloadMutation.isPending}
-        onClick={() => downloadRecord(record)}
-      >
-        下载
-      </PermissionButton>
-      <PermissionButton
-        size="small"
-        icon={<FileOutlined />}
-        permission="system:upload:detail"
-        onClick={() => setDetail(record)}
-      >
-        详情
-      </PermissionButton>
-      <PermissionButton
-        size="small"
-        icon={<LinkOutlined />}
-        permission="system:upload:update"
-        onClick={() => openAccessEditor(record)}
-      >
-        访问设置
-      </PermissionButton>
-      <PermissionButton
-        size="small"
-        icon={<EditOutlined />}
-        permission="system:upload:update"
-        onClick={() => editRecord(record)}
-      >
-        编辑信息
-      </PermissionButton>
-      <PermissionButton
-        size="small"
-        icon={<EditOutlined />}
-        permission="system:upload:update"
-        onClick={() => openRename(record)}
-      >
-        重命名
-      </PermissionButton>
-      <Popconfirm
-        title="确认删除素材？"
-        onConfirm={() => deleteMutation.mutate(record.id)}
-      >
-        <PermissionButton
-          size="small"
-          danger
-          icon={<DeleteOutlined />}
-          permission="system:upload:delete"
-        >
-          删除
-        </PermissionButton>
-      </Popconfirm>
-    </Space>
-  );
-
-  const renderExternalActions = (object: ExternalObjectRow) => {
-    const record = externalObjectRecord(object);
-    return (
-      <Space wrap size={6} className="material-table-actions">
-        <Button
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => openExternalPreview(object)}
-        >
-          预览
-        </Button>
-        <Button
-          size="small"
-          icon={<LinkOutlined />}
-          onClick={() => copyLink(record)}
-        >
-          复制链接
-        </Button>
-        <Button
-          size="small"
-          icon={<CloudDownloadOutlined />}
-          onClick={() => downloadRecord(record)}
-        >
-          下载
-        </Button>
-        <PermissionButton
-          size="small"
-          icon={<CloudSyncOutlined />}
-          permission="system:upload:create"
-          loading={importMutation.isPending}
-          onClick={() => importMutation.mutate(object)}
-        >
-          入库
-        </PermissionButton>
-      </Space>
-    );
-  };
-
-  const renderManagedTableActions = (record: UploadRecord) => {
+  const managedMenuItems = (record: UploadRecord) => {
     const items: MenuProps["items"] = [
+      isEditableTextUpload(record) && hasPermission("system:upload:update")
+        ? {
+            key: "edit-text",
+            icon: <FileTextOutlined />,
+            label: "编辑文本",
+            onClick: () => openContentEditor(record),
+          }
+        : hasPermission("system:upload:download")
+          ? {
+              key: "open-preview",
+              icon: <EyeOutlined />,
+              label: "预览",
+              onClick: () => openPreview(record),
+            }
+          : null,
+      { type: "divider" },
       isEditableTextUpload(record) && hasPermission("system:upload:download")
         ? {
             key: "preview",
@@ -1270,43 +1175,19 @@ export function UploadsPage() {
           }
         : null,
     ];
-
-    return (
-      <Space size={4} className="material-table-compact-actions">
-        {isEditableTextUpload(record) &&
-        hasPermission("system:upload:update") ? (
-          <PermissionButton
-            size="small"
-            icon={<FileTextOutlined />}
-            permission="system:upload:update"
-            onClick={() => openContentEditor(record)}
-          >
-            编辑文本
-          </PermissionButton>
-        ) : (
-          <PermissionButton
-            size="small"
-            icon={<EyeOutlined />}
-            permission="system:upload:download"
-            onClick={() => openPreview(record)}
-          >
-            预览
-          </PermissionButton>
-        )}
-        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
-          <Button
-            size="small"
-            icon={<MoreOutlined />}
-            aria-label="更多素材操作"
-          />
-        </Dropdown>
-      </Space>
-    );
+    return items;
   };
 
-  const renderExternalTableActions = (object: ExternalObjectRow) => {
+  const externalMenuItems = (object: ExternalObjectRow) => {
     const record = externalObjectRecord(object);
     const items: MenuProps["items"] = [
+      {
+        key: "open-preview",
+        icon: <EyeOutlined />,
+        label: "预览",
+        onClick: () => openExternalPreview(object),
+      },
+      { type: "divider" },
       {
         key: "copy-link",
         icon: <LinkOutlined />,
@@ -1328,139 +1209,8 @@ export function UploadsPage() {
           }
         : null,
     ];
-
-    return (
-      <Space size={4} className="material-table-compact-actions">
-        <Button
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => openExternalPreview(object)}
-        >
-          预览
-        </Button>
-        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
-          <Button
-            size="small"
-            icon={<MoreOutlined />}
-            aria-label="更多对象操作"
-          />
-        </Dropdown>
-      </Space>
-    );
+    return items;
   };
-
-  const columns: ColumnsType<UploadRecord> = [
-    { title: "ID", dataIndex: "id", width: 80 },
-    {
-      title: "文件名",
-      dataIndex: "original_name",
-      width: 240,
-      ellipsis: true,
-      render: (value, record) => (
-        <Space size={8}>
-          <span className="material-table-file-icon">{fileIcon(record)}</span>
-          <Typography.Text ellipsis className="material-table-file-name">
-            {value}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "来源",
-      key: "source",
-      width: 100,
-      render: () => <Tag color="blue">已入库</Tag>,
-    },
-    {
-      title: "存储",
-      dataIndex: "storage",
-      width: 120,
-      render: (value) => <Tag icon={<CloudServerOutlined />}>{value}</Tag>,
-    },
-    { title: "桶", dataIndex: "bucket", width: 150, ellipsis: true },
-    {
-      title: "目录",
-      dataIndex: "prefix",
-      width: 180,
-      ellipsis: true,
-      render: (value) => value ?? "-",
-    },
-    {
-      title: "分类",
-      dataIndex: "category",
-      width: 120,
-      render: (value) => (value ? <Tag>{value}</Tag> : "-"),
-    },
-    { title: "MIME", dataIndex: "mime_type", width: 170, ellipsis: true },
-    { title: "大小", dataIndex: "size_bytes", width: 110, render: formatBytes },
-    {
-      title: "可见性",
-      dataIndex: "visibility",
-      width: 100,
-      render: (value) => (
-        <Tag color={value === "public" ? "green" : "default"}>{value}</Tag>
-      ),
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      width: 100,
-      render: (value) => (
-        <Tag color={value === "active" ? "blue" : "red"}>{value}</Tag>
-      ),
-    },
-    { title: "时间", dataIndex: "created_at", width: 220 },
-    {
-      title: "操作",
-      key: "actions",
-      width: 150,
-      render: (_, record) => renderManagedTableActions(record),
-    },
-  ];
-
-  const externalColumns: ColumnsType<ExternalObjectRow> = [
-    {
-      title: "对象名",
-      dataIndex: "name",
-      width: 260,
-      ellipsis: true,
-      render: (value, record) => (
-        <Space size={8}>
-          <span className="material-table-file-icon">
-            {fileIcon(externalObjectRecord(record))}
-          </span>
-          <Typography.Text ellipsis className="material-table-file-name">
-            {value}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "来源",
-      key: "source",
-      width: 110,
-      render: () => <Tag color="orange">外部对象</Tag>,
-    },
-    { title: "对象键", dataIndex: "key", width: 260, ellipsis: true },
-    {
-      title: "大小",
-      dataIndex: "size_bytes",
-      width: 110,
-      render: formatBytes,
-    },
-    {
-      title: "更新时间",
-      dataIndex: "updated_at",
-      width: 220,
-      render: (value) => value ?? "-",
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 150,
-      render: (_, record) => renderExternalTableActions(record),
-    },
-  ];
 
   const renderPreviewContent = () => {
     if (previewLoading) {
@@ -1595,795 +1345,428 @@ export function UploadsPage() {
       });
   }, [browserQuery.data?.objects, managedObjectKeys]);
 
-  return (
-    <CrudPage
-      className="finder-page finder-uploads-page"
-      title="素材库"
-      subtitle="统一管理本地存储、R2 和 S3 兼容资源"
-      breadcrumb={["系统管理", "素材库"]}
-      icon={<CloudUploadOutlined />}
-      toolbar={
-        <Space wrap className="material-filter-bar">
-          <Select
-            placeholder="存储配置"
-            value={profileId}
-            loading={profilesQuery.isLoading}
-            onChange={(value) => {
-              setProfileId(value);
-              setBucketId(undefined);
-              setPrefix(undefined);
-              setPage(1);
-            }}
-            options={profiles.map((profile) => ({
-              value: profile.id,
-              label: `${profile.name} / ${profile.provider}`,
-            }))}
-            className="admin-filter-select"
-          />
-          <Select
-            placeholder="桶"
-            value={bucketId}
-            loading={bucketsQuery.isLoading}
-            onChange={(value) => {
-              setBucketId(value);
-              setPrefix(undefined);
-              setPage(1);
-            }}
-            options={buckets.map((bucket) => ({
-              value: bucket.id,
-              label: bucket.name,
-            }))}
-            className="admin-filter-select"
-          />
-          <Input.Search
-            allowClear
-            placeholder="搜索文件名、分类"
-            onSearch={(value) => {
-              setPage(1);
-              setKeyword(value);
-            }}
-            className="admin-search-input"
-          />
-          <Select
-            allowClear
-            placeholder="状态"
-            value={status}
-            onChange={(value) => {
-              setPage(1);
-              setStatus(value);
-            }}
-            options={[
-              { value: "active", label: "正常" },
-              { value: "deleted", label: "已删除" },
-            ]}
-            className="admin-filter-select"
-          />
-        </Space>
+  const managedById = new Map(files.map((file) => [`m:${file.id}`, file]));
+  const externalById = new Map(
+    externalObjects.map((object) => [`x:${object.id}`, object]),
+  );
+  const finderItems: FinderItem[] = [
+    ...folderPrefixes.map((folder) => ({
+      key: `d:${folder.prefix}`,
+      name: folder.name,
+      kind: "folder" as const,
+    })),
+    ...files.map((record) => ({
+      key: `m:${record.id}`,
+      name: record.original_name,
+      kind: finderKindOf({
+        name: record.original_name,
+        extension: record.extension,
+        mimeType: record.mime_type,
+      }),
+      sizeBytes: record.size_bytes,
+      modifiedAt: record.updated_at,
+      muted: record.status !== "active",
+      badge:
+        record.status !== "active"
+          ? { label: "已删除", tone: "red" as const }
+          : record.visibility === "public"
+            ? { label: "公开", tone: "green" as const }
+            : undefined,
+    })),
+    ...externalObjects.map((object) => ({
+      key: `x:${object.id}`,
+      name: object.name,
+      kind: finderKindOf({
+        name: object.name,
+        extension: object.extension,
+        mimeType: object.mime_type,
+      }),
+      sizeBytes: object.size_bytes,
+      modifiedAt: object.updated_at,
+      badge: { label: "未入库", tone: "orange" as const },
+    })),
+  ];
+  const managedTotal = uploadsQuery.data?.total ?? files.length;
+  const canUpload = hasPermission("system:upload:create") && Boolean(bucketId);
+
+  const openItem = (key: string) => {
+    if (key.startsWith("d:")) {
+      openPrefix(key.slice(2));
+      return;
+    }
+    const record = managedById.get(key);
+    if (record) {
+      if (
+        isEditableTextUpload(record) &&
+        hasPermission("system:upload:update")
+      ) {
+        openContentEditor(record);
+      } else {
+        openPreview(record);
       }
-    >
-      <FinderWorkspace
-        title="素材库"
-        icon={<FolderOpenOutlined />}
-        meta={`${selectedBucket?.name ?? "未选择桶"} · ${prefix ?? "根目录"}`}
-        status={`${folderPrefixes.length} 个文件夹 · ${uploadsQuery.data?.total ?? files.length} 个已入库 · ${externalObjects.length} 个待入库`}
-        statusAside={selectedProfile?.provider ?? "未选择存储"}
-      >
-        <div className="resource-library-layout uploads-resource-library">
-          <aside className="resource-tree-panel">
-            <Space className="full-width" direction="vertical" size="small">
-              <div className="finder-sidebar-label">位置</div>
-              <div className="finder-location-summary">
-                <strong>{selectedBucket?.name ?? "尚未选择桶"}</strong>
-                <span>{selectedProfile?.name ?? "请选择存储配置"}</span>
-              </div>
-              <div className="finder-sidebar-label finder-sidebar-label-secondary">
-                目录
-              </div>
-              <Tree
-                showIcon
-                selectedKeys={[prefix ?? ""]}
-                expandedKeys={expandedTreeKeys}
-                treeData={treeData}
-                loadData={(node) =>
-                  loadTreeChildren(String(node.key) || undefined)
-                }
-                onExpand={(keys) => setExpandedTreeKeys(keys)}
-                onSelect={(keys) =>
-                  openPrefix(String(keys[0] ?? "") || undefined)
-                }
-              />
-            </Space>
-          </aside>
-          <Space
-            direction="vertical"
-            size="middle"
-            className="full-width resource-content-panel"
-          >
-            <div className="material-path-bar">
-              <Space direction="vertical" size={4} className="full-width">
-                <Typography.Text type="secondary">
-                  当前桶：{selectedBucket?.name ?? "未选择"}
-                </Typography.Text>
-                <Breadcrumb
-                  items={[
-                    {
-                      title: (
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => openPrefix(undefined)}
-                        >
-                          根目录
-                        </Button>
-                      ),
-                    },
-                    ...currentPathSegments.map((segment) => ({
-                      title: (
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => openPrefix(segment.prefix)}
-                        >
-                          {segment.name}
-                        </Button>
-                      ),
-                    })),
-                  ]}
-                />
-              </Space>
-            </div>
-            <div className="material-library-toolbar uploads-library-toolbar">
-              <Space
-                wrap
-                className="material-upload-inline-actions uploads-desktop-controls"
+      return;
+    }
+    const object = externalById.get(key);
+    if (object) openExternalPreview(object);
+  };
+
+  const itemMenu = (key: string): MenuProps["items"] => {
+    if (key.startsWith("d:")) {
+      return [
+        {
+          key: "open",
+          icon: <FolderOpenOutlined />,
+          label: "打开",
+          onClick: () => openPrefix(key.slice(2)),
+        },
+      ];
+    }
+    const record = managedById.get(key);
+    if (record) return managedMenuItems(record);
+    const object = externalById.get(key);
+    return object ? externalMenuItems(object) : [];
+  };
+
+  const selectedName = selectedKey
+    ? finderItems.find((item) => item.key === selectedKey)?.name
+    : undefined;
+
+  const createMenuItems: MenuProps["items"] = [
+    {
+      key: "upload",
+      icon: <CloudUploadOutlined />,
+      label: (
+        <Upload {...uploadProps} disabled={isUploadBusy}>
+          <span className="finder-menu-upload">上传文件</span>
+        </Upload>
+      ),
+    },
+    { type: "divider" },
+    {
+      key: "folder",
+      icon: <FolderOutlined />,
+      label: "新建文件夹",
+      onClick: () => setFolderModalOpen(true),
+    },
+    {
+      key: "file",
+      icon: <FileAddOutlined />,
+      label: "新建文本文件",
+      onClick: () => {
+        fileForm.setFieldsValue({
+          name: "新建文件.txt",
+          content: "",
+          visibility: uploadVisibility,
+        });
+        setFileModalOpen(true);
+      },
+    },
+  ];
+
+  const check = (active: boolean) =>
+    active ? <CheckOutlined /> : <span className="finder-menu-check" />;
+  const moreMenuItems: MenuProps["items"] = [
+    {
+      key: "upload-mode",
+      label: "上传方式",
+      type: "group",
+      children: [
+        {
+          key: "mode-chunk",
+          icon: check(uploadMode === "chunk"),
+          label: "分片上传（大文件可续传）",
+          onClick: () => setUploadMode("chunk"),
+        },
+        {
+          key: "mode-normal",
+          icon: check(uploadMode === "normal"),
+          label: "普通上传",
+          onClick: () => setUploadMode("normal"),
+        },
+      ],
+    },
+    {
+      key: "visibility",
+      label: hasPublicAccess
+        ? "新上传文件的可见性"
+        : "新上传文件的可见性（未配置公开地址）",
+      type: "group",
+      children: [
+        {
+          key: "visibility-private",
+          icon: check(uploadVisibility === "private"),
+          label: "私有",
+          onClick: () => setUploadVisibility("private"),
+        },
+        {
+          key: "visibility-public",
+          icon: check(uploadVisibility === "public"),
+          label: "公开",
+          onClick: () => setUploadVisibility("public"),
+        },
+      ],
+    },
+    { type: "divider" },
+    {
+      key: "import-all",
+      icon: <CloudSyncOutlined />,
+      label: `全部入库（${externalObjects.length}）`,
+      disabled:
+        !canUpload ||
+        externalObjects.length === 0 ||
+        importAllMutation.isPending,
+      onClick: () => importAllMutation.mutate(),
+    },
+    {
+      key: "tasks",
+      icon: <UnorderedListOutlined />,
+      label: "上传任务",
+      onClick: () => navigate("/admin/system/upload-tasks"),
+    },
+  ];
+
+  return (
+    <div className="finder-page-shell">
+      <FinderShell
+        label="素材库"
+        rootLabel={selectedBucket?.name ?? "素材库"}
+        crumbs={currentPathSegments.map((segment) => ({
+          key: segment.prefix,
+          label: segment.name,
+        }))}
+        onCrumbClick={(key) => openPrefix(key ?? undefined)}
+        nav={{
+          canBack: history.canBack,
+          canForward: history.canForward,
+          canUp: Boolean(prefix),
+          onBack: history.back,
+          onForward: history.forward,
+          onUp: () => {
+            const parent = parentPathOf(prefix);
+            openPrefix(parent ? `${parent}/` : undefined);
+          },
+        }}
+        view={view}
+        onViewChange={setView}
+        search={{
+          value: keyword,
+          placeholder: "搜索素材",
+          onChange: (value) => {
+            setPage(1);
+            setKeyword(value);
+          },
+        }}
+        actions={
+          <>
+            {canUpload ? (
+              <Dropdown
+                menu={{ items: createMenuItems }}
+                trigger={["click"]}
+                placement="bottomRight"
               >
-                <Typography.Text type="secondary">上传方式</Typography.Text>
-                <Segmented
-                  value={uploadMode}
-                  onChange={(value) =>
-                    setUploadMode(value as "normal" | "chunk")
-                  }
-                  options={[
-                    { label: "分片上传", value: "chunk" },
-                    { label: "普通上传", value: "normal" },
-                  ]}
-                />
-                <Typography.Text type="secondary">可见性</Typography.Text>
-                <Segmented
-                  value={uploadVisibility}
-                  onChange={(value) =>
-                    setUploadVisibility(value as "private" | "public")
-                  }
-                  options={[
-                    { label: "私有", value: "private" },
-                    { label: "公开", value: "public" },
-                  ]}
-                />
-                {uploadVisibility === "public" && !hasPublicAccess ? (
-                  <Typography.Text type="warning">
-                    当前存储未配置公开访问地址
-                  </Typography.Text>
-                ) : null}
-                <Upload {...uploadProps} disabled={!bucketId || isUploadBusy}>
-                  <PermissionButton
-                    icon={<CloudUploadOutlined />}
-                    permission="system:upload:create"
-                    hideWhenDenied={false}
-                    disabled={!bucketId || isUploadBusy}
-                    loading={isUploadBusy}
-                  >
-                    上传文件
-                  </PermissionButton>
-                </Upload>
-                <PermissionButton
-                  icon={<FolderOutlined />}
-                  permission="system:upload:create"
-                  disabled={!bucketId}
-                  onClick={() => setFolderModalOpen(true)}
-                >
-                  新建文件夹
-                </PermissionButton>
-                <PermissionButton
-                  icon={<FileAddOutlined />}
-                  permission="system:upload:create"
-                  disabled={!bucketId}
-                  onClick={() => {
-                    fileForm.setFieldsValue({
-                      name: "新建文件.txt",
-                      content: "",
-                      visibility: uploadVisibility,
-                    });
-                    setFileModalOpen(true);
-                  }}
-                >
-                  新建文件
-                </PermissionButton>
-                <PermissionButton
-                  icon={<CloudSyncOutlined />}
-                  permission="system:upload:create"
-                  disabled={!bucketId || externalObjects.length === 0}
-                  loading={importAllMutation.isPending}
-                  onClick={() => importAllMutation.mutate()}
-                >
-                  一键入库
-                </PermissionButton>
                 <Button
-                  icon={<CloudSyncOutlined />}
-                  onClick={() => navigate("/admin/system/upload-tasks")}
-                >
-                  上传任务
-                </Button>
-                <Segmented
-                  value={layoutMode}
-                  onChange={(value) => setLayoutMode(value as "table" | "grid")}
-                  options={[
-                    { label: "表格", value: "table", icon: <TableOutlined /> },
-                    {
-                      label: "文件视图",
-                      value: "grid",
-                      icon: <AppstoreOutlined />,
-                    },
-                  ]}
-                />
-              </Space>
-              <div className="uploads-mobile-quick-actions">
-                <Upload {...uploadProps} disabled={!bucketId || isUploadBusy}>
-                  <PermissionButton
-                    type="primary"
-                    icon={<CloudUploadOutlined />}
-                    permission="system:upload:create"
-                    hideWhenDenied={false}
-                    disabled={!bucketId || isUploadBusy}
-                    loading={isUploadBusy}
-                  >
-                    上传文件
-                  </PermissionButton>
-                </Upload>
-                <Button
-                  icon={<MoreOutlined />}
-                  onClick={() => setMobileControlsOpen(true)}
-                >
-                  更多
-                </Button>
-              </div>
-            </div>
-            {uploadingName ? (
-              <div
-                className="upload-progress-panel material-upload-progress-mobile"
-                aria-live="polite"
-              >
-                <div className="material-upload-mobile-status">
-                  <Spin size="small" />
-                  <div className="material-upload-mobile-copy">
-                    <Typography.Text strong ellipsis title={uploadingName}>
-                      {uploadingName}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {uploadStageLabel}
-                    </Typography.Text>
-                  </div>
-                  <Typography.Text className="material-upload-progress-percent">
-                    {uploadPercent}%
-                  </Typography.Text>
-                </div>
-                <Progress
-                  percent={uploadPercent}
+                  type="primary"
                   size="small"
-                  status="active"
-                  showInfo={false}
-                />
-              </div>
+                  icon={<PlusOutlined />}
+                  aria-label="新建"
+                >
+                  <span className="finder-action-label">新建</span>
+                </Button>
+              </Dropdown>
             ) : null}
-            <div
-              className="material-drop-zone-shell"
-              onDragEnter={handleUploadDragEnter}
-              onDragOver={handleUploadDragOver}
-              onDragLeave={handleUploadDragLeave}
-              onDrop={handleUploadDrop}
-            >
-              <Upload.Dragger
-                {...uploadProps}
-                className={`material-drop-zone${
-                  uploadDragActive ? " is-dragging" : ""
-                }${uploadingName ? " is-uploading" : ""}`}
-                disabled={!bucketId || isUploadBusy}
-                openFileDialogOnClick={false}
-              >
-                {uploadingName ? (
-                  <div
-                    className="material-drop-zone-progress"
-                    aria-live="polite"
-                  >
-                    <Spin size="small" />
-                    <div className="material-drop-zone-progress-copy">
-                      <Typography.Text strong>
-                        {uploadStageLabel}
-                      </Typography.Text>
-                      <Typography.Text
-                        type="secondary"
-                        ellipsis
-                        title={uploadingName}
-                      >
-                        {uploadingName}
-                      </Typography.Text>
-                    </div>
-                    <Typography.Text className="material-upload-progress-percent">
-                      {uploadPercent}%
-                    </Typography.Text>
-                    <Progress
-                      className="material-drop-zone-progress-bar"
-                      percent={uploadPercent}
-                      size="small"
-                      status="active"
-                      showInfo={false}
-                    />
-                  </div>
-                ) : (
-                  <div className="material-drop-zone-hint">
-                    <CloudUploadOutlined />
-                    <Typography.Text
-                      type={uploadDragActive ? undefined : "secondary"}
-                    >
-                      {uploadDragActive
-                        ? "松开即可上传到当前目录"
-                        : "拖拽文件到这里上传到当前目录"}
-                    </Typography.Text>
-                  </div>
-                )}
-              </Upload.Dragger>
-            </div>
-            {effectiveLayoutMode === "table" ? (
-              <Space direction="vertical" size="middle" className="full-width">
-                <TableScrollArea
-                  contentWidth={MANAGED_UPLOAD_TABLE_SCROLL_X}
-                  className="uploads-managed-table-scroll-area"
-                  label="素材库已入库表格"
-                  footer={
-                    <StandardTablePagination
-                      current={page}
-                      pageSize={pageSize}
-                      total={uploadsQuery.data?.total ?? 0}
-                      onChange={(nextPage, nextPageSize) => {
-                        const sizeChanged = nextPageSize !== pageSize;
-                        setPageSize(nextPageSize);
-                        setPage(sizeChanged ? 1 : nextPage);
-                      }}
-                    />
-                  }
-                >
-                  <DataTable<UploadRecord>
-                    columns={columns}
-                    dataSource={files}
-                    loading={uploadsQuery.isLoading}
-                    tableLayout="fixed"
-                    scroll={{ x: MANAGED_UPLOAD_TABLE_SCROLL_X }}
-                    onRow={(record) => ({
-                      onDoubleClick: () =>
-                        isEditableTextUpload(record) &&
-                        hasPermission("system:upload:update")
-                          ? openContentEditor(record)
-                          : openPreview(record),
-                    })}
-                    pagination={false}
+            <Tooltip title="刷新">
+              <Button
+                type="text"
+                size="small"
+                icon={
+                  <ReloadOutlined
+                    spin={uploadsQuery.isFetching || browserQuery.isFetching}
                   />
-                </TableScrollArea>
-                <Card
-                  size="small"
-                  title={`桶内未入库对象（${externalObjects.length}）`}
-                  className="admin-card material-external-card"
-                  extra={
-                    <PermissionButton
-                      size="small"
-                      icon={<CloudSyncOutlined />}
-                      permission="system:upload:create"
-                      disabled={externalObjects.length === 0}
-                      loading={importAllMutation.isPending}
-                      onClick={() => importAllMutation.mutate()}
-                    >
-                      一键入库
-                    </PermissionButton>
-                  }
-                >
-                  <TableScrollArea
-                    contentWidth={EXTERNAL_UPLOAD_TABLE_SCROLL_X}
-                    className="uploads-external-table-scroll-area"
-                    label="素材库未入库对象表格"
-                  >
-                    <DataTable<ExternalObjectRow>
-                      columns={externalColumns}
-                      dataSource={externalObjects}
-                      loading={browserQuery.isLoading}
-                      pagination={false}
-                      tableLayout="fixed"
-                      scroll={{ x: EXTERNAL_UPLOAD_TABLE_SCROLL_X }}
-                      onRow={(record) => ({
-                        onDoubleClick: () => openExternalPreview(record),
-                      })}
-                    />
-                  </TableScrollArea>
-                </Card>
-              </Space>
-            ) : (
-              <Spin spinning={uploadsQuery.isLoading || browserQuery.isLoading}>
-                {folderPrefixes.length > 0 ||
-                files.length > 0 ||
-                externalObjects.length > 0 ? (
-                  <div className="material-card-grid">
-                    {folderPrefixes.map((folder) => (
-                      <Card
-                        key={folder.prefix}
-                        hoverable
-                        className="material-card material-folder-card"
-                        onClick={() => openPrefix(folder.prefix)}
-                      >
-                        <div className="material-card-preview">
-                          <FolderOpenOutlined />
-                          <Tag
-                            color="blue"
-                            className="material-card-visibility"
-                          >
-                            文件夹
-                          </Tag>
-                        </div>
-                        <Space
-                          direction="vertical"
-                          size={8}
-                          className="full-width uploads-card-details"
-                        >
-                          <Tooltip title={folder.prefix}>
-                            <Typography.Text strong ellipsis>
-                              {folder.name}
-                            </Typography.Text>
-                          </Tooltip>
-                          <div className="material-card-meta">
-                            <span>{folder.prefix}</span>
-                          </div>
-                          <div className="material-card-actions">
-                            <Button
-                              size="small"
-                              icon={<FolderOpenOutlined />}
-                              onClick={() => openPrefix(folder.prefix)}
-                            >
-                              打开
-                            </Button>
-                          </div>
-                        </Space>
-                      </Card>
-                    ))}
-                    {files.map((record) => (
-                      <Card
-                        key={record.id}
-                        hoverable
-                        className="material-card"
-                        onDoubleClick={() =>
-                          isEditableTextUpload(record) &&
-                          hasPermission("system:upload:update")
-                            ? openContentEditor(record)
-                            : openPreview(record)
-                        }
-                      >
-                        <div className="material-card-preview">
-                          {fileIcon(record)}
-                          <Tag
-                            color={
-                              record.visibility === "public"
-                                ? "green"
-                                : "default"
-                            }
-                            className="material-card-visibility"
-                          >
-                            {record.visibility === "public" ? "公开" : "私有"}
-                          </Tag>
-                        </div>
-                        <Popover
-                          trigger="click"
-                          placement="bottomRight"
-                          content={
-                            <div className="finder-popover-actions">
-                              {renderActions(record)}
-                            </div>
-                          }
-                        >
-                          <Button
-                            type="text"
-                            className="finder-item-more"
-                            icon={<MoreOutlined />}
-                            aria-label={`更多操作：${record.original_name}`}
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                          />
-                        </Popover>
-                        <Space
-                          direction="vertical"
-                          size={8}
-                          className="full-width uploads-card-details"
-                        >
-                          <Tooltip title={record.original_name}>
-                            <Typography.Text strong ellipsis>
-                              {record.original_name}
-                            </Typography.Text>
-                          </Tooltip>
-                          <div className="material-card-meta">
-                            <span>{formatBytes(record.size_bytes)}</span>
-                            <span>
-                              {record.mime_type ??
-                                record.extension ??
-                                "未知类型"}
-                            </span>
-                          </div>
-                          <div className="material-card-meta">
-                            <span>{record.bucket ?? "-"}</span>
-                            <span>{record.prefix ?? "根目录"}</span>
-                          </div>
-                          <Space wrap size={4} className="uploads-card-tags">
-                            {record.category ? (
-                              <Tag>{record.category}</Tag>
-                            ) : null}
-                            <Tag
-                              color={
-                                record.status === "active" ? "blue" : "red"
-                              }
-                            >
-                              {record.status}
-                            </Tag>
-                          </Space>
-                          <div className="material-card-actions uploads-card-actions-desktop">
-                            {renderActions(record)}
-                          </div>
-                          <div className="uploads-card-actions-mobile">
-                            {isEditableTextUpload(record) &&
-                            hasPermission("system:upload:update") ? (
-                              <PermissionButton
-                                type="primary"
-                                size="small"
-                                icon={<FileTextOutlined />}
-                                aria-label="编辑文本"
-                                permission="system:upload:update"
-                                onClick={() => openContentEditor(record)}
-                              >
-                                编辑文本
-                              </PermissionButton>
-                            ) : (
-                              <PermissionButton
-                                type="primary"
-                                size="small"
-                                icon={<EyeOutlined />}
-                                aria-label="预览"
-                                permission="system:upload:download"
-                                onClick={() => openPreview(record)}
-                              >
-                                预览
-                              </PermissionButton>
-                            )}
-                            <Button
-                              size="small"
-                              icon={<MoreOutlined />}
-                              aria-label={`更多操作：${record.original_name}`}
-                              onClick={() =>
-                                setMobileMaterialAction({
-                                  kind: "managed",
-                                  record,
-                                })
-                              }
-                            >
-                              更多
-                            </Button>
-                          </div>
-                        </Space>
-                      </Card>
-                    ))}
-                    {externalObjects.map((object) => {
-                      const record = externalObjectRecord(object);
-                      return (
-                        <Card
-                          key={object.id}
-                          hoverable
-                          className="material-card"
-                          onDoubleClick={() => openExternalPreview(object)}
-                        >
-                          <div className="material-card-preview">
-                            {fileIcon(record)}
-                            <Tag
-                              color="orange"
-                              className="material-card-visibility"
-                            >
-                              未入库
-                            </Tag>
-                          </div>
-                          <Popover
-                            trigger="click"
-                            placement="bottomRight"
-                            content={
-                              <div className="finder-popover-actions">
-                                {renderExternalActions(object)}
-                              </div>
-                            }
-                          >
-                            <Button
-                              type="text"
-                              className="finder-item-more"
-                              icon={<MoreOutlined />}
-                              aria-label={`更多操作：${object.name}`}
-                              onClick={(event) => event.stopPropagation()}
-                              onDoubleClick={(event) => event.stopPropagation()}
-                            />
-                          </Popover>
-                          <Space
-                            direction="vertical"
-                            size={8}
-                            className="full-width uploads-card-details"
-                          >
-                            <Tooltip title={object.name}>
-                              <Typography.Text strong ellipsis>
-                                {object.name}
-                              </Typography.Text>
-                            </Tooltip>
-                            <div className="material-card-meta">
-                              <span>{formatBytes(object.size_bytes)}</span>
-                              <span>
-                                {object.mime_type ??
-                                  object.extension ??
-                                  "未知类型"}
-                              </span>
-                            </div>
-                            <div className="material-card-meta">
-                              <span>{record.bucket ?? "-"}</span>
-                              <span>{object.prefix || "根目录"}</span>
-                            </div>
-                            <Space wrap size={4} className="uploads-card-tags">
-                              <Tag color="orange">外部对象</Tag>
-                              <Tag
-                                color={
-                                  record.visibility === "public"
-                                    ? "green"
-                                    : "default"
-                                }
-                              >
-                                {record.visibility === "public"
-                                  ? "公开"
-                                  : "私有"}
-                              </Tag>
-                            </Space>
-                            <div className="material-card-actions uploads-card-actions-desktop">
-                              {renderExternalActions(object)}
-                            </div>
-                            <div className="uploads-card-actions-mobile">
-                              <Button
-                                type="primary"
-                                size="small"
-                                icon={<EyeOutlined />}
-                                onClick={() => openExternalPreview(object)}
-                              >
-                                预览
-                              </Button>
-                              <Button
-                                size="small"
-                                icon={<MoreOutlined />}
-                                onClick={() =>
-                                  setMobileMaterialAction({
-                                    kind: "external",
-                                    object,
-                                  })
-                                }
-                              >
-                                更多
-                              </Button>
-                            </div>
-                          </Space>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <Empty description="当前目录暂无素材，可拖拽文件到此处上传" />
-                )}
-              </Spin>
-            )}
-          </Space>
-        </div>
-      </FinderWorkspace>
-      <Drawer
-        title="素材库操作"
-        open={mobileControlsOpen}
-        placement="bottom"
-        height="auto"
-        className="uploads-mobile-controls-drawer"
-        onClose={() => setMobileControlsOpen(false)}
-      >
-        <Space direction="vertical" size={14} className="admin-full-width">
-          <div className="uploads-mobile-setting-row">
-            <Typography.Text>上传方式</Typography.Text>
-            <Segmented
-              value={uploadMode}
-              onChange={(value) => setUploadMode(value as "normal" | "chunk")}
-              options={[
-                { label: "分片", value: "chunk" },
-                { label: "普通", value: "normal" },
-              ]}
-            />
-          </div>
-          <div className="uploads-mobile-setting-row">
-            <Typography.Text>可见性</Typography.Text>
-            <Segmented
-              value={uploadVisibility}
-              onChange={(value) =>
-                setUploadVisibility(value as "private" | "public")
-              }
-              options={[
-                { label: "私有", value: "private" },
-                { label: "公开", value: "public" },
-              ]}
-            />
-          </div>
-          <div className="uploads-mobile-control-grid">
-            <PermissionButton
-              icon={<FileAddOutlined />}
-              permission="system:upload:create"
-              disabled={!bucketId}
-              onClick={() => {
-                setMobileControlsOpen(false);
-                fileForm.setFieldsValue({
-                  name: "新建文件.txt",
-                  content: "",
-                  visibility: uploadVisibility,
-                });
-                setFileModalOpen(true);
-              }}
+                }
+                aria-label="刷新"
+                onClick={() => {
+                  void uploadsQuery.refetch();
+                  void browserQuery.refetch();
+                }}
+              />
+            </Tooltip>
+            <Dropdown
+              menu={{ items: moreMenuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              新建文件
-            </PermissionButton>
-            <PermissionButton
-              icon={<FolderOutlined />}
-              permission="system:upload:create"
-              disabled={!bucketId}
-              onClick={() => {
-                setMobileControlsOpen(false);
-                setFolderModalOpen(true);
-              }}
-            >
-              新建文件夹
-            </PermissionButton>
-            <PermissionButton
-              icon={<CloudSyncOutlined />}
-              permission="system:upload:create"
-              disabled={!bucketId || externalObjects.length === 0}
-              loading={importAllMutation.isPending}
-              onClick={() => {
-                setMobileControlsOpen(false);
-                importAllMutation.mutate();
-              }}
-            >
-              一键入库
-            </PermissionButton>
-            <Button
-              icon={<CloudSyncOutlined />}
-              onClick={() => navigate("/admin/system/upload-tasks")}
-            >
-              上传任务
-            </Button>
-          </div>
-        </Space>
-      </Drawer>
-      <Drawer
-        title={
-          mobileMaterialAction?.kind === "managed"
-            ? mobileMaterialAction.record.original_name
-            : (mobileMaterialAction?.object.name ?? "素材操作")
+              <Button
+                type="text"
+                size="small"
+                icon={<EllipsisOutlined />}
+                aria-label="更多"
+              />
+            </Dropdown>
+          </>
         }
-        open={Boolean(mobileMaterialAction)}
-        placement="bottom"
-        height="auto"
-        className="uploads-mobile-action-drawer"
-        onClose={() => setMobileMaterialAction(null)}
+        sidebar={
+          <>
+            <FinderSidebarSection title="存储">
+              {profiles.map((profile) => (
+                <FinderSidebarItem
+                  key={profile.id}
+                  icon={<CloudServerOutlined />}
+                  label={profile.name}
+                  hint={profile.provider}
+                  active={profile.id === profileId}
+                  onClick={() => {
+                    setProfileId(profile.id);
+                    setBucketId(undefined);
+                    setPrefix(undefined);
+                    setPage(1);
+                  }}
+                />
+              ))}
+            </FinderSidebarSection>
+            <FinderSidebarSection title="桶">
+              {buckets.length === 0 && !bucketsQuery.isLoading ? (
+                <Typography.Text
+                  type="secondary"
+                  className="finder-sidebar-hint"
+                >
+                  当前存储没有可用的桶
+                </Typography.Text>
+              ) : null}
+              {buckets.map((bucket) => (
+                <FinderSidebarItem
+                  key={bucket.id}
+                  icon={<DatabaseOutlined />}
+                  label={bucket.name}
+                  hint={bucket.bucket}
+                  active={bucket.id === bucketId}
+                  onClick={() => {
+                    setBucketId(bucket.id);
+                    setPrefix(undefined);
+                    setPage(1);
+                  }}
+                />
+              ))}
+            </FinderSidebarSection>
+            {bucketId ? (
+              <FinderSidebarSection title="文件夹">
+                <FinderTree
+                  selectedKeys={[prefix ?? ""]}
+                  expandedKeys={expandedTreeKeys}
+                  treeData={treeData}
+                  loadData={(node) =>
+                    loadTreeChildren(String(node.key) || undefined)
+                  }
+                  onExpand={(keys) => setExpandedTreeKeys(keys)}
+                  onSelect={(keys) =>
+                    openPrefix(String(keys[0] ?? "") || undefined)
+                  }
+                />
+              </FinderSidebarSection>
+            ) : null}
+            <FinderSidebarSection title="显示">
+              <FinderSidebarItem
+                icon={<span className="finder-filter-dot is-green" />}
+                label="正常素材"
+                active={status === "active"}
+                onClick={() => {
+                  setPage(1);
+                  setStatus("active");
+                }}
+              />
+              <FinderSidebarItem
+                icon={<span className="finder-filter-dot is-red" />}
+                label="已删除"
+                active={status === "deleted"}
+                onClick={() => {
+                  setPage(1);
+                  setStatus("deleted");
+                }}
+              />
+              <FinderSidebarItem
+                icon={<span className="finder-filter-dot is-gray" />}
+                label="全部"
+                active={!status}
+                onClick={() => {
+                  setPage(1);
+                  setStatus(undefined);
+                }}
+              />
+            </FinderSidebarSection>
+          </>
+        }
+        status={
+          selectedName
+            ? `已选择“${selectedName}”`
+            : `${folderPrefixes.length} 个文件夹，${managedTotal} 个素材${
+                externalObjects.length > 0
+                  ? `，${externalObjects.length} 个未入库`
+                  : ""
+              }`
+        }
+        statusAside={
+          managedTotal > pageSize ? (
+            <Pagination
+              simple
+              size="small"
+              current={page}
+              pageSize={pageSize}
+              total={managedTotal}
+              onChange={(nextPage) => setPage(nextPage)}
+            />
+          ) : (
+            [selectedProfile?.name, selectedBucket?.bucket]
+              .filter(Boolean)
+              .join(" · ")
+          )
+        }
+        overlay={
+          uploadingName ? (
+            <FinderProgress
+              name={uploadingName}
+              stage={uploadStageLabel}
+              percent={uploadPercent}
+            />
+          ) : null
+        }
       >
-        <div className="uploads-mobile-action-sheet">
-          {mobileMaterialAction?.kind === "managed"
-            ? renderActions(mobileMaterialAction.record)
-            : mobileMaterialAction?.kind === "external"
-              ? renderExternalActions(mobileMaterialAction.object)
-              : null}
+        <div
+          className={`finder-drop${uploadDragActive ? " is-dragging" : ""}`}
+          onDragEnter={handleUploadDragEnter}
+          onDragOver={handleUploadDragOver}
+          onDragLeave={handleUploadDragLeave}
+          onDrop={handleUploadDrop}
+        >
+          <Upload.Dragger
+            {...uploadProps}
+            openFileDialogOnClick={false}
+            disabled={!canUpload || isUploadBusy}
+          >
+            <FinderItems
+              items={finderItems}
+              view={view}
+              loading={uploadsQuery.isLoading || browserQuery.isLoading}
+              selectedKey={selectedKey}
+              onSelect={setSelectedKey}
+              onOpen={openItem}
+              menuItems={itemMenu}
+              empty={
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    !bucketId
+                      ? "请选择左侧的存储和桶"
+                      : keyword
+                        ? "没有匹配的素材"
+                        : canUpload
+                          ? "空文件夹，可拖拽文件到这里上传"
+                          : "空文件夹"
+                  }
+                />
+              }
+            />
+          </Upload.Dragger>
         </div>
-      </Drawer>
+      </FinderShell>
       <Drawer
         title="素材详情"
         open={Boolean(detail)}
@@ -2745,6 +2128,6 @@ export function UploadsPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </CrudPage>
+    </div>
   );
 }

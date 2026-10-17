@@ -1,5 +1,4 @@
 import {
-  AppstoreOutlined,
   CloudDownloadOutlined,
   CloudUploadOutlined,
   DeleteOutlined,
@@ -10,41 +9,32 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
+  HddOutlined,
   LinkOutlined,
-  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
-  TableOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Breadcrumb,
   Button,
-  Card,
-  Drawer,
   Dropdown,
   Empty,
   Form,
-  Grid,
   Input,
   Modal,
-  Popconfirm,
-  Popover,
   Segmented,
-  Select,
   Space,
   Spin,
   Switch,
   Tag,
-  Tree,
+  Tooltip,
   Typography,
   Upload,
   message,
 } from "antd";
 import type { MenuProps } from "antd";
 import type { UploadProps } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import {
   type Key,
@@ -70,15 +60,27 @@ import {
   updateManagedFileContent,
   uploadManagedFile,
 } from "../../../api/admin/files";
-import { CrudPage } from "../../../components/admin/CrudPage";
-import { DataTable } from "../../../components/admin/DataTable";
-import { FinderWorkspace } from "../../../components/admin/FinderWorkspace";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
-import { StandardTablePagination } from "../../../components/admin/StandardTablePagination";
-import { TableScrollArea } from "../../../components/admin/TableScrollArea";
+import { FinderItems } from "../../../components/admin/finder/FinderItems";
+import {
+  FinderProgress,
+  FinderShell,
+  FinderSidebarItem,
+  FinderSidebarSection,
+  FinderTree,
+} from "../../../components/admin/finder/FinderShell";
+import {
+  type FinderItem,
+  finderKindOf,
+  parentPathOf,
+} from "../../../components/admin/finder/finderModel";
+import {
+  useFinderHistory,
+  useFinderView,
+} from "../../../components/admin/finder/useFinderHistory";
 import { useAuthStore } from "../../../stores/auth";
 import { decodeTextBlob } from "../../../utils/textEncoding";
-import { fileIcon, fileKind, formatBytes } from "../uploads/uploadTaskManager";
+import { fileKind, formatBytes } from "../uploads/uploadTaskManager";
 
 type FolderFormValues = {
   name: string;
@@ -100,9 +102,6 @@ type AccessFormValues = {
   clear_password?: boolean;
 };
 
-type FileViewMode = "table" | "card";
-
-const FILE_TABLE_SCROLL_X = 1680;
 const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
 const EDITABLE_TEXT_EXTENSIONS = new Set([
   "bash",
@@ -258,8 +257,6 @@ export function FilesPage() {
   const [rootKey, setRootKey] = useState<string>();
   const [currentPath, setCurrentPath] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [tablePage, setTablePage] = useState(1);
-  const [tablePageSize, setTablePageSize] = useState(10);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [renaming, setRenaming] = useState<ManagedFileRecord | null>(null);
@@ -279,9 +276,8 @@ export function FilesPage() {
   const [editorLoading, setEditorLoading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadingName, setUploadingName] = useState<string>();
-  const [viewMode, setViewMode] = useState<FileViewMode>("card");
-  const [mobileActionRecord, setMobileActionRecord] =
-    useState<ManagedFileRecord | null>(null);
+  const [view, setView] = useFinderView("files");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [treeData, setTreeData] = useState<DataNode[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>([""]);
   const [folderForm] = Form.useForm<FolderFormValues>();
@@ -293,9 +289,6 @@ export function FilesPage() {
   const accessVisibility = Form.useWatch("visibility", accessForm);
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
-  const screens = Grid.useBreakpoint();
-  const effectiveViewMode: FileViewMode =
-    screens.md === false ? "card" : viewMode;
   const editorByteSize = useMemo(
     () => new TextEncoder().encode(editorContent).length,
     [editorContent],
@@ -658,7 +651,6 @@ export function FilesPage() {
     }
     const requestId = editorRequestId.current + 1;
     editorRequestId.current = requestId;
-    setMobileActionRecord(null);
     setContentEditing(record);
     setEditorContent("");
     setEditorOriginalContent("");
@@ -798,102 +790,45 @@ export function FilesPage() {
 
   const openPath = (path: string) => {
     setCurrentPath(path);
-    setTablePage(1);
+    setSelectedKey(null);
+    setKeyword("");
   };
 
-  const renderActions = (record: ManagedFileRecord) => (
-    <Space wrap size={6} className="material-table-actions">
-      {record.is_dir ? (
-        <Button
-          size="small"
-          icon={<FolderOpenOutlined />}
-          onClick={() => openPath(record.path)}
-        >
-          打开
-        </Button>
-      ) : isEditableTextFile(record) ? (
-        <PermissionButton
-          size="small"
-          icon={<FileTextOutlined />}
-          permission="system:file:update"
-          onClick={() => openContentEditor(record)}
-        >
-          编辑文本
-        </PermissionButton>
-      ) : (
-        <PermissionButton
-          size="small"
-          icon={<EyeOutlined />}
-          permission="system:file:download"
-          onClick={() => openPreview(record)}
-        >
-          预览
-        </PermissionButton>
-      )}
-      {!record.is_dir && isEditableTextFile(record) ? (
-        <PermissionButton
-          size="small"
-          icon={<EyeOutlined />}
-          permission="system:file:download"
-          onClick={() => openPreview(record)}
-        >
-          预览
-        </PermissionButton>
-      ) : null}
-      <Button
-        size="small"
-        icon={<LinkOutlined />}
-        onClick={() => copyUrl(record)}
-      >
-        复制URL
-      </Button>
-      {!record.is_dir ? (
-        <PermissionButton
-          size="small"
-          icon={<CloudDownloadOutlined />}
-          permission="system:file:download"
-          loading={downloadMutation.isPending}
-          onClick={() => downloadMutation.mutate(record)}
-        >
-          下载
-        </PermissionButton>
-      ) : null}
-      {!record.is_dir ? (
-        <PermissionButton
-          size="small"
-          icon={<LinkOutlined />}
-          permission="system:file:update"
-          onClick={() => openAccessEditor(record)}
-        >
-          访问设置
-        </PermissionButton>
-      ) : null}
-      <PermissionButton
-        size="small"
-        icon={<EditOutlined />}
-        permission="system:file:update"
-        onClick={() => openRename(record)}
-      >
-        重命名
-      </PermissionButton>
-      <Popconfirm
-        title={record.is_dir ? "确认删除空文件夹？" : "确认删除文件？"}
-        onConfirm={() => deleteMutation.mutate(record)}
-      >
-        <PermissionButton
-          size="small"
-          danger
-          icon={<DeleteOutlined />}
-          permission="system:file:delete"
-        >
-          删除
-        </PermissionButton>
-      </Popconfirm>
-    </Space>
+  const history = useFinderHistory(
+    `${rootKey ?? ""}|${currentPath}`,
+    (location) => {
+      const separator = location.indexOf("|");
+      setRootKey(location.slice(0, separator) || undefined);
+      setCurrentPath(location.slice(separator + 1));
+      setSelectedKey(null);
+    },
   );
 
-  const renderTableActions = (record: ManagedFileRecord) => {
+  const fileMenuItems = (record: ManagedFileRecord) => {
     const items: MenuProps["items"] = [
+      record.is_dir
+        ? {
+            key: "open",
+            icon: <FolderOpenOutlined />,
+            label: "打开",
+            onClick: () => openPath(record.path),
+          }
+        : isEditableTextFile(record) && hasPermission("system:file:update")
+          ? {
+              key: "edit",
+              icon: <FileTextOutlined />,
+              label: "编辑文本",
+              onClick: () => openContentEditor(record),
+            }
+          : hasPermission("system:file:download")
+            ? {
+                key: "open-preview",
+                icon: <EyeOutlined />,
+                label: "预览",
+                onClick: () => openPreview(record),
+              }
+            : null,
+      { type: "divider" },
       !record.is_dir &&
       isEditableTextFile(record) &&
       hasPermission("system:file:download")
@@ -952,242 +887,8 @@ export function FilesPage() {
           }
         : null,
     ];
-
-    return (
-      <Space size={4} className="material-table-compact-actions">
-        {record.is_dir ? (
-          <Button
-            size="small"
-            icon={<FolderOpenOutlined />}
-            onClick={() => openPath(record.path)}
-          >
-            打开
-          </Button>
-        ) : isEditableTextFile(record) &&
-          hasPermission("system:file:update") ? (
-          <PermissionButton
-            size="small"
-            icon={<FileTextOutlined />}
-            permission="system:file:update"
-            onClick={() => openContentEditor(record)}
-          >
-            编辑文本
-          </PermissionButton>
-        ) : (
-          <PermissionButton
-            size="small"
-            icon={<EyeOutlined />}
-            permission="system:file:download"
-            onClick={() => openPreview(record)}
-          >
-            预览
-          </PermissionButton>
-        )}
-        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
-          <Button
-            size="small"
-            icon={<MoreOutlined />}
-            aria-label="更多文件操作"
-          />
-        </Dropdown>
-      </Space>
-    );
+    return items;
   };
-
-  const renderVisibilityTag = (record: ManagedFileRecord) => {
-    if (record.is_dir) {
-      return <Tag>目录</Tag>;
-    }
-    if (record.visibility === "public") {
-      return record.requires_password ? (
-        <Tag color="orange">公开-需密码</Tag>
-      ) : (
-        <Tag color="green">公开</Tag>
-      );
-    }
-    return <Tag>私有</Tag>;
-  };
-
-  const renderFileCard = (record: ManagedFileRecord) => {
-    const opensEditor =
-      isEditableTextFile(record) && hasPermission("system:file:update");
-    const openRecord = () => {
-      if (record.is_dir) {
-        openPath(record.path);
-      } else if (opensEditor) {
-        openContentEditor(record);
-      } else {
-        openPreview(record);
-      }
-    };
-
-    return (
-      <Card
-        key={record.path}
-        className={[
-          "material-card",
-          record.is_dir ? "material-folder-card" : undefined,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        hoverable
-        onDoubleClick={openRecord}
-      >
-        <button
-          className="material-card-preview"
-          type="button"
-          onClick={openRecord}
-        >
-          {record.is_dir ? <FolderOutlined /> : fileIcon(record)}
-        </button>
-        <Popover
-          trigger="click"
-          placement="bottomRight"
-          content={
-            <div className="finder-popover-actions">
-              {renderActions(record)}
-            </div>
-          }
-        >
-          <Button
-            type="text"
-            className="finder-item-more"
-            icon={<MoreOutlined />}
-            aria-label={`更多操作：${record.name}`}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-          />
-        </Popover>
-        <Space
-          direction="vertical"
-          size={8}
-          className="full-width material-card-details"
-        >
-          <Typography.Text strong ellipsis title={record.name}>
-            {record.name}
-          </Typography.Text>
-          <div className="material-card-meta">
-            <span>
-              {record.is_dir ? "文件夹" : (record.mime_type ?? "文件")}
-            </span>
-            <span>{record.is_dir ? "-" : formatBytes(record.size_bytes)}</span>
-          </div>
-          <div className="material-card-visibility-row">
-            {renderVisibilityTag(record)}
-          </div>
-          <Typography.Text
-            type="secondary"
-            ellipsis
-            title={record.path}
-            className="material-card-path"
-          >
-            {record.path || "根目录"}
-          </Typography.Text>
-          <div className="material-card-actions material-card-actions-desktop">
-            {renderActions(record)}
-          </div>
-          <div className="material-card-actions-mobile">
-            <Button
-              type="primary"
-              size="small"
-              aria-label={
-                record.is_dir ? "打开" : opensEditor ? "编辑文本" : "预览"
-              }
-              icon={
-                record.is_dir ? (
-                  <FolderOpenOutlined />
-                ) : opensEditor ? (
-                  <FileTextOutlined />
-                ) : (
-                  <EyeOutlined />
-                )
-              }
-              onClick={openRecord}
-            >
-              {record.is_dir ? "打开" : opensEditor ? "编辑文本" : "预览"}
-            </Button>
-            <Button
-              size="small"
-              icon={<MoreOutlined />}
-              aria-label={`更多操作：${record.name}`}
-              onClick={() => setMobileActionRecord(record)}
-            >
-              更多
-            </Button>
-          </div>
-        </Space>
-      </Card>
-    );
-  };
-
-  const columns: ColumnsType<ManagedFileRecord> = [
-    {
-      title: "名称",
-      dataIndex: "name",
-      width: 260,
-      ellipsis: true,
-      render: (value, record) => (
-        <Space size={8}>
-          <span className="material-table-file-icon">
-            {record.is_dir ? <FolderOutlined /> : fileIcon(record)}
-          </span>
-          <Typography.Text ellipsis className="material-table-file-name">
-            {value}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "类型",
-      key: "type",
-      width: 110,
-      render: (_, record) =>
-        record.is_dir ? <Tag color="blue">文件夹</Tag> : <Tag>文件</Tag>,
-    },
-    { title: "路径", dataIndex: "path", width: 260, ellipsis: true },
-    {
-      title: "访问",
-      key: "visibility",
-      width: 130,
-      render: (_, record) => renderVisibilityTag(record),
-    },
-    {
-      title: "URL",
-      dataIndex: "url",
-      width: 260,
-      ellipsis: true,
-      render: (_, record) =>
-        record.visibility === "public" && record.public_url
-          ? record.public_url
-          : record.url,
-    },
-    {
-      title: "MIME",
-      dataIndex: "mime_type",
-      width: 180,
-      ellipsis: true,
-      render: (value) => value ?? "-",
-    },
-    {
-      title: "大小",
-      dataIndex: "size_bytes",
-      width: 110,
-      render: (_, record) =>
-        record.is_dir ? "-" : formatBytes(record.size_bytes),
-    },
-    {
-      title: "更新时间",
-      dataIndex: "updated_at",
-      width: 220,
-      render: (value) => value ?? "-",
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 150,
-      render: (_, record) => renderTableActions(record),
-    },
-  ];
 
   const rows = useMemo(() => {
     const directories = browserQuery.data?.directories ?? [];
@@ -1203,18 +904,6 @@ export function FilesPage() {
         row.path.toLowerCase().includes(normalizedKeyword),
     );
   }, [browserQuery.data, keyword]);
-
-  useEffect(() => {
-    const lastPage = Math.max(1, Math.ceil(rows.length / tablePageSize));
-    if (tablePage > lastPage) {
-      setTablePage(lastPage);
-    }
-  }, [rows.length, tablePage, tablePageSize]);
-
-  const pagedRows = useMemo(() => {
-    const start = (tablePage - 1) * tablePageSize;
-    return rows.slice(start, start + tablePageSize);
-  }, [rows, tablePage, tablePageSize]);
 
   const currentPathSegments = pathSegments(currentPath);
 
@@ -1302,271 +991,229 @@ export function FilesPage() {
     );
   };
 
+  const recordByPath = new Map(rows.map((row) => [row.path, row]));
+  const finderItems: FinderItem[] = rows.map((row) => ({
+    key: row.path,
+    name: row.name,
+    kind: finderKindOf({
+      isFolder: row.is_dir,
+      name: row.name,
+      extension: row.extension,
+      mimeType: row.mime_type,
+    }),
+    sizeBytes: row.is_dir ? null : row.size_bytes,
+    modifiedAt: row.updated_at,
+    badge:
+      !row.is_dir && row.visibility === "public"
+        ? {
+            label: row.requires_password ? "公开·需密码" : "公开",
+            tone: row.requires_password ? "orange" : "green",
+          }
+        : undefined,
+  }));
+  const selectedRecord = selectedKey
+    ? recordByPath.get(selectedKey)
+    : undefined;
+  const folderCount = rows.filter((row) => row.is_dir).length;
+  const canCreate = hasPermission("system:file:create") && Boolean(rootKey);
+  const createMenuItems: MenuProps["items"] = [
+    {
+      key: "upload",
+      icon: <CloudUploadOutlined />,
+      label: (
+        <Upload {...uploadProps} disabled={uploadMutation.isPending}>
+          <span className="finder-menu-upload">上传文件</span>
+        </Upload>
+      ),
+    },
+    { type: "divider" },
+    {
+      key: "folder",
+      icon: <FolderOutlined />,
+      label: "新建文件夹",
+      onClick: () => setFolderModalOpen(true),
+    },
+    {
+      key: "file",
+      icon: <FileAddOutlined />,
+      label: "新建文本文件",
+      onClick: () => {
+        fileForm.setFieldsValue({ name: "新建文件.txt", content: "" });
+        setFileModalOpen(true);
+      },
+    },
+  ];
+
+  const openItem = (key: string) => {
+    const record = recordByPath.get(key);
+    if (!record) return;
+    if (record.is_dir) {
+      openPath(record.path);
+    } else if (
+      isEditableTextFile(record) &&
+      hasPermission("system:file:update")
+    ) {
+      openContentEditor(record);
+    } else {
+      openPreview(record);
+    }
+  };
+
   return (
-    <CrudPage
-      className="finder-page finder-files-page"
-      title="文件管理"
-      subtitle="管理系统设置中声明的本地 URL 映射目录"
-      breadcrumb={["系统管理", "文件管理"]}
-      icon={<FolderOpenOutlined />}
-      toolbar={
-        <Space wrap className="material-filter-bar">
-          <Select
-            placeholder="文件根目录"
-            value={rootKey}
-            loading={rootsQuery.isLoading}
-            onChange={(value) => {
-              setRootKey(value);
-              setCurrentPath("");
-              setTablePage(1);
-            }}
-            options={roots.map((root) => ({
-              value: root.key,
-              label: `${root.name} / ${root.url_path}`,
-            }))}
-            className="admin-filter-select"
-          />
-          <Input.Search
-            allowClear
-            placeholder="搜索名称、路径"
-            onSearch={(value) => {
-              setKeyword(value);
-              setTablePage(1);
-            }}
-            className="admin-search-input"
-          />
-          <Button icon={<ReloadOutlined />} onClick={refreshFiles}>
-            刷新
-          </Button>
-        </Space>
-      }
-    >
-      <FinderWorkspace
-        title="文件管理"
-        icon={<FolderOpenOutlined />}
-        meta={`${selectedRoot?.name ?? "未选择根目录"} · ${currentPath || "根目录"}`}
-        status={`${rows.filter((record) => record.is_dir).length} 个文件夹 · ${rows.filter((record) => !record.is_dir).length} 个文件`}
-        statusAside={selectedRoot?.url_path ?? "未配置 URL"}
-      >
-        <div className="resource-library-layout">
-          <aside className="resource-tree-panel">
-            <Space direction="vertical" size="small" className="full-width">
-              <div className="finder-sidebar-label">位置</div>
-              {selectedRoot ? (
-                <div className="finder-location-summary">
-                  <Typography.Text strong>{selectedRoot.name}</Typography.Text>
-                  <Typography.Text type="secondary" copyable>
-                    {selectedRoot.url_path}
-                  </Typography.Text>
-                  <Typography.Text type="secondary" ellipsis>
-                    {selectedRoot.local_root}
-                  </Typography.Text>
-                </div>
-              ) : null}
-              <div className="finder-sidebar-label finder-sidebar-label-secondary">
-                目录
-              </div>
-              <Tree
-                showIcon
-                selectedKeys={[currentPath]}
-                expandedKeys={expandedTreeKeys}
-                treeData={treeData}
-                loadData={(node) => loadTreeChildren(String(node.key))}
-                onExpand={(keys) => setExpandedTreeKeys(keys)}
-                onSelect={(keys) => openPath(String(keys[0] ?? ""))}
-              />
-            </Space>
-          </aside>
-          <Space
-            direction="vertical"
-            size="middle"
-            className="full-width resource-content-panel"
-          >
-            <div className="material-path-bar">
-              <Space direction="vertical" size={4} className="full-width">
-                <Typography.Text type="secondary">
-                  当前根目录：{selectedRoot?.name ?? "未选择"}
-                </Typography.Text>
-                <Breadcrumb
-                  items={[
-                    {
-                      title: (
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => openPath("")}
-                        >
-                          根目录
-                        </Button>
-                      ),
-                    },
-                    ...currentPathSegments.map((segment) => ({
-                      title: (
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => openPath(segment.path)}
-                        >
-                          {segment.name}
-                        </Button>
-                      ),
-                    })),
-                  ]}
-                />
-              </Space>
-              <Space wrap className="material-upload-inline-actions">
-                <PermissionButton
-                  icon={<PlusOutlined />}
-                  permission="system:file:create"
-                  disabled={!rootKey}
-                  onClick={() => setFolderModalOpen(true)}
-                >
-                  新建文件夹
-                </PermissionButton>
-                <PermissionButton
-                  icon={<FileAddOutlined />}
-                  permission="system:file:create"
-                  disabled={!rootKey}
-                  onClick={() => {
-                    fileForm.setFieldsValue({
-                      name: "新建文件.txt",
-                      content: "",
-                    });
-                    setFileModalOpen(true);
-                  }}
-                >
-                  新建文件
-                </PermissionButton>
-                <Upload
-                  {...uploadProps}
-                  disabled={!rootKey || uploadMutation.isPending}
-                >
-                  <PermissionButton
-                    icon={<CloudUploadOutlined />}
-                    permission="system:file:create"
-                    disabled={!rootKey || uploadMutation.isPending}
-                    hideWhenDenied={false}
-                  >
-                    上传文件
-                  </PermissionButton>
-                </Upload>
-                <Segmented<FileViewMode>
-                  className="material-view-toggle"
-                  value={viewMode}
-                  onChange={(value) => setViewMode(value)}
-                  options={[
-                    { label: "表格", value: "table", icon: <TableOutlined /> },
-                    {
-                      label: "文件",
-                      value: "card",
-                      icon: <AppstoreOutlined />,
-                    },
-                  ]}
-                />
-                {selectedRoot ? (
-                  <Button
-                    className="material-secondary-mobile-action"
-                    icon={<LinkOutlined />}
-                    onClick={() => copyUrl(selectedRoot)}
-                  >
-                    复制根URL
-                  </Button>
-                ) : null}
-              </Space>
-            </div>
-            {uploadingName ? (
-              <div className="upload-progress-panel">
-                <Typography.Text ellipsis>{uploadingName}</Typography.Text>
-                <Typography.Text type="secondary">
-                  {uploadPercent}%
-                </Typography.Text>
-              </div>
-            ) : null}
-            <Upload.Dragger
-              {...uploadProps}
-              className="material-drop-zone"
-              disabled={!rootKey || uploadMutation.isPending}
-              openFileDialogOnClick={false}
-            >
-              <div className="material-drop-zone-hint">
-                <CloudUploadOutlined />
-                <Typography.Text type="secondary">
-                  拖拽文件到这里上传到 {currentPath || "根目录"}
-                </Typography.Text>
-              </div>
-            </Upload.Dragger>
-            {effectiveViewMode === "table" ? (
-              <TableScrollArea
-                contentWidth={FILE_TABLE_SCROLL_X}
-                className="files-table-scroll-area"
-                label="文件管理表格"
-                footer={
-                  <StandardTablePagination
-                    current={tablePage}
-                    pageSize={tablePageSize}
-                    total={rows.length}
-                    onChange={(nextPage, nextPageSize) => {
-                      const sizeChanged = nextPageSize !== tablePageSize;
-                      setTablePageSize(nextPageSize);
-                      setTablePage(sizeChanged ? 1 : nextPage);
-                    }}
-                  />
-                }
+    <div className="finder-page-shell">
+      <FinderShell
+        label="文件管理"
+        rootLabel={selectedRoot?.name ?? "文件管理"}
+        crumbs={currentPathSegments.map((segment) => ({
+          key: segment.path,
+          label: segment.name,
+        }))}
+        onCrumbClick={(key) => openPath(key ?? "")}
+        nav={{
+          canBack: history.canBack,
+          canForward: history.canForward,
+          canUp: Boolean(currentPath),
+          onBack: history.back,
+          onForward: history.forward,
+          onUp: () => openPath(parentPathOf(currentPath) ?? ""),
+        }}
+        view={view}
+        onViewChange={setView}
+        search={{
+          value: keyword,
+          placeholder: "搜索当前文件夹",
+          onChange: setKeyword,
+        }}
+        actions={
+          <>
+            {canCreate ? (
+              <Dropdown
+                menu={{ items: createMenuItems }}
+                trigger={["click"]}
+                placement="bottomRight"
               >
-                <div className="files-material-table">
-                  <DataTable<ManagedFileRecord>
-                    rowKey="path"
-                    columns={columns}
-                    dataSource={pagedRows}
-                    loading={browserQuery.isLoading}
-                    pagination={false}
-                    tableLayout="fixed"
-                    scroll={{ x: FILE_TABLE_SCROLL_X }}
-                    onRow={(record) => ({
-                      onDoubleClick: () => {
-                        if (record.is_dir) {
-                          openPath(record.path);
-                        } else if (
-                          isEditableTextFile(record) &&
-                          hasPermission("system:file:update")
-                        ) {
-                          openContentEditor(record);
-                        } else {
-                          openPreview(record);
-                        }
-                      },
-                    })}
-                  />
-                </div>
-              </TableScrollArea>
-            ) : (
-              <Spin spinning={browserQuery.isLoading}>
-                {rows.length > 0 ? (
-                  <div className="material-card-grid">
-                    {rows.map(renderFileCard)}
-                  </div>
-                ) : (
-                  <Empty description="暂无文件" />
-                )}
-              </Spin>
-            )}
-          </Space>
-        </div>
-      </FinderWorkspace>
-      <Drawer
-        title={mobileActionRecord?.name ?? "文件操作"}
-        open={Boolean(mobileActionRecord)}
-        placement="bottom"
-        height="auto"
-        className="material-mobile-action-drawer"
-        onClose={() => setMobileActionRecord(null)}
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  aria-label="新建"
+                >
+                  <span className="finder-action-label">新建</span>
+                </Button>
+              </Dropdown>
+            ) : null}
+            <Tooltip title="刷新">
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined spin={browserQuery.isFetching} />}
+                aria-label="刷新"
+                onClick={refreshFiles}
+              />
+            </Tooltip>
+          </>
+        }
+        sidebar={
+          <>
+            <FinderSidebarSection title="位置">
+              {roots.length === 0 && !rootsQuery.isLoading ? (
+                <Typography.Text
+                  type="secondary"
+                  className="finder-sidebar-hint"
+                >
+                  尚未在系统设置中配置文件根目录
+                </Typography.Text>
+              ) : null}
+              {roots.map((root) => (
+                <FinderSidebarItem
+                  key={root.key}
+                  icon={<HddOutlined />}
+                  label={root.name}
+                  hint={`${root.url_path}\n${root.local_root}`}
+                  active={root.key === rootKey}
+                  onClick={() => {
+                    setRootKey(root.key);
+                    setCurrentPath("");
+                  }}
+                />
+              ))}
+            </FinderSidebarSection>
+            {selectedRoot ? (
+              <FinderSidebarSection title="文件夹">
+                <FinderTree
+                  selectedKeys={[currentPath]}
+                  expandedKeys={expandedTreeKeys}
+                  treeData={treeData}
+                  loadData={(node) => loadTreeChildren(String(node.key))}
+                  onExpand={(keys) => setExpandedTreeKeys(keys)}
+                  onSelect={(keys) => openPath(String(keys[0] ?? ""))}
+                />
+              </FinderSidebarSection>
+            ) : null}
+          </>
+        }
+        status={
+          selectedRecord
+            ? `已选择“${selectedRecord.name}”，共 ${rows.length} 项`
+            : `${folderCount} 个文件夹，${rows.length - folderCount} 个文件`
+        }
+        statusAside={
+          selectedRoot ? (
+            <Typography.Text
+              type="secondary"
+              copyable={{
+                text: new URL(
+                  selectedRoot.url_path,
+                  window.location.origin,
+                ).toString(),
+                tooltips: ["复制根 URL", "已复制"],
+              }}
+            >
+              {selectedRoot.url_path}
+            </Typography.Text>
+          ) : null
+        }
+        overlay={
+          uploadingName ? (
+            <FinderProgress name={uploadingName} percent={uploadPercent} />
+          ) : null
+        }
       >
-        {mobileActionRecord ? (
-          <div className="material-mobile-action-sheet">
-            {renderActions(mobileActionRecord)}
-          </div>
-        ) : null}
-      </Drawer>
+        <div className="finder-drop">
+          <Upload.Dragger
+            {...uploadProps}
+            openFileDialogOnClick={false}
+            disabled={!canCreate || uploadMutation.isPending}
+          >
+            <FinderItems
+              items={finderItems}
+              view={view}
+              loading={browserQuery.isLoading}
+              selectedKey={selectedKey}
+              onSelect={setSelectedKey}
+              onOpen={openItem}
+              menuItems={(key) => {
+                const record = recordByPath.get(key);
+                return record ? fileMenuItems(record) : [];
+              }}
+              empty={
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    !rootKey
+                      ? "请选择左侧的位置"
+                      : keyword
+                        ? "没有匹配的文件"
+                        : canCreate
+                          ? "空文件夹，可拖拽文件到这里上传"
+                          : "空文件夹"
+                  }
+                />
+              }
+            />
+          </Upload.Dragger>
+        </div>
+      </FinderShell>
       <Modal
         title="新建文件"
         open={fileModalOpen}
@@ -1836,6 +1483,6 @@ export function FilesPage() {
       >
         <div className="material-preview-body">{renderPreviewContent()}</div>
       </Modal>
-    </CrudPage>
+    </div>
   );
 }

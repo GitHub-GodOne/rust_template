@@ -17,8 +17,23 @@ pub struct LogInput<'a> {
     pub error_message: Option<String>,
 }
 
+/// Writes a detailed log.
+///
+/// Inside a request it also picks up the client IP, user agent and duration,
+/// follows that feature's audit switch, and stops the audit middleware from
+/// adding a second, generic entry.
 pub async fn record(db: &DatabaseConnection, input: LogInput<'_>) {
+    let request = crate::services::audit::current_request();
+    if request.as_ref().is_some_and(|(enabled, ..)| !enabled) {
+        return;
+    }
+    let (ip, user_agent, duration_ms) = request
+        .map(|(_, ip, user_agent, duration)| (ip, user_agent, Some(duration)))
+        .unwrap_or_default();
     let log = operation_logs::ActiveModel {
+        ip: Set(ip),
+        user_agent: Set(user_agent),
+        duration_ms: Set(duration_ms),
         log_type: Set(input.log_type.to_string()),
         level: Set(input.level.to_string()),
         module: Set(input.module.to_string()),

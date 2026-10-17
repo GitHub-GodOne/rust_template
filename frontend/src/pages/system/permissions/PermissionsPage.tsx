@@ -62,7 +62,7 @@ function emptyGrant(menuId: number): RoleMenuGrant {
 }
 
 const permissionGroupLabels: Record<string, string> = {
-  dashboard: "仪表盘",
+  dashboard: "首页",
   "system:user": "用户管理",
   "system:role": "角色管理",
   "system:tenant": "租户管理",
@@ -89,6 +89,7 @@ const permissionGroupLabels: Record<string, string> = {
   "system:ssh": "SSH 管理",
   "system:vnc": "VNC 管理",
   "system:rdp": "RDP 管理",
+  "system:ddns": "IPv6 动态解析",
   "system:ai_image": "AI 图片",
   "system:email_template": "邮箱模板",
   "system:work_order": "工单管理",

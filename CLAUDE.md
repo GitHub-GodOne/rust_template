@@ -59,8 +59,10 @@ This is a Loco SaaS/admin template with a Rust backend, SeaORM migrations/entiti
 - `src/fixtures/` seeds tenants, users, roles, permissions, menus, data scopes, role grants, settings, email templates, notifications, scheduled tasks, rate limits, and dictionaries. Super admin fixture access depends on `role_permissions.yaml` and `role_menus.yaml`.
 - `src/tasks/admin.rs` defines the local `admin.recover` task for creating/resetting an admin and binding an enabled role. `src/tasks/operations.rs` runs due scheduled tasks.
 - `src/middleware/rate_limit.rs` applies configured IP/user/path rate limits and records rate limit events.
+- `src/middleware/audit.rs` records `/api` requests into `operation_logs` using the per-feature switches in `src/services/audit.rs` (`FEATURES` maps path prefixes to features; switches live in `audit_log_rules` and are edited from 日志中心 → 记录设置). Handler-written logs via `models::admin_logs::record` reuse the request's IP/user agent/duration and suppress the generic entry.
 - `src/mailers/auth.rs` renders auth emails; email templates can also be managed through the admin email-template API.
 - `src/workers/downloader.rs` is registered as the background worker in `src/app.rs`.
+- `src/services/project_cli.rs` powers the admin 项目命令 page (`/admin/system/project-cli`): it lists every CLI command and runs them on the server. The list is built from the CLIs themselves: Loco's commands from the binary's `-h` output, the custom `service`/`vnc`/`data` commands from their clap definitions (`cli_command()` in each module), and tasks from `App::register_tasks`.
 
 ## Implemented admin areas
 
@@ -94,3 +96,9 @@ The frontend is a React 18 + TypeScript + Ant Design + TanStack Query + Zustand 
 - Request tests in `tests/requests/admin.rs` exercise the major admin flows end-to-end through Loco test requests; keep them updated when adding protected admin routes.
 - Task tests live under `tests/tasks/` and cover CLI task behavior such as admin recovery.
 - When adding a new persisted admin resource, update migration registration, entity modules/prelude, `src/app.rs` truncation order, fixtures/permission grants as needed, OpenAPI registration, frontend API/page/route/menu, and request tests.
+- When adding API routes, make sure their path prefix belongs to a feature in `services::audit::FEATURES`; `tests/requests/audit.rs` fails for any unmapped `/api` route. New features default to recording writes only.
+- When adding or changing command-line commands/arguments, keep the 项目命令 page in sync:
+  - New clap flags/subcommands in Loco or in `service`/`vnc`/`data` appear automatically; write `///` help text on them because it is shown as the description.
+  - A new top-level command handled before Loco in `src/bin/main.rs` must expose `cli_command()` and be added to `custom_commands()` and `CUSTOM_ROOTS` in `src/services/project_cli.rs`.
+  - A new task, or a task reading a new `vars.cli` key, must be listed in `tasks::TASK_PARAMS` (`src/tasks/mod.rs`); mark passwords/tokens `secret: true`. The `tasks::tests` unit tests fail when this is missed.
+  - Optionally add a Chinese note and risk level (`safe`/`caution`/`danger`, `long_running`) in `COMMAND_NOTES`; destructive commands should be `danger`.

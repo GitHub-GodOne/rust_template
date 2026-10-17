@@ -1,0 +1,913 @@
+/* Finder-style file window shared by 素材库 and 文件管理. */
+/* Drawers are portaled outside the window, so they get the palette too. */
+.finder,
+.finder-sidebar-drawer,
+.finder-action-sheet {
+	--finder-line: #e6e1d9;
+	--finder-ink: #292622;
+	--finder-ink-2: #756f67;
+	--finder-ink-3: #a29a90;
+	--finder-accent: #c15f3c;
+	--finder-select: #c15f3c;
+	--finder-select-soft: rgba(193, 95, 60, 0.12);
+}
+
+.finder {
+	display: flex;
+	height: calc(100dvh - var(--finder-top, 140px) - 16px);
+	min-height: 440px;
+	transition: height 0.2s ease;
+	flex-direction: column;
+	overflow: hidden;
+	color: var(--finder-ink);
+	background: #fdfcfa;
+	border: 1px solid #ddd6cc;
+	border-radius: 10px;
+	box-shadow: 0 12px 30px rgba(60, 48, 36, 0.08);
+}
+
+/* Leave room for the floating quick-launch dock. */
+.finder.has-dock {
+	height: calc(100dvh - var(--finder-top, 140px) - 92px);
+}
+
+/* Toolbar */
+
+.finder-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	height: 46px;
+	flex: 0 0 46px;
+	padding: 0 10px;
+	background: #f6f3ee;
+	border-bottom: 1px solid var(--finder-line);
+}
+
+.finder-toolbar-nav,
+.finder-toolbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex: 0 0 auto;
+}
+
+.finder-toolbar-actions {
+	gap: 6px;
+	margin-left: auto;
+}
+
+.finder-toolbar .ant-btn-text {
+	color: #5f5952;
+}
+
+.finder-toolbar .ant-btn-text:disabled {
+	color: #c9c2b8;
+}
+
+.finder-crumbs {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	overflow-x: auto;
+	white-space: nowrap;
+	scrollbar-width: none;
+}
+
+.finder-crumbs::-webkit-scrollbar {
+	display: none;
+}
+
+.finder-crumb-item {
+	display: inline-flex;
+	align-items: center;
+}
+
+.finder-crumb {
+	max-width: 220px;
+	height: 26px;
+	overflow: hidden;
+	padding: 0 7px;
+	color: var(--finder-ink-2);
+	font: inherit;
+	font-size: 13px;
+	text-overflow: ellipsis;
+	background: none;
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.finder-crumb:hover {
+	color: var(--finder-ink);
+	background: #ebe6de;
+}
+
+.finder-crumb.is-current {
+	color: var(--finder-ink);
+	font-weight: 600;
+}
+
+.finder-crumb-separator {
+	color: var(--finder-ink-3);
+	font-size: 9px;
+}
+
+.finder-mobile-title {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	font-size: 15px;
+	text-align: center;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.finder-search {
+	width: 190px;
+	border-radius: 7px;
+}
+
+.finder-view-toggle {
+	background: #ebe6de;
+}
+
+.finder-mobile-search {
+	padding: 8px 10px;
+	background: #f6f3ee;
+	border-bottom: 1px solid var(--finder-line);
+}
+
+.finder-mobile-search .finder-search {
+	width: 100%;
+}
+
+/* Body */
+
+.finder-body {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.finder-sidebar {
+	width: 232px;
+	flex: 0 0 232px;
+	min-height: 0;
+	background: #f3f0ea;
+	border-right: 1px solid var(--finder-line);
+}
+
+/* Long names scroll sideways instead of wrapping. */
+.finder-sidebar-scroll {
+	height: 100%;
+	overflow: auto;
+	padding: 10px 8px 16px;
+}
+
+.finder-sidebar-section + .finder-sidebar-section {
+	margin-top: 14px;
+}
+
+.finder-sidebar-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 0 8px 4px;
+	color: var(--finder-ink-3);
+	font-size: 11px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.finder-sidebar-item {
+	display: flex;
+	min-width: 100%;
+	width: max-content;
+	height: 28px;
+	align-items: center;
+	gap: 8px;
+	padding: 0 8px;
+	color: var(--finder-ink);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	white-space: nowrap;
+	background: none;
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.finder-sidebar-item:hover {
+	background: #e8e3db;
+}
+
+.finder-sidebar-item.is-active {
+	background: #e0d8cd;
+	font-weight: 600;
+}
+
+.finder-sidebar-icon {
+	display: inline-flex;
+	color: var(--finder-accent);
+	font-size: 14px;
+}
+
+.finder-tree.ant-tree {
+	width: max-content;
+	min-width: 100%;
+	background: transparent;
+}
+
+.finder-tree .ant-tree-treenode {
+	padding-bottom: 1px !important;
+}
+
+.finder-tree .ant-tree-node-content-wrapper {
+	display: inline-flex !important;
+	align-items: center;
+	min-height: 26px !important;
+	padding: 0 6px !important;
+	font-size: 13px;
+	white-space: nowrap;
+	border-radius: 6px !important;
+}
+
+.finder-tree .ant-tree-title {
+	white-space: nowrap;
+}
+
+.finder-tree .ant-tree-iconEle {
+	color: #7aa7d8;
+}
+
+.finder-tree .ant-tree-node-selected {
+	background: #e0d8cd !important;
+}
+
+.finder-main {
+	position: relative;
+	display: flex;
+	min-width: 0;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	background: #fffefc;
+}
+
+/* Status bar */
+
+.finder-statusbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-height: 28px;
+	flex: 0 0 auto;
+	padding: 2px 12px;
+	color: var(--finder-ink-2);
+	font-size: 12px;
+	background: #f6f3ee;
+	border-top: 1px solid var(--finder-line);
+}
+
+.finder-status-text,
+.finder-status-aside {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Items */
+
+.finder-items {
+	position: relative;
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow: auto;
+	outline: none;
+}
+
+.finder-items-spin,
+.finder-items-spin > .ant-spin-container {
+	min-height: 100%;
+}
+
+.finder-empty {
+	display: grid;
+	min-height: 260px;
+	place-items: center;
+	color: var(--finder-ink-3);
+}
+
+.finder-kind-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: #8c939e;
+}
+
+.finder-kind-icon.is-folder {
+	color: #6aa3e0;
+}
+
+.finder-kind-icon.is-image {
+	color: #c7883d;
+}
+
+.finder-kind-icon.is-video {
+	color: #a368c9;
+}
+
+.finder-kind-icon.is-audio {
+	color: #d6608a;
+}
+
+.finder-kind-icon.is-pdf {
+	color: #d2574b;
+}
+
+.finder-kind-icon.is-code {
+	color: #4e8f6e;
+}
+
+.finder-kind-icon.is-archive {
+	color: #9a7b55;
+}
+
+.finder-kind-icon.is-sheet {
+	color: #3f9a5b;
+}
+
+.finder-kind-icon.is-doc {
+	color: #3f73c4;
+}
+
+.finder-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+	gap: 6px;
+	padding: 14px;
+	align-content: start;
+}
+
+.finder-tile {
+	position: relative;
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 6px 8px;
+	border-radius: 8px;
+	cursor: default;
+	user-select: none;
+}
+
+.finder-tile:hover {
+	background: #f4f0ea;
+}
+
+.finder-tile-icon {
+	position: relative;
+	display: grid;
+	width: 64px;
+	height: 56px;
+	place-items: center;
+	border-radius: 8px;
+}
+
+.finder-tile-icon .finder-kind-icon {
+	font-size: 46px;
+}
+
+.finder-tile-icon .finder-kind-icon.is-folder {
+	font-size: 54px;
+}
+
+.finder-tile.is-selected .finder-tile-icon {
+	background: rgba(41, 38, 34, 0.08);
+}
+
+.finder-tile-name {
+	display: -webkit-box;
+	max-width: 100%;
+	overflow: hidden;
+	padding: 1px 6px;
+	font-size: 12px;
+	line-height: 1.35;
+	text-align: center;
+	word-break: break-all;
+	border-radius: 4px;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+.finder-tile.is-selected .finder-tile-name {
+	color: #fff;
+	background: var(--finder-select);
+}
+
+.finder-tile-dot {
+	position: absolute;
+	right: 4px;
+	bottom: 4px;
+	width: 9px;
+	height: 9px;
+	border: 2px solid #fffefc;
+	border-radius: 50%;
+}
+
+.finder-tile .finder-item-more {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	opacity: 0;
+}
+
+.finder-tile:hover .finder-item-more,
+.finder-tile.is-selected .finder-item-more,
+.finder-list-row:hover .finder-item-more,
+.finder-list-row.is-selected .finder-item-more {
+	opacity: 1;
+}
+
+.finder-item-more {
+	display: inline-grid;
+	width: 24px;
+	height: 24px;
+	place-items: center;
+	color: var(--finder-ink-2);
+	background: rgba(255, 255, 255, 0.85);
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+
+.finder-item-more:hover,
+.finder-item-more:focus-visible {
+	color: var(--finder-ink);
+	background: #ebe6de;
+	opacity: 1;
+}
+
+.finder-tile.is-muted,
+.finder-list-row.is-muted {
+	opacity: 0.6;
+}
+
+.finder-list {
+	min-width: 640px;
+}
+
+.finder-list-row {
+	display: grid;
+	grid-template-columns: minmax(220px, 1fr) 150px 92px 110px 36px;
+	align-items: center;
+	height: 32px;
+	padding: 0 10px;
+	font-size: 13px;
+	cursor: default;
+	user-select: none;
+}
+
+.finder-list-row:nth-child(even):not(.finder-list-head) {
+	background: #f8f6f2;
+}
+
+.finder-list-row:not(.finder-list-head):hover {
+	background: #f1ece5;
+}
+
+.finder-list-row.is-selected,
+.finder-list-row.is-selected:hover {
+	color: #fff;
+	background: var(--finder-select) !important;
+}
+
+.finder-list-row.is-selected .finder-kind-icon,
+.finder-list-row.is-selected .finder-list-cell {
+	color: #fff;
+}
+
+.finder-list-head {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	height: 30px;
+	background: #fffefc;
+	border-bottom: 1px solid var(--finder-line);
+}
+
+.finder-list-cell {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 8px;
+	overflow: hidden;
+	padding: 0 6px;
+	color: var(--finder-ink-2);
+	white-space: nowrap;
+}
+
+.finder-list-cell.is-name {
+	color: var(--finder-ink);
+}
+
+.finder-list-cell.is-name .finder-kind-icon {
+	font-size: 16px;
+}
+
+.finder-list-text {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+}
+
+.finder-list-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.finder-list-sub {
+	display: none;
+	overflow: hidden;
+	color: var(--finder-ink-3);
+	font-size: 11px;
+	text-overflow: ellipsis;
+}
+
+.finder-list-row.is-selected .finder-list-sub {
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.finder-list-cell.is-size {
+	justify-content: flex-end;
+}
+
+.finder-list-head .finder-list-cell {
+	height: 100%;
+	color: var(--finder-ink-3);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+.finder-list-head .finder-list-cell.is-sorted {
+	color: var(--finder-ink);
+}
+
+.finder-badge {
+	flex: 0 0 auto;
+	padding: 0 6px;
+	font-size: 11px;
+	line-height: 17px;
+	border-radius: 9px;
+}
+
+.finder-badge.is-green,
+.finder-tile-dot.is-green {
+	color: #2f7a4b;
+	background: #dff1e5;
+}
+
+.finder-badge.is-orange,
+.finder-tile-dot.is-orange {
+	color: #a8601c;
+	background: #fbe8d3;
+}
+
+.finder-badge.is-blue,
+.finder-tile-dot.is-blue {
+	color: #2f6aa8;
+	background: #dfeaf8;
+}
+
+.finder-badge.is-red,
+.finder-tile-dot.is-red {
+	color: #b0443d;
+	background: #f8e0dd;
+}
+
+.finder-badge.is-gray,
+.finder-tile-dot.is-gray {
+	color: #6f6a63;
+	background: #ece8e2;
+}
+
+.finder-tile-dot.is-green {
+	background: #3f9a5b;
+}
+
+.finder-tile-dot.is-orange {
+	background: #e0913f;
+}
+
+.finder-tile-dot.is-blue {
+	background: #4f86c6;
+}
+
+.finder-tile-dot.is-red {
+	background: #d2574b;
+}
+
+.finder-tile-dot.is-gray {
+	background: #a29a90;
+}
+
+.finder-list-row.is-selected .finder-badge {
+	color: var(--finder-select);
+	background: #fff;
+}
+
+/* Drop to upload: the whole item area is the drop target. */
+.finder-drop {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+}
+
+.finder-drop .ant-upload-wrapper,
+.finder-drop .ant-upload-drag,
+.finder-drop .ant-upload-drag .ant-upload-btn,
+.finder-drop .ant-upload-drag-container {
+	display: flex !important;
+	min-height: 0;
+	height: 100%;
+	flex: 1 1 auto;
+	flex-direction: column;
+}
+
+.finder-drop .ant-upload-drag {
+	position: relative;
+	text-align: left;
+	background: transparent !important;
+	border: 0 !important;
+	border-radius: 0 !important;
+	cursor: default !important;
+}
+
+.finder-drop .ant-upload-drag .ant-upload-btn {
+	padding: 0 !important;
+}
+
+.finder-drop .ant-upload-drag-hover::after,
+.finder-drop.is-dragging::after {
+	position: absolute;
+	inset: 8px;
+	z-index: 5;
+	display: grid;
+	place-items: center;
+	color: var(--finder-accent);
+	font-size: 14px;
+	font-weight: 600;
+	content: "松开即可上传到当前文件夹";
+	pointer-events: none;
+	background: rgba(193, 95, 60, 0.06);
+	border: 2px dashed rgba(193, 95, 60, 0.55);
+	border-radius: 10px;
+}
+
+.finder-drop.is-dragging {
+	position: relative;
+}
+
+/* Upload progress chip */
+
+.finder-progress {
+	position: absolute;
+	right: 14px;
+	bottom: 14px;
+	z-index: 6;
+	display: grid;
+	width: min(320px, calc(100% - 28px));
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 4px 10px;
+	padding: 10px 12px;
+	background: #fff;
+	border: 1px solid var(--finder-line);
+	border-radius: 10px;
+	box-shadow: 0 10px 28px rgba(60, 48, 36, 0.16);
+}
+
+.finder-progress-name {
+	overflow: hidden;
+	font-size: 12px;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.finder-progress-stage {
+	grid-column: 2;
+	color: var(--finder-ink-2);
+	font-size: 11px;
+}
+
+.finder-progress-percent {
+	grid-row: 1 / span 2;
+	grid-column: 3;
+	color: var(--finder-accent);
+	font-weight: 600;
+}
+
+.finder-progress .ant-progress {
+	grid-column: 1 / -1;
+	margin: 0;
+}
+
+/* Sheets */
+
+.finder-sheet-title {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 8px;
+}
+
+.finder-sheet-title span:last-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.finder-action-sheet .ant-drawer-content {
+	border-radius: 14px 14px 0 0;
+}
+
+.finder-action-sheet .ant-drawer-body {
+	padding: 4px 8px max(12px, env(safe-area-inset-bottom));
+}
+
+.finder-action-sheet .ant-menu {
+	border-inline-end: 0 !important;
+	background: transparent;
+}
+
+.finder-action-sheet .ant-menu-item {
+	height: 46px;
+	line-height: 46px;
+	font-size: 15px;
+}
+
+.finder-sidebar-drawer .ant-drawer-body {
+	padding: 0;
+	background: #f3f0ea;
+}
+
+/* Touch-sized targets in the phone drawer. */
+.finder-sidebar-drawer .finder-sidebar-item {
+	height: 40px;
+	font-size: 15px;
+}
+
+.finder-sidebar-drawer .finder-tree .ant-tree-node-content-wrapper {
+	min-height: 36px !important;
+	font-size: 15px;
+}
+
+.finder-sidebar-drawer .finder-tree .ant-tree-switcher {
+	line-height: 36px;
+}
+
+@media (max-width: 768px) {
+	.finder {
+		height: calc(100dvh - var(--finder-top, 120px) - 8px);
+		min-height: 360px;
+		border-radius: 10px;
+	}
+
+	.finder-toolbar {
+		gap: 6px;
+		height: 48px;
+		flex-basis: 48px;
+		padding: 0 6px;
+	}
+
+	.finder-grid {
+		grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+		gap: 4px;
+		padding: 10px 8px;
+	}
+
+	.finder-tile-icon {
+		width: 56px;
+		height: 50px;
+	}
+
+	.finder-tile-icon .finder-kind-icon {
+		font-size: 40px;
+	}
+
+	.finder-tile-icon .finder-kind-icon.is-folder {
+		font-size: 46px;
+	}
+
+	/* No hover on touch: keep the "more" button reachable. */
+	.finder-item-more {
+		opacity: 1;
+		background: transparent;
+	}
+
+	.finder-list {
+		min-width: 0;
+	}
+
+	.finder-list-row {
+		grid-template-columns: minmax(0, 1fr) 36px;
+		height: 48px;
+	}
+
+	.finder-list-head {
+		display: none;
+	}
+
+	.finder-list-cell.is-modified,
+	.finder-list-cell.is-size,
+	.finder-list-cell.is-kind {
+		display: none;
+	}
+
+	.finder-list-cell.is-name .finder-kind-icon {
+		font-size: 22px;
+	}
+
+	.finder-list-sub {
+		display: block;
+	}
+
+	.finder-list-row:nth-child(even):not(.finder-list-head) {
+		background: transparent;
+	}
+
+	.finder-list-row + .finder-list-row {
+		border-top: 1px solid #f0ebe4;
+	}
+
+	.finder-status-aside {
+		display: none;
+	}
+}
+
+.finder-page-shell {
+	min-width: 0;
+}
+
+.finder-sidebar-hint {
+	display: block;
+	padding: 2px 8px;
+	font-size: 12px;
+	white-space: normal;
+}
+
+/* The upload label fills the whole menu row so any click opens the picker. */
+.finder-menu-upload {
+	display: block;
+	margin: -5px -12px;
+	padding: 5px 12px;
+}
+
+@media (max-width: 768px) {
+	.finder-action-label {
+		display: none;
+	}
+}
+
+.finder-filter-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+
+.finder-filter-dot.is-green {
+	background: #3f9a5b;
+}
+
+.finder-filter-dot.is-red {
+	background: #d2574b;
+}
+
+.finder-filter-dot.is-gray {
+	background: #a29a90;
+}
+
+/* Keeps unchecked menu options aligned with the checked one. */
+.finder-menu-check {
+	display: inline-block;
+	width: 14px;
+}

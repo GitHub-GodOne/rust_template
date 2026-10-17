@@ -213,6 +213,23 @@ cargo loco vnc start
 在 TightVNC 中配置访问密码，再在后台“VNC 管理”选择“本机 VNC”连接；这些命令不会
 代替你设置 VNC 密码。Linux/macOS 需要自行配置 VNC 服务。更多说明见 [Windows VNC](docs/vnc.md)。
 
+## Cloudflare IPv6 动态解析认证
+
+“IPv6 动态解析”配置中支持两种认证方式：
+
+- **API Token（推荐）**：填写 Token，需要目标 Zone 的 DNS 编辑权限；Zone ID 留空自动查找时还需 Zone 读取权限。
+- **Global API Key**：选择此认证方式，填写该 Key 所属的 Cloudflare 账号邮箱及 Global API Key。不是 Origin CA Key。
+
+两者不能混用：API Token 使用 `Authorization: Bearer …`，Global API Key 使用
+`X-Auth-Key` 和 `X-Auth-Email`。将 Global API Key 填入 API Token 模式可能产生
+`[6003] Invalid request headers` / `[6111] Invalid format for Authorization header`。
+若已保存的凭据就是 Global API Key，只需切换认证方式、填写账号邮箱，密钥框留空可继续使用原值。
+保存后点击“立即同步”。新增设置会在保存时创建，升级无需重新 seed 或清空数据库。
+
+Token 输入兼容误粘贴的 `Bearer` / `Authorization: Bearer` 前缀与外层引号；内部空白、换行
+或不可见字符会被拒绝。凭据不会通过配置接口回显，Cloudflare 返回的嵌套错误会显示具体原因。
+参考：[Cloudflare 官方认证说明](https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/)。
+
 ## 数据库迁移到另一台服务器
 
 本项目默认使用 PostgreSQL。迁移时需要同时迁移数据库、配置文件和本地文件存储；只复制
@@ -375,6 +392,23 @@ Windows PowerShell：
 ```powershell
 .\gpt_images-cli.exe -e production db seed --dump --from backups/fixtures
 ```
+
+已有数据库要更新菜单分组、顺序、权限和角色授权，可使用专用同步任务：
+
+```sh
+./gpt_images-cli -e production task admin.sync_fixture_baseline
+```
+
+Windows 使用 `.\gpt_images-cli.exe`；开发环境将 `production` 换成
+`development`。此任务读取编译进程序的 `menus.yaml`、`permissions.yaml`、
+`role_menus.yaml`、`role_permissions.yaml`，所以修改这些文件后必须重新构建程序并部署
+到目标机器。执行后刷新网页，重新加载登录用户的菜单。
+
+页面“菜单管理”中的调整只保存到数据库，不会自动更新源码 fixtures。当前默认分组为
+首页、存储管理、接口管理、便捷管理、系统管理、远程管理；`parent_id` 决定分组，
+同组内按 `sort_order`、`id` 升序排列。同步任务会更新分组和排序，保留目标数据库里的
+菜单 ID；页面按路径匹配，分组按名称和父菜单匹配，并映射角色菜单授权。未在 fixtures
+中的自定义菜单和授权不会被删除。
 
 导入 fixtures 时去掉 `--dump`。先确保目标数据库已迁移，且不会与待导入记录产生主键冲突：
 
