@@ -213,6 +213,23 @@ cargo loco vnc start
 在 TightVNC 中配置访问密码，再在后台“VNC 管理”选择“本机 VNC”连接；这些命令不会
 代替你设置 VNC 密码。Linux/macOS 需要自行配置 VNC 服务。更多说明见 [Windows VNC](docs/vnc.md)。
 
+## Cloudflare IPv6 动态解析认证
+
+“IPv6 动态解析”配置中支持两种认证方式：
+
+- **API Token（推荐）**：填写 Token，需要目标 Zone 的 DNS 编辑权限；Zone ID 留空自动查找时还需 Zone 读取权限。
+- **Global API Key**：选择此认证方式，填写该 Key 所属的 Cloudflare 账号邮箱及 Global API Key。不是 Origin CA Key。
+
+两者不能混用：API Token 使用 `Authorization: Bearer …`，Global API Key 使用
+`X-Auth-Key` 和 `X-Auth-Email`。将 Global API Key 填入 API Token 模式可能产生
+`[6003] Invalid request headers` / `[6111] Invalid format for Authorization header`。
+若已保存的凭据就是 Global API Key，只需切换认证方式、填写账号邮箱，密钥框留空可继续使用原值。
+保存后点击“立即同步”。新增设置会在保存时创建，升级无需重新 seed 或清空数据库。
+
+Token 输入兼容误粘贴的 `Bearer` / `Authorization: Bearer` 前缀与外层引号；内部空白、换行
+或不可见字符会被拒绝。凭据不会通过配置接口回显，Cloudflare 返回的嵌套错误会显示具体原因。
+参考：[Cloudflare 官方认证说明](https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/)。
+
 ## 数据库迁移到另一台服务器
 
 本项目默认使用 PostgreSQL。迁移时需要同时迁移数据库、配置文件和本地文件存储；只复制

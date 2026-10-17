@@ -543,6 +543,38 @@
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 36
+  key: ddns.cloudflare_auth_mode
+  name: Cloudflare 认证方式
+  group_key: ddns
+  value: api_token
+  value_type: string
+  default_value: api_token
+  description: api_token 或 global_api_key；Global API Key 必须同时填写账号邮箱
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 212
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 37
+  key: ddns.cloudflare_api_email
+  name: Cloudflare 账号邮箱
+  group_key: ddns
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 仅 Global API Key 认证需要，必须是该密钥所属账号的邮箱
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 213
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 35
   key: ddns.manual_ipv6
   name: 手动指定 IPv6

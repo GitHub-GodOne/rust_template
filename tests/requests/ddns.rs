@@ -37,6 +37,17 @@ struct MockCloudflare {
 type Shared = Arc<Mutex<MockCloudflare>>;
 
 fn authorized(headers: &HeaderMap) -> bool {
+    if headers
+        .get("x-auth-key")
+        .and_then(|value| value.to_str().ok())
+        == Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    {
+        return !headers.contains_key(header::AUTHORIZATION)
+            && headers
+                .get("x-auth-email")
+                .and_then(|value| value.to_str().ok())
+                == Some("owner@example.com");
+    }
     headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -265,6 +276,25 @@ async fn ddns_sync_creates_then_updates_cloudflare_aaaa_record() {
             .as_str()
             .unwrap()
             .contains("Invalid access token"));
+
+        // The reported production failure: a Global API Key cannot be used as Bearer.
+        set_setting(
+            &ctx,
+            "ddns.cloudflare_api_token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await;
+        let (code, body) = sync(&request, &token).await;
+        assert_eq!(
+            code, 400,
+            "invalid credentials are rejected before calling Cloudflare: {body}"
+        );
+        assert!(body["message"].as_str().unwrap().contains("Global API Key"));
+        set_setting(&ctx, "ddns.cloudflare_auth_mode", "global_api_key").await;
+        set_setting(&ctx, "ddns.cloudflare_api_email", "owner@example.com").await;
+        let (code, body) = sync(&request, &token).await;
+        assert_eq!(code, 200, "{body}");
+        assert!(body["data"]["last_error"].is_null(), "{body}");
     })
     .await;
 }
@@ -368,6 +398,7 @@ async fn ddns_config_api_masks_token_and_syncs_manual_addresses() {
         assert_eq!(code, 200, "{body}");
         assert_eq!(body["data"]["token_configured"], true);
         assert_eq!(body["data"]["record_names"], "home.example.com");
+        assert_eq!(body["data"]["auth_mode"], "api_token");
         assert!(body["data"].get("api_token").is_none());
 
         // Saving again without a token keeps the stored one.
@@ -382,6 +413,26 @@ async fn ddns_config_api_masks_token_and_syncs_manual_addresses() {
             .await;
         let fetched: serde_json::Value = serde_json::from_str(&fetched.text()).unwrap();
         assert_eq!(fetched["data"]["api_base"], format!("{base}/client/v4"));
+
+        let mut global = config(
+            true,
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+            "url",
+            "",
+        );
+        global["auth_mode"] = serde_json::json!("global_api_key");
+        let (code, _) = put_config(&request, &token, &global).await;
+        assert_eq!(code, 400, "Global API Key requires an email");
+        global["api_email"] = serde_json::json!("owner@example.com");
+        let (code, body) = put_config(&request, &token, &global).await;
+        assert_eq!(code, 200, "{body}");
+        assert!(body["data"].get("api_token").is_none());
+        let (code, body) = put_config(&request, &token, &config(true, None, "url", "")).await;
+        assert_eq!(code, 200, "{body}");
+        assert_eq!(
+            body["data"]["auth_mode"], "global_api_key",
+            "older clients preserve auth mode"
+        );
 
         let invalid = request
             .post("/api/admin/ddns/sync")

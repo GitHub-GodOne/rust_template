@@ -3689,7 +3689,10 @@ select {
 		scroll-behavior: auto !important;
 		animation-duration: 0.01ms !important;
 		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
+		/* A nonzero global duration animates even temporary left/top measurements
+		   in popup positioning. Keep these synchronous under reduced motion. */
+		transition-duration: 0s !important;
+		transition-delay: 0s !important;
 	}
 }
 

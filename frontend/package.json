@@ -13,6 +13,7 @@
     "test:temperature": "node --test tests/temperature-panel.test.cjs",
     "test:home": "node --test tests/home-overview.test.cjs",
     "test:ddns": "node --test tests/ddns-ipv6.test.cjs",
+    "test:motion": "node --test tests/reduced-motion.test.cjs",
     "test:ssh": "node --test tests/ssh-session.test.cjs",
     "test:finder": "node --test tests/finder-model.test.cjs",
     "test:dock": "node --test tests/dock-config.test.cjs",

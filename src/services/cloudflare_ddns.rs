@@ -26,6 +26,8 @@ use crate::{
 
 pub const KEY_ENABLED: &str = "ddns.enabled";
 pub const KEY_API_TOKEN: &str = "ddns.cloudflare_api_token";
+pub const KEY_AUTH_MODE: &str = "ddns.cloudflare_auth_mode";
+pub const KEY_API_EMAIL: &str = "ddns.cloudflare_api_email";
 pub const KEY_ZONE_ID: &str = "ddns.cloudflare_zone_id";
 pub const KEY_RECORD_NAMES: &str = "ddns.record_names";
 pub const KEY_PROXIED: &str = "ddns.proxied";
@@ -84,6 +86,8 @@ pub struct DdnsSettings {
     pub enabled: bool,
     pub api_base: String,
     pub api_token: String,
+    pub auth_mode: String,
+    pub api_email: String,
     pub zone_id: Option<String>,
     pub record_names: Vec<String>,
     pub proxied: bool,
@@ -101,6 +105,8 @@ impl DdnsSettings {
         address.hash(&mut hasher);
         self.api_base.hash(&mut hasher);
         self.api_token.hash(&mut hasher);
+        self.auth_mode.hash(&mut hasher);
+        self.api_email.hash(&mut hasher);
         self.zone_id.hash(&mut hasher);
         self.record_names.hash(&mut hasher);
         self.proxied.hash(&mut hasher);
@@ -112,6 +118,7 @@ impl DdnsSettings {
         if self.api_token.is_empty() {
             return Err(format!("未配置 Cloudflare API Token（{KEY_API_TOKEN}）"));
         }
+        cloudflare_auth_headers(&self.auth_mode, &self.api_token, &self.api_email)?;
         if self.record_names.is_empty() {
             return Err(format!("未配置需要更新的域名（{KEY_RECORD_NAMES}）"));
         }
@@ -248,6 +255,8 @@ pub async fn load_settings(db: &DatabaseConnection) -> ApiResult<DdnsSettings> {
             .trim_end_matches('/')
             .to_string(),
         api_token: text(KEY_API_TOKEN, "").await?.trim().to_string(),
+        auth_mode: text(KEY_AUTH_MODE, "api_token").await?.trim().to_string(),
+        api_email: text(KEY_API_EMAIL, "").await?.trim().to_string(),
         zone_id: non_empty(&text(KEY_ZONE_ID, "").await?),
         record_names: parse_record_names(&text(KEY_RECORD_NAMES, "").await?),
         proxied,
@@ -268,6 +277,15 @@ pub async fn load_settings(db: &DatabaseConnection) -> ApiResult<DdnsSettings> {
 pub fn validate_setting(key: &str, value: &str) -> ApiResult<()> {
     let value = value.trim();
     match key {
+        KEY_AUTH_MODE if !matches!(value, "api_token" | "global_api_key") => Err(
+            ApiError::bad_request("Cloudflare 认证方式必须是 api_token 或 global_api_key"),
+        ),
+        KEY_API_EMAIL if !value.is_empty() => {
+            validate_cloudflare_email(value).map_err(ApiError::bad_request)
+        }
+        KEY_API_TOKEN if !value.is_empty() => normalize_cloudflare_credential(value)
+            .map(|_| ())
+            .map_err(ApiError::bad_request),
         KEY_SOURCE if Ipv6Source::parse(value).is_none() => Err(ApiError::bad_request(
             "ddns.ipv6_source 只能是 auto、interface、url 或 manual",
         )),
@@ -314,6 +332,8 @@ struct SettingDef {
 /// Metadata used when a DDNS setting row is missing and has to be created.
 /// Kept in sync with `src/fixtures/system_settings.yaml`.
 const SETTING_DEFS: &[SettingDef] = &[
+    SettingDef { key: KEY_AUTH_MODE, name: "Cloudflare 认证方式", value_type: "string", default_value: "api_token", description: "api_token 或 global_api_key；Global API Key 必须同时填写账号邮箱", sort_order: 212 },
+    SettingDef { key: KEY_API_EMAIL, name: "Cloudflare 账号邮箱", value_type: "string", default_value: "", description: "仅 Global API Key 认证需要，必须是该密钥所属账号的邮箱", sort_order: 213 },
     SettingDef { key: KEY_ENABLED, name: "启用 IPv6 动态解析", value_type: "boolean", default_value: "false", description: "开启后定时检测本机公网 IPv6，并自动更新到 Cloudflare 的 AAAA 记录", sort_order: 210 },
     SettingDef { key: KEY_API_TOKEN, name: "Cloudflare API Token", value_type: "secret", default_value: "", description: "Cloudflare API 令牌，需要 Zone.DNS 编辑权限（建议只授权目标域名）", sort_order: 215 },
     SettingDef { key: KEY_ZONE_ID, name: "Cloudflare Zone ID", value_type: "string", default_value: "", description: "域名所在 Zone 的 ID；留空时根据域名自动查找", sort_order: 220 },
@@ -334,6 +354,8 @@ const SETTING_DEFS: &[SettingDef] = &[
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct DdnsConfig {
     pub enabled: bool,
+    pub auth_mode: String,
+    pub api_email: String,
     pub token_configured: bool,
     pub zone_id: String,
     pub record_names: String,
@@ -350,6 +372,9 @@ pub struct DdnsConfig {
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct SaveDdnsConfigParams {
     pub enabled: bool,
+    /// Omitted by older clients; preserve the configured authentication mode.
+    pub auth_mode: Option<String>,
+    pub api_email: Option<String>,
     /// Leave empty to keep the stored token.
     pub api_token: Option<String>,
     pub zone_id: Option<String>,
@@ -368,6 +393,8 @@ pub async fn load_config(db: &DatabaseConnection) -> ApiResult<DdnsConfig> {
     let settings = load_settings(db).await?;
     Ok(DdnsConfig {
         enabled: settings.enabled,
+        auth_mode: settings.auth_mode,
+        api_email: settings.api_email,
         token_configured: !settings.api_token.is_empty(),
         zone_id: settings.zone_id.unwrap_or_default(),
         record_names: settings.record_names.join(", "),
@@ -406,9 +433,23 @@ pub async fn save_config(
     let lookup_url = text(params.ipv6_lookup_url);
     let api_base = text(params.api_base);
     let token = text(params.api_token);
+    let token = if token.is_empty() {
+        token
+    } else {
+        normalize_cloudflare_credential(&token).map_err(ApiError::bad_request)?
+    };
+    let stored = load_settings(db).await?;
+    let auth_mode = params
+        .auth_mode
+        .map_or(stored.auth_mode, |value| value.trim().to_string());
+    let api_email = params
+        .api_email
+        .map_or(stored.api_email, |value| value.trim().to_string());
 
     let mut values: Vec<(&str, String)> = vec![
         (KEY_ENABLED, params.enabled.to_string()),
+        (KEY_AUTH_MODE, auth_mode.clone()),
+        (KEY_API_EMAIL, api_email.clone()),
         (KEY_ZONE_ID, text(params.zone_id)),
         (KEY_RECORD_NAMES, record_names.clone()),
         (KEY_PROXIED, params.proxied.to_string()),
@@ -446,12 +487,21 @@ pub async fn save_config(
         ));
     }
     if params.enabled {
-        let has_token = !token.is_empty() || !load_settings(db).await?.api_token.is_empty();
+        let has_token = !token.is_empty() || !stored.api_token.is_empty();
         if !has_token || record_names.is_empty() {
             return Err(ApiError::bad_request(
                 "启用前请填写 Cloudflare API Token 和至少一个解析域名",
             ));
         }
+    }
+    let effective_token = if token.is_empty() {
+        &stored.api_token
+    } else {
+        &token
+    };
+    if params.enabled || !token.is_empty() {
+        cloudflare_auth_headers(&auth_mode, effective_token, &api_email)
+            .map_err(ApiError::bad_request)?;
     }
 
     for (key, value) in values {
@@ -1031,6 +1081,81 @@ pub fn parse_ifconfig(output: &str) -> Vec<AddressCandidate> {
 // Cloudflare API
 // ---------------------------------------------------------------------------
 
+fn normalize_cloudflare_credential(value: &str) -> Result<String, String> {
+    let mut value = value.trim();
+    // Accept a copied quoted value or Authorization header, not an entire curl command.
+    loop {
+        let previous = value;
+        if let Some(inner) = value
+            .strip_prefix('"')
+            .and_then(|v| v.strip_suffix('"'))
+            .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+        {
+            value = inner.trim();
+        }
+        for prefix in ["Authorization:", "Bearer "] {
+            if value
+                .get(..prefix.len())
+                .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+            {
+                value = value[prefix.len()..].trim();
+            }
+        }
+        if previous == value {
+            break;
+        }
+    }
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("Bearer")
+        || !value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~+/=".contains(&b))
+    {
+        return Err("Cloudflare 凭据格式不正确，请只填写 Token 或 Global API Key；不能包含空白、换行或不可见字符".to_string());
+    }
+    Ok(value.to_string())
+}
+
+fn validate_cloudflare_email(value: &str) -> Result<(), String> {
+    use validator::ValidateEmail;
+    if value.is_ascii() && value.validate_email() && !value.chars().any(char::is_whitespace) {
+        Ok(())
+    } else {
+        Err("Global API Key 认证需要填写该 Cloudflare 账号的有效邮箱".to_string())
+    }
+}
+
+fn cloudflare_auth_headers(
+    mode: &str,
+    credential: &str,
+    email: &str,
+) -> Result<reqwest::header::HeaderMap, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+    let credential = normalize_cloudflare_credential(credential)?;
+    let mut headers = HeaderMap::new();
+    let sensitive = |value: &str| -> Result<HeaderValue, String> {
+        let mut header = HeaderValue::from_str(value)
+            .map_err(|_| "Cloudflare 认证请求头格式不正确".to_string())?;
+        header.set_sensitive(true);
+        Ok(header)
+    };
+    match mode {
+        "api_token" => {
+            if credential.len() == 37 && credential.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err("当前凭据看起来是 Global API Key，不能作为 API Token 使用；请选择 Global API Key 认证并填写 Cloudflare 账号邮箱，或换用 API Token".to_string());
+            }
+            headers.insert(AUTHORIZATION, sensitive(&format!("Bearer {credential}"))?);
+        }
+        "global_api_key" => {
+            validate_cloudflare_email(email)?;
+            headers.insert("x-auth-key", sensitive(&credential)?);
+            headers.insert("x-auth-email", sensitive(email)?);
+        }
+        _ => return Err("Cloudflare 认证方式必须是 api_token 或 global_api_key".to_string()),
+    }
+    Ok(headers)
+}
+
 #[derive(Deserialize)]
 struct CloudflareEnvelope<T> {
     success: bool,
@@ -1043,6 +1168,22 @@ struct CloudflareEnvelope<T> {
 struct CloudflareMessage {
     code: Option<i64>,
     message: String,
+    #[serde(default)]
+    error_chain: Vec<Self>,
+}
+
+impl CloudflareMessage {
+    fn detail(&self) -> String {
+        let mut detail = self.code.map_or_else(
+            || self.message.clone(),
+            |code| format!("[{code}] {}", self.message),
+        );
+        for cause in &self.error_chain {
+            detail.push_str(" → ");
+            detail.push_str(&cause.detail());
+        }
+        detail
+    }
 }
 
 #[derive(Deserialize)]
@@ -1062,11 +1203,16 @@ struct CloudflareRecord {
 struct CloudflareClient {
     http: reqwest::Client,
     api_base: String,
-    token: String,
+    auth_headers: reqwest::header::HeaderMap,
 }
 
 impl CloudflareClient {
     async fn new(db: &DatabaseConnection, settings: &DdnsSettings) -> Result<Self, String> {
+        let auth_headers = cloudflare_auth_headers(
+            &settings.auth_mode,
+            &settings.api_token,
+            &settings.api_email,
+        )?;
         let http = build_http_client_with_overrides(
             db,
             HttpClientRuntimeOverrides {
@@ -1079,7 +1225,7 @@ impl CloudflareClient {
         Ok(Self {
             http,
             api_base: settings.api_base.clone(),
-            token: settings.api_token.clone(),
+            auth_headers,
         })
     }
 
@@ -1191,7 +1337,7 @@ impl CloudflareClient {
         builder: reqwest::RequestBuilder,
     ) -> Result<T, String> {
         let response = builder
-            .bearer_auth(&self.token)
+            .headers(self.auth_headers.clone())
             .send()
             .await
             .map_err(|error| format!("请求 Cloudflare 失败：{error}"))?;
@@ -1199,22 +1345,26 @@ impl CloudflareClient {
         let envelope: CloudflareEnvelope<T> = response.json().await.map_err(|error| {
             format!("Cloudflare 返回了无法解析的响应（HTTP {status}）：{error}")
         })?;
-        if envelope.success {
+        if status.is_success() && envelope.success {
             return envelope
                 .result
                 .ok_or_else(|| "Cloudflare 响应缺少 result".to_string());
         }
-        let detail = envelope
+        let mut detail = envelope
             .errors
             .iter()
-            .map(|error| {
-                error.code.map_or_else(
-                    || error.message.clone(),
-                    |code| format!("[{code}] {}", error.message),
-                )
-            })
+            .map(CloudflareMessage::detail)
             .collect::<Vec<_>>()
             .join("; ");
+        // An upstream error can echo a header; never persist credentials in DDNS logs/status.
+        for header in self.auth_headers.values() {
+            if let Ok(value) = header.to_str() {
+                detail = detail.replace(value, "[REDACTED]");
+                if let Some(token) = value.strip_prefix("Bearer ") {
+                    detail = detail.replace(token, "[REDACTED]");
+                }
+            }
+        }
         Err(format!("Cloudflare 返回错误（HTTP {status}）：{detail}"))
     }
 }
@@ -1282,6 +1432,81 @@ fn now_text() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cloudflare_credentials_normalize_pasted_headers_and_reject_invalid_input() {
+        for input in [
+            " test-token_123 ",
+            "Bearer test-token_123",
+            "\"Authorization: Bearer test-token_123\"",
+            "'test-token_123'",
+        ] {
+            assert_eq!(
+                normalize_cloudflare_credential(input).unwrap(),
+                "test-token_123"
+            );
+        }
+        for input in [
+            "",
+            "Bearer ",
+            "secret\r\nX-Test: bad",
+            "bad secret",
+            "abc\u{200b}def",
+            "curl -H something",
+        ] {
+            assert!(normalize_cloudflare_credential(input).is_err());
+        }
+    }
+
+    #[test]
+    fn cloudflare_auth_modes_never_mix_headers_and_mark_secrets_sensitive() {
+        let token = cloudflare_auth_headers("api_token", "Bearer test-token_123", "").unwrap();
+        assert_eq!(token["authorization"], "Bearer test-token_123");
+        assert!(token["authorization"].is_sensitive());
+        assert!(!token.contains_key("x-auth-key"));
+        let key = "a".repeat(37);
+        let global = cloudflare_auth_headers("global_api_key", &key, "owner@example.com").unwrap();
+        assert_eq!(global["x-auth-key"], key);
+        assert_eq!(global["x-auth-email"], "owner@example.com");
+        assert!(global["x-auth-key"].is_sensitive());
+        assert!(!global.contains_key("authorization"));
+        assert!(cloudflare_auth_headers("global_api_key", &key, "").is_err());
+        assert!(cloudflare_auth_headers("global_api_key", &key, "owner@example.com\r\n").is_err());
+        let error = cloudflare_auth_headers("api_token", &key, "").unwrap_err();
+        assert!(error.contains("Global API Key"));
+        assert!(!error.contains(&key));
+    }
+
+    #[tokio::test]
+    async fn cloudflare_error_chain_keeps_the_actual_header_error() {
+        use axum::{routing::get, Json, Router};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route("/", get(|| async {
+            (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "success": false, "result": null,
+                "errors": [{"code": 6003, "message": "Invalid request headers", "error_chain": [
+                        {"code": 6111, "message": "Invalid format for Authorization header: Bearer test-token_123"}
+                ]}]
+            })))
+        }));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client = CloudflareClient {
+            http: reqwest::Client::builder().no_proxy().build().unwrap(),
+            api_base: base.clone(),
+            auth_headers: cloudflare_auth_headers("api_token", "test-token_123", "").unwrap(),
+        };
+        let result = client
+            .request::<serde_json::Value>(client.http.get(base))
+            .await;
+        server.abort();
+        let error = result.unwrap_err();
+        assert!(error.contains("[6003]"));
+        assert!(error.contains("[6111] Invalid format for Authorization header"));
+        assert!(!error.contains("test-token_123"));
+    }
 
     fn candidate(interface: &str, address: &str, temporary: Option<bool>) -> AddressCandidate {
         AddressCandidate {

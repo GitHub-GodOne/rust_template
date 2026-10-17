@@ -43,6 +43,8 @@ export async function fetchDdnsStatus() {
 
 export type DdnsConfig = {
   enabled: boolean;
+  auth_mode: "api_token" | "global_api_key";
+  api_email: string;
   token_configured: boolean;
   zone_id: string;
   record_names: string;

@@ -91,6 +91,7 @@ export function DdnsPage() {
     state.hasPermission("system:ddns:update"),
   );
   const source = Form.useWatch("ipv6_source", form);
+  const authMode = Form.useWatch("auth_mode", form);
 
   const statusQuery = useQuery({
     queryKey: ["admin-ddns-status"],
@@ -191,7 +192,7 @@ export function DdnsPage() {
                       type="info"
                       showIcon
                       message="IPv6 动态解析未启用"
-                      description="填写 Cloudflare Token 和域名后打开「启用」并保存，系统会按检测间隔自动更新解析。"
+                      description="配置 Cloudflare 认证和域名后打开「启用」并保存，系统会按检测间隔自动更新解析。"
                     />
                   )}
                   {status.enabled && !status.configured && (
@@ -403,9 +404,45 @@ export function DdnsPage() {
                 </Col>
               </Row>
               <Form.Item
+                name="auth_mode"
+                label="Cloudflare 认证方式"
+                initialValue="api_token"
+              >
+                <Select
+                  options={[
+                    { value: "api_token", label: "API Token（推荐）" },
+                    {
+                      value: "global_api_key",
+                      label: "Global API Key + 账号邮箱",
+                    },
+                  ]}
+                />
+              </Form.Item>
+              {authMode === "global_api_key" && (
+                <Form.Item
+                  name="api_email"
+                  label="Cloudflare 账号邮箱"
+                  extra="必须是当前 Global API Key 所属账号的邮箱。"
+                  rules={[
+                    { required: true, message: "请填写 Cloudflare 账号邮箱" },
+                    { type: "email", message: "请输入有效邮箱" },
+                  ]}
+                >
+                  <Input autoComplete="email" placeholder="name@example.com" />
+                </Form.Item>
+              )}
+              <Form.Item
                 name="api_token"
-                label="Cloudflare API Token"
-                extra="需要目标域名的 Zone.DNS 编辑权限；保存后不会再显示，留空表示不修改。"
+                label={
+                  authMode === "global_api_key"
+                    ? "Cloudflare Global API Key"
+                    : "Cloudflare API Token"
+                }
+                extra={
+                  authMode === "global_api_key"
+                    ? "填写 Global API Key，不能使用 Origin CA Key。保存后不回显，留空保留已存密钥。"
+                    : "填写 API Token（不能使用 Global API Key）。需要目标域名的 Zone.DNS 编辑权限；自动查找 Zone 还需 Zone.Zone 读取权限。留空保留已存 Token。"
+                }
               >
                 <Input.Password
                   autoComplete="new-password"
