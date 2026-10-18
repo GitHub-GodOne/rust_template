@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 export type DockPosition = "bottom" | "left" | "right";
 export type DockSize = "small" | "medium" | "large";
 
@@ -46,9 +47,9 @@ export const MAX_DOCK_ITEMS = 16;
 export const MAX_DOCK_PAGE_RULES = 64;
 
 export const DOCK_PAGE_MODE_LABELS: Record<DockPageMode, string> = {
-  show: "常驻显示",
-  autoHide: "自动隐藏",
-  hide: "不显示 Dock",
+  show: t("常驻显示"),
+  autoHide: t("自动隐藏"),
+  hide: t("不显示 Dock"),
 };
 
 export const DOCK_COLORS = [

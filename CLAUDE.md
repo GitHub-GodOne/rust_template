@@ -73,6 +73,7 @@ Current backend/admin coverage includes:
 - System extensions: logs, settings, dictionaries, uploads/material library, email templates.
 - Operations: notifications, scheduled tasks and runs, database backups with delivery target settings, rate limits/events, monitoring overview.
 - Work orders: CRUD, comments, assignment, status transitions, attachments.
+- Certificates & domain mappings (`src/services/certificates/`): Let's Encrypt via ACME DNS-01 on Cloudflare with auto-renewal, a built-in SNI HTTPS reverse proxy for `direct` mappings (443 or custom ports, dual-stack, WebSocket upgrades, A/AAAA records), and Cloudflare Tunnel `tunnel` mappings with a supervised `cloudflared`. Issued keys live under the gitignored `storage/certificates/`.
 - Payment foundation: payment channels, orders, callbacks/audit records, refunds, manual state actions. This phase stores provider/channel configuration for yipay, PayPal, Stripe, Alipay, WeChat Pay, TokenPay, BEpusdt, epusdt, and OKPay; it does not implement real third-party SDK calls or public payment callback verification yet.
 
 ## Frontend structure
@@ -87,6 +88,7 @@ The frontend is a React 18 + TypeScript + Ant Design + TanStack Query + Zustand 
 - `frontend/src/components/admin/` contains reusable admin table/toolbar/permission components used by system pages.
 - `frontend/src/pages/system/` contains feature pages matching backend admin modules: users, roles, menus, permissions, tenants, logs, uploads, settings, notifications, scheduled tasks, backups, monitoring, email templates, work orders, and payments.
 - During frontend development, `frontend/rsbuild.config.ts` proxies `/api` to `http://127.0.0.1:5150`. In backend serving mode, Loco serves the embedded `frontend/dist` assets.
+- `frontend/src/i18n/` holds the zh-CN/en-US switch: Chinese source text is the message key (`t("保存")`, placeholders as `t("剩余 {0} 天", days)`), English lives in `en.json`, and server-provided names (menu titles, permission names, seeded roles/tenants, home to-dos) go through `tData()`. Switching language reloads the page. New UI text must be wrapped in `t()` and translated: `npm --prefix frontend run i18n:wrap -- <files>` wraps literals, `npm --prefix frontend run i18n:missing` lists untranslated keys, and `tests/i18n-coverage.test.cjs` fails on gaps.
 
 ## Configuration and tests
 

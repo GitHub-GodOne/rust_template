@@ -53,6 +53,7 @@ import {
   workOrderStatusLabels,
 } from "./homeOverview";
 import "./home.css";
+import { t, tData } from "../../i18n";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -71,9 +72,9 @@ function buildKpis(stats: DashboardOverview["stats"]): Kpi[] {
   if (stats.users) {
     kpis.push({
       key: "users",
-      label: "用户总数",
+      label: t("用户总数"),
       value: stats.users.total,
-      hint: `今日新增 ${stats.users.new_today}`,
+      hint: t("今日新增 {0}", stats.users.new_today),
       icon: <UserOutlined />,
       path: "/admin/system/users",
     });
@@ -81,9 +82,9 @@ function buildKpis(stats: DashboardOverview["stats"]): Kpi[] {
   if (stats.work_orders) {
     kpis.push({
       key: "work_orders",
-      label: "处理中工单",
+      label: t("处理中工单"),
       value: stats.work_orders.active,
-      hint: `已逾期 ${stats.work_orders.overdue}`,
+      hint: t("已逾期 {0}", stats.work_orders.overdue),
       icon: <ProfileOutlined />,
       path: "/admin/system/work-orders",
       alert: stats.work_orders.overdue > 0,
@@ -92,9 +93,13 @@ function buildKpis(stats: DashboardOverview["stats"]): Kpi[] {
   if (stats.payments) {
     kpis.push({
       key: "payments",
-      label: "今日订单",
+      label: t("今日订单"),
       value: stats.payments.today_orders,
-      hint: `已支付 ${stats.payments.today_paid} · 待支付 ${stats.payments.pending}`,
+      hint: t(
+        "已支付 {0} · 待支付 {1}",
+        stats.payments.today_paid,
+        stats.payments.pending,
+      ),
       icon: <CreditCardOutlined />,
       path: "/admin/system/payments",
     });
@@ -102,9 +107,9 @@ function buildKpis(stats: DashboardOverview["stats"]): Kpi[] {
   if (stats.notifications) {
     kpis.push({
       key: "notifications",
-      label: "未读通知",
+      label: t("未读通知"),
       value: stats.notifications.unread,
-      hint: `通知总数 ${stats.notifications.total}`,
+      hint: t("通知总数 {0}", stats.notifications.total),
       icon: <BellOutlined />,
       path: "/admin/system/notifications",
     });
@@ -112,9 +117,13 @@ function buildKpis(stats: DashboardOverview["stats"]): Kpi[] {
   if (stats.activity) {
     kpis.push({
       key: "activity",
-      label: "今日操作",
+      label: t("今日操作"),
       value: stats.activity.today_operations,
-      hint: `登录 ${stats.activity.today_logins} · 错误 ${stats.activity.today_errors}`,
+      hint: t(
+        "登录 {0} · 错误 {1}",
+        stats.activity.today_logins,
+        stats.activity.today_errors,
+      ),
       icon: <FileSearchOutlined />,
       path: "/admin/system/logs",
       alert: stats.activity.today_errors > 0,
@@ -135,7 +144,7 @@ function TodoList({ todos }: { todos: DashboardTodo[] }) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="当前角色暂无需要关注的待办"
+        description={t("当前角色暂无需要关注的待办")}
       />
     );
   }
@@ -155,11 +164,11 @@ function TodoList({ todos }: { todos: DashboardTodo[] }) {
                 {done ? <CheckCircleFilled /> : todoIcons[todo.level]}
               </span>
               <span className="home-todo-text">
-                <strong>{todo.title}</strong>
-                <small>{todo.description}</small>
+                <strong>{tData(todo.title)}</strong>
+                <small>{tData(todo.description)}</small>
               </span>
               <span className="home-todo-count">
-                {done ? "已清零" : todo.count.toLocaleString()}
+                {done ? t("已清零") : todo.count.toLocaleString()}
               </span>
               <RightOutlined className="home-todo-arrow" aria-hidden="true" />
             </button>
@@ -194,7 +203,7 @@ function SectionCard({
 
 function MoreLink({
   path,
-  label = "查看全部",
+  label = t("查看全部"),
 }: { path: string; label?: string }) {
   const navigate = useNavigate();
   return (
@@ -267,11 +276,11 @@ export function HomePage() {
         <Alert
           type="error"
           showIcon
-          message="首页数据加载失败"
+          message={t("首页数据加载失败")}
           description={overviewQuery.error.message}
           action={
             <Button size="small" onClick={() => overviewQuery.refetch()}>
-              重试
+              {t("重试")}
             </Button>
           }
         />
@@ -292,13 +301,13 @@ export function HomePage() {
       key: "work-orders",
       node: (
         <SectionCard
-          title="我的工单"
+          title={t("我的工单")}
           extra={<MoreLink path="/admin/system/work-orders" />}
         >
           {overview.my_work_orders.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="没有进行中的工单"
+              description={t("没有进行中的工单")}
             />
           ) : (
             <ul className="home-feed">
@@ -313,7 +322,7 @@ export function HomePage() {
                       {workOrderStatusLabels[item.status] ?? item.status}
                       {isOverdue(item.due_at, now) && (
                         <Tag color="red" className="home-inline-tag">
-                          已逾期
+                          {t("已逾期")}
                         </Tag>
                       )}
                     </span>
@@ -336,13 +345,13 @@ export function HomePage() {
       key: "notifications",
       node: (
         <SectionCard
-          title="最新通知"
+          title={t("最新通知")}
           extra={<MoreLink path="/admin/system/notifications" />}
         >
           {overview.recent_notifications.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="暂无通知"
+              description={t("暂无通知")}
             />
           ) : (
             <ul className="home-feed">
@@ -364,7 +373,9 @@ export function HomePage() {
                       {formatRelativeTime(item.created_at, now)}
                     </span>
                   </div>
-                  {!item.read && <span className="home-unread">未读</span>}
+                  {!item.read && (
+                    <span className="home-unread">{t("未读")}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -378,13 +389,13 @@ export function HomePage() {
       key: "logs",
       node: (
         <SectionCard
-          title="最近操作"
+          title={t("最近操作")}
           extra={<MoreLink path="/admin/system/logs" />}
         >
           {overview.recent_logs.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="暂无日志"
+              description={t("暂无日志")}
             />
           ) : (
             <ul className="home-timeline">
@@ -395,8 +406,8 @@ export function HomePage() {
                       {item.message}
                     </Typography.Text>
                     <span className="home-feed-meta">
-                      {item.operator ?? "系统"} · {item.module}/{item.action} ·{" "}
-                      {formatRelativeTime(item.created_at, now)}
+                      {item.operator ?? t("系统")} · {item.module}/{item.action}{" "}
+                      · {formatRelativeTime(item.created_at, now)}
                     </span>
                   </div>
                 </li>
@@ -415,19 +426,27 @@ export function HomePage() {
         <div className="home-welcome-body">
           <div className="home-welcome-main">
             <Typography.Title level={3} className="home-welcome-title">
-              {greeting(now.getHours())}，{user?.name ?? "管理员"}
+              {t(
+                "{0}，{1}",
+                greeting(now.getHours()),
+                user?.name ?? t("管理员"),
+              )}
             </Typography.Title>
             <div className="home-welcome-meta">
               <span className="home-meta-item">{formatToday(now)}</span>
-              {tenant && <span className="home-meta-item">{tenant.name}</span>}
+              {tenant && (
+                <span className="home-meta-item">{tData(tenant.name)}</span>
+              )}
               {currentDepartment && (
-                <span className="home-meta-item">{currentDepartment.name}</span>
+                <span className="home-meta-item">
+                  {tData(currentDepartment.name)}
+                </span>
               )}
               {roles.length > 0 && (
                 <span className="home-meta-roles">
                   {roles.map((role) => (
                     <Tag key={role.id} className="home-role-tag">
-                      {role.name}
+                      {tData(role.name)}
                     </Tag>
                   ))}
                 </span>
@@ -438,25 +457,25 @@ export function HomePage() {
             <span className="home-welcome-pending">
               {pendingTotal > 0 ? (
                 <>
-                  当前有 <strong>{pendingTotal.toLocaleString()}</strong>{" "}
-                  项事务待处理
+                  {t("当前有")} <strong>{pendingTotal.toLocaleString()}</strong>
+                  {t("{0}项事务待处理", " ")}
                 </>
               ) : (
-                "所有事务均已处理"
+                t("所有事务均已处理")
               )}
             </span>
             <Space size={8} wrap className="home-welcome-actions">
               <Typography.Text type="secondary" className="home-welcome-time">
                 {previousLogin
-                  ? `上次登录 ${formatDateTime(previousLogin.created_at)}`
-                  : `更新于 ${formatDateTime(overview.generated_at)}`}
+                  ? t("上次登录 {0}", formatDateTime(previousLogin.created_at))
+                  : t("更新于 {0}", formatDateTime(overview.generated_at))}
               </Typography.Text>
               <Button
                 icon={<ReloadOutlined spin={overviewQuery.isFetching} />}
                 onClick={() => overviewQuery.refetch()}
-                aria-label="刷新首页数据"
+                aria-label={t("刷新首页数据")}
               >
-                刷新
+                {t("刷新")}
               </Button>
             </Space>
           </div>
@@ -492,14 +511,14 @@ export function HomePage() {
       <Row gutter={[16, 16]} className="home-row">
         <Col xs={24} xl={quickEntries.length > 0 ? 16 : 24}>
           <SectionCard
-            title="待办事项"
+            title={t("待办事项")}
             extra={
               pendingTotal > 0 ? (
                 <Tag color="orange">
-                  {pendingTotal.toLocaleString()} 项待处理
+                  {t("{0} 项待处理", pendingTotal.toLocaleString())}
                 </Tag>
               ) : (
-                <Tag color="green">已全部处理</Tag>
+                <Tag color="green">{t("已全部处理")}</Tag>
               )
             }
           >
@@ -511,7 +530,7 @@ export function HomePage() {
             <SectionCard
               title={
                 <span>
-                  <AppstoreOutlined /> 快捷入口
+                  <AppstoreOutlined /> {t("快捷入口")}
                 </span>
               }
             >
@@ -541,52 +560,56 @@ export function HomePage() {
         {overview.activity_trend && (
           <Col xs={24} xl={16}>
             <SectionCard
-              title="近 7 日系统活动"
-              extra={<MoreLink path="/admin/system/logs" label="日志中心" />}
+              title={t("近 7 日系统活动")}
+              extra={
+                <MoreLink path="/admin/system/logs" label={t("日志中心")} />
+              }
             >
               <ActivityTrend points={overview.activity_trend} />
             </SectionCard>
           </Col>
         )}
         <Col xs={24} xl={overview.activity_trend ? 8 : 24}>
-          <SectionCard title="系统信息">
+          <SectionCard title={t("系统信息")}>
             <dl className="home-system-list">
               <div>
-                <dt>数据库</dt>
+                <dt>{t("数据库")}</dt>
                 <dd>
                   {overview.system.db_ok ? (
                     <span className="home-status is-ok">
-                      <CheckCircleFilled /> 连接正常
+                      <CheckCircleFilled /> {t("连接正常")}
                     </span>
                   ) : (
                     <span className="home-status is-error">
-                      <CloseCircleFilled /> 连接异常
+                      <CloseCircleFilled /> {t("连接异常")}
                     </span>
                   )}
                 </dd>
               </div>
               <div>
-                <dt>系统版本</dt>
+                <dt>{t("系统版本")}</dt>
                 <dd>v{overview.system.version}</dd>
               </div>
               <div>
-                <dt>运行环境</dt>
+                <dt>{t("运行环境")}</dt>
                 <dd>{overview.system.environment}</dd>
               </div>
               <div>
-                <dt>服务已运行</dt>
+                <dt>{t("服务已运行")}</dt>
                 <dd>{formatUptime(overview.system.uptime_seconds)}</dd>
               </div>
               <div>
-                <dt>数据更新</dt>
+                <dt>{t("数据更新")}</dt>
                 <dd>{formatDateTime(overview.generated_at)}</dd>
               </div>
             </dl>
             <Typography.Text type="secondary" className="home-subheading">
-              我的登录记录
+              {t("我的登录记录")}
             </Typography.Text>
             {overview.recent_logins.length === 0 ? (
-              <Typography.Text type="secondary">暂无记录</Typography.Text>
+              <Typography.Text type="secondary">
+                {t("暂无记录")}
+              </Typography.Text>
             ) : (
               <ul className="home-login-list">
                 {overview.recent_logins.map((login, index) => (
@@ -599,7 +622,7 @@ export function HomePage() {
                       ) : (
                         <CloseCircleFilled />
                       )}
-                      {login.success ? "登录成功" : "登录失败"}
+                      {login.success ? t("登录成功") : t("登录失败")}
                     </span>
                     <span className="home-feed-meta">
                       {formatDateTime(login.created_at)}
@@ -624,7 +647,9 @@ export function HomePage() {
       )}
 
       <p className="home-footnote">
-        首页数据每分钟自动刷新，统计范围遵循当前账号的角色权限与数据范围。
+        {t(
+          "首页数据每分钟自动刷新，统计范围遵循当前账号的角色权限与数据范围。",
+        )}
       </p>
     </div>
   );

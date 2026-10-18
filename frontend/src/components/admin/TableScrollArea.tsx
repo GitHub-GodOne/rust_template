@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { t } from "../../i18n";
 
 type TableScrollAreaProps = {
   children: ReactNode;
@@ -24,7 +25,7 @@ export function TableScrollArea({
   contentWidth,
   className,
   footer,
-  label = "表格",
+  label = t("表格"),
 }: TableScrollAreaProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -121,14 +122,14 @@ export function TableScrollArea({
       ]
         .filter(Boolean)
         .join(" ")}
-      aria-label={`${label}横向滚动区域`}
+      aria-label={t("{0}横向滚动区域", label)}
     >
       <div className="table-scroll-controls">
-        <Tooltip title="向左滚动">
+        <Tooltip title={t("向左滚动")}>
           <Button
             type="text"
             size="small"
-            aria-label={`${label}向左滚动`}
+            aria-label={t("{0}向左滚动", label)}
             icon={<LeftOutlined />}
             disabled={scrollLeft <= 1}
             onClick={() => moveHorizontalPosition(-1)}
@@ -140,14 +141,14 @@ export function TableScrollArea({
           value={Math.min(scrollLeft, maxScroll)}
           disabled={maxScroll <= 1}
           tooltip={{ formatter: null }}
-          aria-label={`${label}横向滚动位置`}
+          aria-label={t("{0}横向滚动位置", label)}
           onChange={setHorizontalPosition}
         />
-        <Tooltip title="向右滚动">
+        <Tooltip title={t("向右滚动")}>
           <Button
             type="text"
             size="small"
-            aria-label={`${label}向右滚动`}
+            aria-label={t("{0}向右滚动", label)}
             icon={<RightOutlined />}
             disabled={maxScroll <= 1 || scrollLeft >= maxScroll - 1}
             onClick={() => moveHorizontalPosition(1)}

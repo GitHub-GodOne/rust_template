@@ -53,13 +53,14 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const providerOptions = [
-  { value: "yipay", label: "易支付" },
+  { value: "yipay", label: t("易支付") },
   { value: "paypal", label: "PayPal" },
   { value: "stripe", label: "Stripe" },
-  { value: "alipay", label: "支付宝" },
-  { value: "wechat_pay", label: "微信支付" },
+  { value: "alipay", label: t("支付宝") },
+  { value: "wechat_pay", label: t("微信支付") },
   { value: "tokenpay", label: "TokenPay" },
   { value: "bepusdt", label: "BEpusdt" },
   { value: "epusdt", label: "epusdt" },
@@ -67,23 +68,23 @@ const providerOptions = [
 ];
 
 const paymentStatusOptions = [
-  { value: "pending", label: "待支付" },
-  { value: "paying", label: "支付中" },
-  { value: "paid", label: "已支付" },
-  { value: "failed", label: "失败" },
-  { value: "cancelled", label: "已取消" },
-  { value: "expired", label: "已过期" },
-  { value: "refunding", label: "退款中" },
-  { value: "refunded", label: "已退款" },
+  { value: "pending", label: t("待支付") },
+  { value: "paying", label: t("支付中") },
+  { value: "paid", label: t("已支付") },
+  { value: "failed", label: t("失败") },
+  { value: "cancelled", label: t("已取消") },
+  { value: "expired", label: t("已过期") },
+  { value: "refunding", label: t("退款中") },
+  { value: "refunded", label: t("已退款") },
 ];
 
 const refundStatusOptions = [
-  { value: "pending", label: "待审核" },
-  { value: "approved", label: "已通过" },
-  { value: "processing", label: "处理中" },
-  { value: "succeeded", label: "已成功" },
-  { value: "failed", label: "失败" },
-  { value: "rejected", label: "已拒绝" },
+  { value: "pending", label: t("待审核") },
+  { value: "approved", label: t("已通过") },
+  { value: "processing", label: t("处理中") },
+  { value: "succeeded", label: t("已成功") },
+  { value: "failed", label: t("失败") },
+  { value: "rejected", label: t("已拒绝") },
 ];
 
 const statusColor: Record<string, string> = {
@@ -239,7 +240,7 @@ export function PaymentsPage() {
   const createChannelMutation = useMutation({
     mutationFn: createPaymentChannel,
     onSuccess: () => {
-      message.success("支付通道已创建");
+      message.success(t("支付通道已创建"));
       setChannelOpen(false);
       channelForm.resetFields();
       invalidate();
@@ -252,7 +253,7 @@ export function PaymentsPage() {
     }: { id: number; payload: SavePaymentChannelParams }) =>
       updatePaymentChannel(id, payload),
     onSuccess: () => {
-      message.success("支付通道已更新");
+      message.success(t("支付通道已更新"));
       setChannelOpen(false);
       setEditingChannel(null);
       channelForm.resetFields();
@@ -262,14 +263,14 @@ export function PaymentsPage() {
   const deleteChannelMutation = useMutation({
     mutationFn: deletePaymentChannel,
     onSuccess: () => {
-      message.success("支付通道已删除");
+      message.success(t("支付通道已删除"));
       invalidate();
     },
   });
   const createOrderMutation = useMutation({
     mutationFn: createPaymentOrder,
     onSuccess: () => {
-      message.success("支付订单已创建");
+      message.success(t("支付订单已创建"));
       setOrderOpen(false);
       orderForm.resetFields();
       invalidate();
@@ -288,7 +289,7 @@ export function PaymentsPage() {
       };
     }) => markPaymentOrderPaid(id, payload),
     onSuccess: () => {
-      message.success("订单已标记为已支付");
+      message.success(t("订单已标记为已支付"));
       setPaidOpen(null);
       paidForm.resetFields();
       invalidate();
@@ -297,7 +298,7 @@ export function PaymentsPage() {
   const cancelOrderMutation = useMutation({
     mutationFn: cancelPaymentOrder,
     onSuccess: () => {
-      message.success("订单已取消");
+      message.success(t("订单已取消"));
       invalidate();
     },
   });
@@ -308,7 +309,7 @@ export function PaymentsPage() {
     }: { id: number; payload: { amount: string; reason?: string | null } }) =>
       createPaymentRefund(id, payload),
     onSuccess: () => {
-      message.success("退款申请已创建");
+      message.success(t("退款申请已创建"));
       setRefundOpen(null);
       refundForm.resetFields();
       invalidate();
@@ -317,21 +318,21 @@ export function PaymentsPage() {
   const approveRefundMutation = useMutation({
     mutationFn: approvePaymentRefund,
     onSuccess: () => {
-      message.success("退款已通过");
+      message.success(t("退款已通过"));
       invalidate();
     },
   });
   const rejectRefundMutation = useMutation({
     mutationFn: rejectPaymentRefund,
     onSuccess: () => {
-      message.success("退款已拒绝");
+      message.success(t("退款已拒绝"));
       invalidate();
     },
   });
   const markRefundSucceededMutation = useMutation({
     mutationFn: markPaymentRefundSucceeded,
     onSuccess: () => {
-      message.success("退款已标记成功");
+      message.success(t("退款已标记成功"));
       invalidate();
     },
   });
@@ -352,23 +353,23 @@ export function PaymentsPage() {
   };
 
   const orderColumns: ColumnsType<PaymentOrderRecord> = [
-    { title: "订单号", dataIndex: "order_no", width: 190 },
-    { title: "商户订单号", dataIndex: "merchant_order_no", width: 160 },
-    { title: "标题", dataIndex: "subject", width: 180 },
+    { title: t("订单号"), dataIndex: "order_no", width: 190 },
+    { title: t("商户订单号"), dataIndex: "merchant_order_no", width: 160 },
+    { title: t("标题"), dataIndex: "subject", width: 180 },
     {
-      title: "金额",
+      title: t("金额"),
       key: "amount",
       width: 120,
       render: (_, record) => `${record.amount} ${record.currency}`,
     },
     {
-      title: "通道",
+      title: t("通道"),
       dataIndex: "provider",
       width: 120,
       render: (value) => labelOf(providerOptions, value),
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (value) => (
@@ -377,17 +378,17 @@ export function PaymentsPage() {
         </Tag>
       ),
     },
-    { title: "支付时间", dataIndex: "paid_at", width: 220 },
-    { title: "创建时间", dataIndex: "created_at", width: 220 },
+    { title: t("支付时间"), dataIndex: "paid_at", width: 220 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 320,
       fixed: "right",
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => setDetailId(record.id)}>
-            详情
+            {t("详情")}
           </Button>
           <PermissionButton
             size="small"
@@ -395,10 +396,10 @@ export function PaymentsPage() {
             permission="system:payment_order:action"
             onClick={() => setPaidOpen(record)}
           >
-            标记支付
+            {t("标记支付")}
           </PermissionButton>
           <Popconfirm
-            title="确认取消订单？"
+            title={t("确认取消订单？")}
             onConfirm={() => cancelOrderMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -406,7 +407,7 @@ export function PaymentsPage() {
               icon={<StopOutlined />}
               permission="system:payment_order:action"
             >
-              取消
+              {t("取消")}
             </PermissionButton>
           </Popconfirm>
           <PermissionButton
@@ -414,7 +415,7 @@ export function PaymentsPage() {
             permission="system:payment_refund:create"
             onClick={() => setRefundOpen(record)}
           >
-            退款
+            {t("退款")}
           </PermissionButton>
         </Space>
       ),
@@ -422,27 +423,29 @@ export function PaymentsPage() {
   ];
 
   const channelColumns: ColumnsType<PaymentChannelRecord> = [
-    { title: "名称", dataIndex: "name", width: 180 },
-    { title: "编码", dataIndex: "channel_code", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
+    { title: t("编码"), dataIndex: "channel_code", width: 180 },
     {
       title: "Provider",
       dataIndex: "provider",
       width: 120,
       render: (value) => labelOf(providerOptions, value),
     },
-    { title: "币种", dataIndex: "currency", width: 90 },
+    { title: t("币种"), dataIndex: "currency", width: 90 },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => (
-        <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag>
+        <Tag color={value ? "green" : "default"}>
+          {value ? t("启用") : t("停用")}
+        </Tag>
       ),
     },
-    { title: "排序", dataIndex: "sort_order", width: 90 },
-    { title: "更新时间", dataIndex: "updated_at", width: 220 },
+    { title: t("排序"), dataIndex: "sort_order", width: 90 },
+    { title: t("更新时间"), dataIndex: "updated_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       fixed: "right",
@@ -454,10 +457,10 @@ export function PaymentsPage() {
             permission="system:payment_channel:update"
             onClick={() => openChannelEditor(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除支付通道？"
+            title={t("确认删除支付通道？")}
             onConfirm={() => deleteChannelMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -466,7 +469,7 @@ export function PaymentsPage() {
               icon={<DeleteOutlined />}
               permission="system:payment_channel:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -475,11 +478,11 @@ export function PaymentsPage() {
   ];
 
   const refundColumns: ColumnsType<PaymentRefundRecord> = [
-    { title: "退款号", dataIndex: "refund_no", width: 190 },
-    { title: "订单 ID", dataIndex: "payment_order_id", width: 100 },
-    { title: "金额", dataIndex: "amount", width: 100 },
+    { title: t("退款号"), dataIndex: "refund_no", width: 190 },
+    { title: t("订单 ID"), dataIndex: "payment_order_id", width: 100 },
+    { title: t("金额"), dataIndex: "amount", width: 100 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (value) => (
@@ -488,11 +491,11 @@ export function PaymentsPage() {
         </Tag>
       ),
     },
-    { title: "申请人", dataIndex: "requested_by", width: 100 },
-    { title: "审核人", dataIndex: "reviewed_by", width: 100 },
-    { title: "创建时间", dataIndex: "created_at", width: 220 },
+    { title: t("申请人"), dataIndex: "requested_by", width: 100 },
+    { title: t("审核人"), dataIndex: "reviewed_by", width: 100 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 260,
       fixed: "right",
@@ -503,7 +506,7 @@ export function PaymentsPage() {
             permission="system:payment_refund:review"
             onClick={() => approveRefundMutation.mutate(record.id)}
           >
-            通过
+            {t("通过")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -511,14 +514,14 @@ export function PaymentsPage() {
             permission="system:payment_refund:review"
             onClick={() => rejectRefundMutation.mutate(record.id)}
           >
-            拒绝
+            {t("拒绝")}
           </PermissionButton>
           <PermissionButton
             size="small"
             permission="system:payment_refund:review"
             onClick={() => markRefundSucceededMutation.mutate(record.id)}
           >
-            标记成功
+            {t("标记成功")}
           </PermissionButton>
         </Space>
       ),
@@ -527,34 +530,38 @@ export function PaymentsPage() {
 
   const callbackColumns: ColumnsType<PaymentCallbackRecord> = [
     { title: "Provider", dataIndex: "provider", width: 120 },
-    { title: "事件", dataIndex: "event_type", width: 140 },
-    { title: "订单 ID", dataIndex: "payment_order_id", width: 100 },
+    { title: t("事件"), dataIndex: "event_type", width: 140 },
+    { title: t("订单 ID"), dataIndex: "payment_order_id", width: 100 },
     {
-      title: "已验证",
+      title: t("已验证"),
       dataIndex: "verified",
       width: 90,
       render: (value) => (
-        <Tag color={value ? "green" : "orange"}>{value ? "是" : "否"}</Tag>
+        <Tag color={value ? "green" : "orange"}>
+          {value ? t("是") : t("否")}
+        </Tag>
       ),
     },
     {
-      title: "已处理",
+      title: t("已处理"),
       dataIndex: "processed",
       width: 90,
       render: (value) => (
-        <Tag color={value ? "green" : "orange"}>{value ? "是" : "否"}</Tag>
+        <Tag color={value ? "green" : "orange"}>
+          {value ? t("是") : t("否")}
+        </Tag>
       ),
     },
-    { title: "错误", dataIndex: "error_message", width: 220 },
-    { title: "创建时间", dataIndex: "created_at", width: 220 },
+    { title: t("错误"), dataIndex: "error_message", width: 220 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 100,
       fixed: "right",
       render: (_, record) => (
         <Button size="small" onClick={() => setCallbackDetail(record)}>
-          详情
+          {t("详情")}
         </Button>
       ),
     },
@@ -564,22 +571,22 @@ export function PaymentsPage() {
 
   return (
     <CrudPage
-      title="支付管理"
-      subtitle="统一管理支付通道、订单、回调审计和退款流程"
-      breadcrumb={["系统管理", "支付管理"]}
+      title={t("支付管理")}
+      subtitle={t("统一管理支付通道、订单、回调审计和退款流程")}
+      breadcrumb={[t("系统管理"), t("支付管理")]}
       icon={<CreditCardOutlined />}
     >
       <Tabs
         items={[
           {
             key: "orders",
-            label: "支付订单",
+            label: t("支付订单"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Space wrap>
                   <Input.Search
                     allowClear
-                    placeholder="搜索订单号、标题"
+                    placeholder={t("搜索订单号、标题")}
                     onSearch={(value) => {
                       setOrderPage(1);
                       setOrderKeyword(value);
@@ -599,7 +606,7 @@ export function PaymentsPage() {
                   />
                   <Select
                     allowClear
-                    placeholder="状态"
+                    placeholder={t("状态")}
                     value={orderStatus}
                     onChange={(value) => {
                       setOrderPage(1);
@@ -612,7 +619,7 @@ export function PaymentsPage() {
                     actions={[
                       {
                         key: "create",
-                        label: "创建测试订单",
+                        label: t("创建测试订单"),
                         icon: <PlusOutlined />,
                         primary: true,
                         permission: "system:payment_order:create",
@@ -643,13 +650,13 @@ export function PaymentsPage() {
           },
           {
             key: "channels",
-            label: "支付通道",
+            label: t("支付通道"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Space wrap>
                   <Input.Search
                     allowClear
-                    placeholder="搜索通道名称或编码"
+                    placeholder={t("搜索通道名称或编码")}
                     onSearch={(value) => {
                       setChannelPage(1);
                       setChannelKeyword(value);
@@ -671,7 +678,7 @@ export function PaymentsPage() {
                     actions={[
                       {
                         key: "create",
-                        label: "新增通道",
+                        label: t("新增通道"),
                         icon: <PlusOutlined />,
                         primary: true,
                         permission: "system:payment_channel:create",
@@ -695,12 +702,12 @@ export function PaymentsPage() {
           },
           {
             key: "refunds",
-            label: "退款记录",
+            label: t("退款记录"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Select
                   allowClear
-                  placeholder="退款状态"
+                  placeholder={t("退款状态")}
                   value={refundStatus}
                   onChange={(value) => {
                     setRefundPage(1);
@@ -724,7 +731,7 @@ export function PaymentsPage() {
           },
           {
             key: "callbacks",
-            label: "回调记录",
+            label: t("回调记录"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Select
@@ -755,7 +762,7 @@ export function PaymentsPage() {
       />
 
       <Modal
-        title={editingChannel ? "编辑支付通道" : "新增支付通道"}
+        title={editingChannel ? t("编辑支付通道") : t("新增支付通道")}
         open={channelOpen}
         onCancel={() => setChannelOpen(false)}
         onOk={() => channelForm.submit()}
@@ -777,12 +784,16 @@ export function PaymentsPage() {
           }}
         >
           <Space className="full-width" align="start" wrap>
-            <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+            <Form.Item
+              name="name"
+              label={t("名称")}
+              rules={[{ required: true }]}
+            >
               <Input />
             </Form.Item>
             <Form.Item
               name="channel_code"
-              label="编码"
+              label={t("编码")}
               rules={[{ required: true }]}
             >
               <Input />
@@ -797,42 +808,42 @@ export function PaymentsPage() {
                 className="admin-filter-select"
               />
             </Form.Item>
-            <Form.Item name="currency" label="币种">
+            <Form.Item name="currency" label={t("币种")}>
               <Input placeholder="CNY" />
             </Form.Item>
           </Space>
           <Form.Item
             name="config"
-            label="公开配置 JSON"
+            label={t("公开配置 JSON")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={4} placeholder='{"gateway":"https://..."}' />
           </Form.Item>
-          <Form.Item name="secret_config" label="密钥配置 JSON">
+          <Form.Item name="secret_config" label={t("密钥配置 JSON")}>
             <Input.TextArea rows={3} placeholder='{"secret":"******"}' />
           </Form.Item>
           <Space className="full-width" align="start" wrap>
-            <Form.Item name="notify_url" label="通知地址">
+            <Form.Item name="notify_url" label={t("通知地址")}>
               <Input />
             </Form.Item>
-            <Form.Item name="return_url" label="返回地址">
+            <Form.Item name="return_url" label={t("返回地址")}>
               <Input />
             </Form.Item>
-            <Form.Item name="sort_order" label="排序">
+            <Form.Item name="sort_order" label={t("排序")}>
               <InputNumber />
             </Form.Item>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
               <Switch />
             </Form.Item>
           </Space>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="创建测试支付订单"
+        title={t("创建测试支付订单")}
         open={orderOpen}
         onCancel={() => setOrderOpen(false)}
         onOk={() => orderForm.submit()}
@@ -846,14 +857,22 @@ export function PaymentsPage() {
             createOrderMutation.mutate(toOrderPayload(values))
           }
         >
-          <Form.Item name="subject" label="标题" rules={[{ required: true }]}>
+          <Form.Item
+            name="subject"
+            label={t("标题")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Space className="full-width" align="start" wrap>
-            <Form.Item name="amount" label="金额" rules={[{ required: true }]}>
+            <Form.Item
+              name="amount"
+              label={t("金额")}
+              rules={[{ required: true }]}
+            >
               <Input placeholder="99.00" />
             </Form.Item>
-            <Form.Item name="currency" label="币种">
+            <Form.Item name="currency" label={t("币种")}>
               <Input placeholder="CNY" />
             </Form.Item>
             <Form.Item name="provider" label="Provider">
@@ -862,27 +881,27 @@ export function PaymentsPage() {
                 className="admin-filter-select"
               />
             </Form.Item>
-            <Form.Item name="channel_id" label="通道 ID">
+            <Form.Item name="channel_id" label={t("通道 ID")}>
               <InputNumber min={1} />
             </Form.Item>
           </Space>
-          <Form.Item name="merchant_order_no" label="商户订单号">
+          <Form.Item name="merchant_order_no" label={t("商户订单号")}>
             <Input />
           </Form.Item>
-          <Form.Item name="body" label="描述">
+          <Form.Item name="body" label={t("描述")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="expired_at" label="过期时间 RFC3339">
+          <Form.Item name="expired_at" label={t("过期时间 RFC3339")}>
             <Input placeholder="2026-05-28T12:00:00+08:00" />
           </Form.Item>
-          <Form.Item name="metadata" label="扩展数据 JSON">
+          <Form.Item name="metadata" label={t("扩展数据 JSON")}>
             <Input.TextArea rows={3} placeholder='{"source":"admin"}' />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="标记订单已支付"
+        title={t("标记订单已支付")}
         open={Boolean(paidOpen)}
         onCancel={() => setPaidOpen(null)}
         onOk={() => paidForm.submit()}
@@ -904,20 +923,20 @@ export function PaymentsPage() {
             }
           }}
         >
-          <Form.Item name="trade_no" label="三方流水号">
+          <Form.Item name="trade_no" label={t("三方流水号")}>
             <Input />
           </Form.Item>
-          <Form.Item name="payer_id" label="付款方 ID">
+          <Form.Item name="payer_id" label={t("付款方 ID")}>
             <Input />
           </Form.Item>
-          <Form.Item name="payload" label="回调载荷 JSON">
+          <Form.Item name="payload" label={t("回调载荷 JSON")}>
             <Input.TextArea rows={3} placeholder='{"manual":true}' />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="创建退款申请"
+        title={t("创建退款申请")}
         open={Boolean(refundOpen)}
         onCancel={() => setRefundOpen(null)}
         onOk={() => refundForm.submit()}
@@ -940,19 +959,19 @@ export function PaymentsPage() {
         >
           <Form.Item
             name="amount"
-            label="退款金额"
+            label={t("退款金额")}
             rules={[{ required: true }]}
           >
             <Input placeholder={refundOpen?.amount} />
           </Form.Item>
-          <Form.Item name="reason" label="退款原因">
+          <Form.Item name="reason" label={t("退款原因")}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Drawer
-        title="支付订单详情"
+        title={t("支付订单详情")}
         open={Boolean(detailId)}
         onClose={() => setDetailId(null)}
         width={760}
@@ -961,7 +980,7 @@ export function PaymentsPage() {
       </Drawer>
 
       <Drawer
-        title="回调详情"
+        title={t("回调详情")}
         open={Boolean(callbackDetail)}
         onClose={() => setCallbackDetail(null)}
         width={680}
@@ -972,22 +991,22 @@ export function PaymentsPage() {
               <Descriptions.Item label="Provider">
                 {callbackDetail.provider}
               </Descriptions.Item>
-              <Descriptions.Item label="事件">
+              <Descriptions.Item label={t("事件")}>
                 {callbackDetail.event_type}
               </Descriptions.Item>
-              <Descriptions.Item label="订单 ID">
+              <Descriptions.Item label={t("订单 ID")}>
                 {callbackDetail.payment_order_id ?? "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="流水号">
+              <Descriptions.Item label={t("流水号")}>
                 {callbackDetail.trade_no ?? "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="已验证">
-                {callbackDetail.verified ? "是" : "否"}
+              <Descriptions.Item label={t("已验证")}>
+                {callbackDetail.verified ? t("是") : t("否")}
               </Descriptions.Item>
-              <Descriptions.Item label="已处理">
-                {callbackDetail.processed ? "是" : "否"}
+              <Descriptions.Item label={t("已处理")}>
+                {callbackDetail.processed ? t("是") : t("否")}
               </Descriptions.Item>
-              <Descriptions.Item label="错误" span={2}>
+              <Descriptions.Item label={t("错误")} span={2}>
                 {callbackDetail.error_message ?? "-"}
               </Descriptions.Item>
             </Descriptions>
@@ -1003,39 +1022,41 @@ function OrderDetail({ detail }: { detail: PaymentOrderDetailRecord }) {
   return (
     <Space direction="vertical" size="large" className="full-width">
       <Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label="订单号">{detail.order_no}</Descriptions.Item>
-        <Descriptions.Item label="状态">
+        <Descriptions.Item label={t("订单号")}>
+          {detail.order_no}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("状态")}>
           <Tag color={statusColor[detail.status] ?? "default"}>
             {labelOf(paymentStatusOptions, detail.status)}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="标题" span={2}>
+        <Descriptions.Item label={t("标题")} span={2}>
           {detail.subject}
         </Descriptions.Item>
-        <Descriptions.Item label="金额">
+        <Descriptions.Item label={t("金额")}>
           {detail.amount} {detail.currency}
         </Descriptions.Item>
         <Descriptions.Item label="Provider">
           {labelOf(providerOptions, detail.provider)}
         </Descriptions.Item>
-        <Descriptions.Item label="通道">
+        <Descriptions.Item label={t("通道")}>
           {detail.channel?.name ?? detail.channel_id ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="商户订单号">
+        <Descriptions.Item label={t("商户订单号")}>
           {detail.merchant_order_no ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="三方流水号">
+        <Descriptions.Item label={t("三方流水号")}>
           {detail.trade_no ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="支付时间">
+        <Descriptions.Item label={t("支付时间")}>
           {detail.paid_at ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="描述" span={2}>
+        <Descriptions.Item label={t("描述")} span={2}>
           {detail.body ?? "-"}
         </Descriptions.Item>
       </Descriptions>
       <div>
-        <h3>退款记录</h3>
+        <h3>{t("退款记录")}</h3>
         <Space direction="vertical" className="full-width">
           {detail.refunds.map((refund) => (
             <span key={refund.id}>
@@ -1046,7 +1067,7 @@ function OrderDetail({ detail }: { detail: PaymentOrderDetailRecord }) {
         </Space>
       </div>
       <div>
-        <h3>回调记录</h3>
+        <h3>{t("回调记录")}</h3>
         <Space direction="vertical" className="full-width">
           {detail.callbacks.map((callback) => (
             <span key={callback.id}>

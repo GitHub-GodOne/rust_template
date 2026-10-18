@@ -29,6 +29,7 @@ import {
   toPayload,
 } from "./auditRules";
 import "./logs.css";
+import { t } from "../../../i18n";
 
 export function AuditRulesDrawer({
   open,
@@ -63,10 +64,10 @@ export function AuditRulesDrawer({
     mutationFn: () => saveAuditSettings(toPayload(draft as AuditDraft)),
     onSuccess: (settings) => {
       queryClient.setQueryData(["audit-settings"], settings);
-      message.success("日志记录设置已保存");
+      message.success(t("日志记录设置已保存"));
     },
     onError: (error) =>
-      message.error(error instanceof Error ? error.message : "保存失败"),
+      message.error(error instanceof Error ? error.message : t("保存失败")),
   });
 
   const features = settingsQuery.data?.features ?? [];
@@ -79,7 +80,7 @@ export function AuditRulesDrawer({
 
   return (
     <Drawer
-      title="日志记录设置"
+      title={t("日志记录设置")}
       open={open}
       onClose={onClose}
       width={screens.md === false ? "100%" : 720}
@@ -88,14 +89,14 @@ export function AuditRulesDrawer({
         canEdit ? (
           <div className="audit-drawer-footer">
             <Typography.Text type="secondary">
-              {dirty ? "有未保存的修改" : "设置已保存"}
+              {dirty ? t("有未保存的修改") : t("设置已保存")}
             </Typography.Text>
             <Space>
               <Button
                 disabled={!dirty}
                 onClick={() => saved && setDraft(saved)}
               >
-                撤销
+                {t("撤销")}
               </Button>
               <Button
                 type="primary"
@@ -103,7 +104,7 @@ export function AuditRulesDrawer({
                 loading={save.isPending}
                 onClick={() => save.mutate()}
               >
-                保存
+                {t("保存")}
               </Button>
             </Space>
           </div>
@@ -119,10 +120,11 @@ export function AuditRulesDrawer({
           <RetentionPanel canEdit={canEdit} canPurge={canPurge} />
           <div className="audit-global">
             <div>
-              <strong>启用日志记录</strong>
+              <strong>{t("启用日志记录")}</strong>
               <Typography.Paragraph type="secondary">
-                关闭后所有功能都不再写入日志（已有日志保留）。默认只记录新增、修改、删除和执行等写操作；
-                查询类请求可以按功能单独开启。请求内容中的密码、令牌等字段会自动打码。
+                {t(
+                  "关闭后所有功能都不再写入日志（已有日志保留）。默认只记录新增、修改、删除和执行等写操作； 查询类请求可以按功能单独开启。请求内容中的密码、令牌等字段会自动打码。",
+                )}
               </Typography.Paragraph>
             </div>
             <Switch
@@ -136,7 +138,7 @@ export function AuditRulesDrawer({
               type="info"
               showIcon
               className="audit-alert"
-              message="你可以查看设置；修改需要「日志记录设置」权限"
+              message={t("你可以查看设置；修改需要「日志记录设置」权限")}
             />
           ) : null}
 
@@ -144,7 +146,7 @@ export function AuditRulesDrawer({
             <Input
               allowClear
               prefix={<SearchOutlined />}
-              placeholder="搜索功能或接口路径"
+              placeholder={t("搜索功能或接口路径")}
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
             />
@@ -156,7 +158,7 @@ export function AuditRulesDrawer({
                   setDraft(setAll(draft, { enabled: true }, visibleKeys))
                 }
               >
-                全部记录
+                {t("全部记录")}
               </Button>
               <Button
                 size="small"
@@ -165,35 +167,39 @@ export function AuditRulesDrawer({
                   setDraft(setAll(draft, { enabled: false }, visibleKeys))
                 }
               >
-                全部关闭
+                {t("全部关闭")}
               </Button>
               <Button
                 size="small"
                 disabled={!canEdit}
                 onClick={() => setDraft(resetToDefaults(draft, features))}
               >
-                恢复默认
+                {t("恢复默认")}
               </Button>
             </Space>
           </div>
           <Typography.Text type="secondary" className="audit-summary">
-            {countRecording(draft)} / {features.length} 个功能正在记录
+            {t(
+              "{0} / {1} 个功能正在记录",
+              countRecording(draft),
+              features.length,
+            )}
           </Typography.Text>
 
           {groups.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="没有匹配的功能"
+              description={t("没有匹配的功能")}
             />
           ) : (
             groups.map((group) => (
               <section key={group.group} className="audit-group">
                 <div className="audit-group-title">{group.group}</div>
                 <div className="audit-head" aria-hidden="true">
-                  <span>功能</span>
-                  <span>记录</span>
-                  <span>含查询</span>
-                  <span>请求内容</span>
+                  <span>{t("功能")}</span>
+                  <span>{t("记录")}</span>
+                  <span>{t("含查询")}</span>
+                  <span>{t("请求内容")}</span>
                 </div>
                 {group.features.map((feature) => {
                   const rule = draft.rules[feature.key];
@@ -206,23 +212,23 @@ export function AuditRulesDrawer({
                           title={
                             feature.prefixes.length
                               ? feature.prefixes.join("\n")
-                              : "未归属任何功能的接口"
+                              : t("未归属任何功能的接口")
                           }
                         >
                           <code>
                             {feature.prefixes[0] ?? feature.key}
                             {feature.prefixes.length > 1
-                              ? ` 等 ${feature.prefixes.length} 组`
+                              ? t(" 等 {0} 组", feature.prefixes.length)
                               : ""}
                           </code>
                         </Tooltip>
                       </div>
                       <span className="audit-switch">
-                        <span>记录</span>
+                        <span>{t("记录")}</span>
                         <Switch
                           size="small"
                           checked={rule.enabled}
-                          aria-label={`${feature.label}：记录`}
+                          aria-label={t("{0}：记录", feature.label)}
                           disabled={locked}
                           onChange={(enabled) =>
                             setDraft(setRule(draft, feature.key, { enabled }))
@@ -230,11 +236,11 @@ export function AuditRulesDrawer({
                         />
                       </span>
                       <span className="audit-switch">
-                        <span>含查询</span>
+                        <span>{t("含查询")}</span>
                         <Switch
                           size="small"
                           checked={rule.log_reads}
-                          aria-label={`${feature.label}：含查询`}
+                          aria-label={t("{0}：含查询", feature.label)}
                           disabled={off}
                           onChange={(log_reads) =>
                             setDraft(setRule(draft, feature.key, { log_reads }))
@@ -242,11 +248,11 @@ export function AuditRulesDrawer({
                         />
                       </span>
                       <span className="audit-switch">
-                        <span>请求内容</span>
+                        <span>{t("请求内容")}</span>
                         <Switch
                           size="small"
                           checked={rule.log_body}
-                          aria-label={`${feature.label}：请求内容`}
+                          aria-label={t("{0}：请求内容", feature.label)}
                           disabled={off}
                           onChange={(log_body) =>
                             setDraft(setRule(draft, feature.key, { log_body }))

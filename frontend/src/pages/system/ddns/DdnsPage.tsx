@@ -42,41 +42,42 @@ import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { useAuthStore } from "../../../stores/auth";
 import { isValidManualIpv6 } from "./ipv6";
 import "./ddns.css";
+import { t } from "../../../i18n";
 
 type FormValues = Omit<DdnsConfig, "token_configured"> & { api_token?: string };
 
 const sourceOptions = [
-  { value: "auto", label: "自动（优先读取网卡，失败再外部查询）" },
-  { value: "interface", label: "仅读取本机网卡" },
-  { value: "url", label: "仅通过外部地址查询" },
-  { value: "manual", label: "手动指定固定地址" },
+  { value: "auto", label: t("自动（优先读取网卡，失败再外部查询）") },
+  { value: "interface", label: t("仅读取本机网卡") },
+  { value: "url", label: t("仅通过外部地址查询") },
+  { value: "manual", label: t("手动指定固定地址") },
 ];
 
 const sourceLabels: Record<string, string> = {
-  auto: "自动",
-  interface: "本机网卡",
-  url: "外部查询",
-  manual: "手动指定",
+  auto: t("自动"),
+  interface: t("本机网卡"),
+  url: t("外部查询"),
+  manual: t("手动指定"),
 };
 
 const triggerLabels: Record<DdnsSyncTrigger, string> = {
-  schedule: "定时检测",
-  manual: "手动同步",
-  manual_address: "手动指定地址",
+  schedule: t("定时检测"),
+  manual: t("手动同步"),
+  manual_address: t("手动指定地址"),
 };
 
 const actionTags: Record<DdnsRecordAction, { color: string; label: string }> = {
-  created: { color: "green", label: "已创建" },
-  updated: { color: "blue", label: "已更新" },
-  unchanged: { color: "default", label: "无变化" },
-  failed: { color: "red", label: "失败" },
+  created: { color: "green", label: t("已创建") },
+  updated: { color: "blue", label: t("已更新") },
+  unchanged: { color: "default", label: t("无变化") },
+  failed: { color: "red", label: t("失败") },
 };
 
 const ipv6Rule = {
   validator: (_: unknown, value?: string) =>
     !value?.trim() || isValidManualIpv6(value)
       ? Promise.resolve()
-      : Promise.reject(new Error("请输入可用于解析的 IPv6 地址")),
+      : Promise.reject(new Error(t("请输入可用于解析的 IPv6 地址"))),
 };
 
 function formatTime(value?: string | null) {
@@ -120,13 +121,13 @@ export function DdnsPage() {
       return saveDdnsConfig(payload);
     },
     onSuccess: (config) => {
-      message.success("配置已保存，下一次检测即生效");
+      message.success(t("配置已保存，下一次检测即生效"));
       queryClient.setQueryData(["admin-ddns-config"], config);
       form.setFieldValue("api_token", "");
       queryClient.invalidateQueries({ queryKey: ["admin-ddns-status"] });
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
     },
-    onError: (error) => message.error(error.message || "保存失败"),
+    onError: (error) => message.error(error.message || t("保存失败")),
   });
 
   const syncMutation = useMutation({
@@ -134,13 +135,15 @@ export function DdnsPage() {
     onSuccess: (status, ipv6) => {
       queryClient.setQueryData(["admin-ddns-status"], status);
       if (status.last_error) {
-        message.warning("同步完成，但有域名更新失败");
+        message.warning(t("同步完成，但有域名更新失败"));
         return;
       }
-      message.success(ipv6 ? `已将 ${ipv6} 同步到域名` : "已同步到 Cloudflare");
+      message.success(
+        ipv6 ? t("已将 {0} 同步到域名", ipv6) : t("已同步到 Cloudflare"),
+      );
       if (ipv6) setManualAddress("");
     },
-    onError: (error) => message.error(error.message || "同步失败"),
+    onError: (error) => message.error(error.message || t("同步失败")),
   });
 
   const status = statusQuery.data;
@@ -150,9 +153,9 @@ export function DdnsPage() {
   return (
     <div className="ddns-page">
       <PageHeader
-        title="IPv6 动态解析"
-        subtitle="自动把本机的公网 IPv6 更新到 Cloudflare AAAA 记录"
-        breadcrumb={["系统管理", "IPv6 动态解析"]}
+        title={t("IPv6 动态解析")}
+        subtitle={t("自动把本机的公网 IPv6 更新到 Cloudflare AAAA 记录")}
+        breadcrumb={[t("系统管理"), t("IPv6 动态解析")]}
         icon={<WifiOutlined />}
       />
       <Row gutter={[16, 16]}>
@@ -160,13 +163,13 @@ export function DdnsPage() {
           <Space direction="vertical" size={16} className="full-width">
             <Card
               className="admin-card"
-              title="运行状态"
+              title={t("运行状态")}
               extra={
                 <Space size={8}>
                   <Button
                     icon={<ReloadOutlined spin={statusQuery.isFetching} />}
                     onClick={() => statusQuery.refetch()}
-                    aria-label="刷新状态"
+                    aria-label={t("刷新状态")}
                   />
                   <PermissionButton
                     type="primary"
@@ -176,7 +179,7 @@ export function DdnsPage() {
                     disabled={!ready}
                     onClick={() => syncMutation.mutate(undefined)}
                   >
-                    立即同步
+                    {t("立即同步")}
                   </PermissionButton>
                 </Space>
               }
@@ -191,22 +194,26 @@ export function DdnsPage() {
                     <Alert
                       type="info"
                       showIcon
-                      message="IPv6 动态解析未启用"
-                      description="配置 Cloudflare 认证和域名后打开「启用」并保存，系统会按检测间隔自动更新解析。"
+                      message={t("IPv6 动态解析未启用")}
+                      description={t(
+                        "配置 Cloudflare 认证和域名后打开「启用」并保存，系统会按检测间隔自动更新解析。",
+                      )}
                     />
                   )}
                   {status.enabled && !status.configured && (
                     <Alert
                       type="warning"
                       showIcon
-                      message="配置不完整：需要 API Token、至少一个域名；手动指定模式还需要填写地址"
+                      message={t(
+                        "配置不完整：需要 API Token、至少一个域名；手动指定模式还需要填写地址",
+                      )}
                     />
                   )}
                   {status.last_error && (
                     <Alert
                       type="error"
                       showIcon
-                      message="最近一次同步失败"
+                      message={t("最近一次同步失败")}
                       description={status.last_error}
                     />
                   )}
@@ -216,19 +223,19 @@ export function DdnsPage() {
                     bordered
                     className="ddns-status"
                   >
-                    <Descriptions.Item label="状态">
+                    <Descriptions.Item label={t("状态")}>
                       {status.enabled ? (
-                        <Tag color="green">已启用</Tag>
+                        <Tag color="green">{t("已启用")}</Tag>
                       ) : (
-                        <Tag>未启用</Tag>
+                        <Tag>{t("未启用")}</Tag>
                       )}
                     </Descriptions.Item>
-                    <Descriptions.Item label="检测到的 IPv6">
+                    <Descriptions.Item label={t("检测到的 IPv6")}>
                       <Typography.Text copyable={Boolean(status.current_ipv6)}>
-                        {status.current_ipv6 ?? "尚未检测"}
+                        {status.current_ipv6 ?? t("尚未检测")}
                       </Typography.Text>
                     </Descriptions.Item>
-                    <Descriptions.Item label="已同步 IPv6">
+                    <Descriptions.Item label={t("已同步 IPv6")}>
                       {status.last_synced_ipv6 ? (
                         <Space size={6} wrap>
                           <Typography.Text copyable>
@@ -242,28 +249,28 @@ export function DdnsPage() {
                         "-"
                       )}
                     </Descriptions.Item>
-                    <Descriptions.Item label="获取方式">
+                    <Descriptions.Item label={t("获取方式")}>
                       {sourceLabels[status.source] ?? status.source}
                       {status.interface_name
                         ? `（${status.interface_name}）`
                         : ""}
                     </Descriptions.Item>
-                    <Descriptions.Item label="检测间隔">
-                      {status.interval_seconds} 秒
+                    <Descriptions.Item label={t("检测间隔")}>
+                      {t("{0} 秒", status.interval_seconds)}
                     </Descriptions.Item>
-                    <Descriptions.Item label="上次检测">
+                    <Descriptions.Item label={t("上次检测")}>
                       {formatTime(status.last_checked_at)}
                     </Descriptions.Item>
-                    <Descriptions.Item label="上次同步">
+                    <Descriptions.Item label={t("上次同步")}>
                       {formatTime(status.last_synced_at)}
                     </Descriptions.Item>
                   </Descriptions>
                   <div>
-                    <Typography.Text strong>域名记录</Typography.Text>
+                    <Typography.Text strong>{t("域名记录")}</Typography.Text>
                     {status.record_names.length === 0 ? (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="尚未配置域名"
+                        description={t("尚未配置域名")}
                       />
                     ) : (
                       <ul className="ddns-record-list">
@@ -299,7 +306,7 @@ export function DdnsPage() {
                                   {record?.message ??
                                     (record?.content
                                       ? `AAAA → ${record.content}`
-                                      : "等待首次同步")}
+                                      : t("等待首次同步"))}
                                 </Typography.Text>
                               </span>
                               {tag && <Tag color={tag.color}>{tag.label}</Tag>}
@@ -312,19 +319,21 @@ export function DdnsPage() {
                 </Space>
               ) : (
                 <Empty
-                  description={statusQuery.isLoading ? "加载中" : "暂无状态"}
+                  description={
+                    statusQuery.isLoading ? t("加载中") : t("暂无状态")
+                  }
                 />
               )}
             </Card>
             {canEdit && (
-              <Card className="admin-card" title="手动同步指定地址">
+              <Card className="admin-card" title={t("手动同步指定地址")}>
                 <Space direction="vertical" size="small" className="full-width">
                   <Space.Compact className="full-width">
                     <Input
                       allowClear
                       value={manualAddress}
                       status={manualAddress && !manualValid ? "error" : ""}
-                      placeholder="例如 2409:8a1e:1234::1"
+                      placeholder={t("例如 2409:8a1e:1234::1")}
                       onChange={(event) => setManualAddress(event.target.value)}
                       onPressEnter={() =>
                         manualValid &&
@@ -342,13 +351,17 @@ export function DdnsPage() {
                       }
                       onClick={() => syncMutation.mutate(manualAddress.trim())}
                     >
-                      同步此地址
+                      {t("同步此地址")}
                     </Button>
                   </Space.Compact>
                   <Typography.Text type="secondary" className="ddns-hint">
                     {status?.source === "manual"
-                      ? "这是一次性同步；要长期使用某个地址，请修改右侧「手动指定 IPv6」。"
-                      : "这是一次性同步，下一次自动检测到不同地址时会被覆盖；要长期固定，请把获取方式改为「手动指定固定地址」。"}
+                      ? t(
+                          "这是一次性同步；要长期使用某个地址，请修改右侧「手动指定 IPv6」。",
+                        )
+                      : t(
+                          "这是一次性同步，下一次自动检测到不同地址时会被覆盖；要长期固定，请把获取方式改为「手动指定固定地址」。",
+                        )}
                   </Typography.Text>
                 </Space>
               </Card>
@@ -356,7 +369,7 @@ export function DdnsPage() {
           </Space>
         </Col>
         <Col xs={24} xl={14}>
-          <Card className="admin-card" title="解析配置">
+          <Card className="admin-card" title={t("解析配置")}>
             <Form<FormValues>
               form={form}
               layout="vertical"
@@ -367,7 +380,7 @@ export function DdnsPage() {
                 <Col xs={12} md={8}>
                   <Form.Item
                     name="enabled"
-                    label="启用"
+                    label={t("启用")}
                     valuePropName="checked"
                   >
                     <Switch />
@@ -376,9 +389,9 @@ export function DdnsPage() {
                 <Col xs={12} md={8}>
                   <Form.Item
                     name="proxied"
-                    label="Cloudflare 代理"
+                    label={t("Cloudflare 代理")}
                     valuePropName="checked"
-                    tooltip="直连 IPv6 访问时请保持关闭"
+                    tooltip={t("直连 IPv6 访问时请保持关闭")}
                   >
                     <Switch />
                   </Form.Item>
@@ -386,15 +399,17 @@ export function DdnsPage() {
                 <Col xs={24} md={8}>
                   <Form.Item
                     name="ttl"
-                    label="TTL（秒）"
-                    tooltip="1 表示自动，也可填 60 到 86400"
+                    label={t("TTL（秒）")}
+                    tooltip={t("1 表示自动，也可填 60 到 86400")}
                     rules={[
                       {
                         validator: (_, value: number) =>
                           value === 1 || (value >= 60 && value <= 86_400)
                             ? Promise.resolve()
                             : Promise.reject(
-                                new Error("填写 1 或 60 到 86400 之间的整数"),
+                                new Error(
+                                  t("填写 1 或 60 到 86400 之间的整数"),
+                                ),
                               ),
                       },
                     ]}
@@ -405,15 +420,15 @@ export function DdnsPage() {
               </Row>
               <Form.Item
                 name="auth_mode"
-                label="Cloudflare 认证方式"
+                label={t("Cloudflare 认证方式")}
                 initialValue="api_token"
               >
                 <Select
                   options={[
-                    { value: "api_token", label: "API Token（推荐）" },
+                    { value: "api_token", label: t("API Token（推荐）") },
                     {
                       value: "global_api_key",
-                      label: "Global API Key + 账号邮箱",
+                      label: t("Global API Key + 账号邮箱"),
                     },
                   ]}
                 />
@@ -421,11 +436,14 @@ export function DdnsPage() {
               {authMode === "global_api_key" && (
                 <Form.Item
                   name="api_email"
-                  label="Cloudflare 账号邮箱"
-                  extra="必须是当前 Global API Key 所属账号的邮箱。"
+                  label={t("Cloudflare 账号邮箱")}
+                  extra={t("必须是当前 Global API Key 所属账号的邮箱。")}
                   rules={[
-                    { required: true, message: "请填写 Cloudflare 账号邮箱" },
-                    { type: "email", message: "请输入有效邮箱" },
+                    {
+                      required: true,
+                      message: t("请填写 Cloudflare 账号邮箱"),
+                    },
+                    { type: "email", message: t("请输入有效邮箱") },
                   ]}
                 >
                   <Input autoComplete="email" placeholder="name@example.com" />
@@ -440,49 +458,55 @@ export function DdnsPage() {
                 }
                 extra={
                   authMode === "global_api_key"
-                    ? "填写 Global API Key，不能使用 Origin CA Key。保存后不回显，留空保留已存密钥。"
-                    : "填写 API Token（不能使用 Global API Key）。需要目标域名的 Zone.DNS 编辑权限；自动查找 Zone 还需 Zone.Zone 读取权限。留空保留已存 Token。"
+                    ? t(
+                        "填写 Global API Key，不能使用 Origin CA Key。保存后不回显，留空保留已存密钥。",
+                      )
+                    : t(
+                        "填写 API Token（不能使用 Global API Key）。需要目标域名的 Zone.DNS 编辑权限；自动查找 Zone 还需 Zone.Zone 读取权限。留空保留已存 Token。",
+                      )
                 }
               >
                 <Input.Password
                   autoComplete="new-password"
                   placeholder={
                     configQuery.data?.token_configured
-                      ? "已配置（留空保持不变）"
-                      : "未配置"
+                      ? t("已配置（留空保持不变）")
+                      : t("未配置")
                   }
                 />
               </Form.Item>
               <Form.Item
                 name="record_names"
-                label="解析域名"
-                extra="完整域名，多个用逗号分隔，例如 home.example.com,nas.example.com"
+                label={t("解析域名")}
+                extra={t(
+                  "完整域名，多个用逗号分隔，例如 home.example.com,nas.example.com",
+                )}
               >
                 <Input placeholder="home.example.com" />
               </Form.Item>
               <Form.Item
                 name="zone_id"
                 label="Zone ID"
-                extra="留空时根据域名自动查找"
+                extra={t("留空时根据域名自动查找")}
               >
-                <Input placeholder="自动查找" />
+                <Input placeholder={t("自动查找")} />
               </Form.Item>
               <Row gutter={16}>
                 <Col xs={24} md={12}>
-                  <Form.Item name="ipv6_source" label="IPv6 获取方式">
+                  <Form.Item name="ipv6_source" label={t("IPv6 获取方式")}>
                     <Select options={sourceOptions} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={12}>
                   <Form.Item
                     name="check_interval_seconds"
-                    label="检测间隔（秒）"
+                    label={t("检测间隔（秒）")}
                     rules={[
                       {
                         type: "number",
                         min: 30,
                         max: 86_400,
-                        message: "30 到 86400 秒",
+                        message: t("30 到 86400 秒"),
                       },
                     ]}
                   >
@@ -493,10 +517,12 @@ export function DdnsPage() {
               {source === "manual" ? (
                 <Form.Item
                   name="manual_ipv6"
-                  label="手动指定 IPv6"
-                  extra="每次检测都会把这个地址同步到域名；也支持 fd00::/8 内网地址"
+                  label={t("手动指定 IPv6")}
+                  extra={t(
+                    "每次检测都会把这个地址同步到域名；也支持 fd00::/8 内网地址",
+                  )}
                   rules={[
-                    { required: true, message: "请填写 IPv6 地址" },
+                    { required: true, message: t("请填写 IPv6 地址") },
                     ipv6Rule,
                   ]}
                 >
@@ -507,17 +533,19 @@ export function DdnsPage() {
                   <Col xs={24} md={12}>
                     <Form.Item
                       name="interface_name"
-                      label="指定网卡"
-                      extra="如 eth0、en0、以太网；留空自动选择稳定的公网地址"
+                      label={t("指定网卡")}
+                      extra={t(
+                        "如 eth0、en0、以太网；留空自动选择稳定的公网地址",
+                      )}
                     >
-                      <Input placeholder="自动选择" />
+                      <Input placeholder={t("自动选择")} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item
                       name="ipv6_lookup_url"
-                      label="IPv6 查询地址"
-                      extra="返回纯文本 IPv6 的地址"
+                      label={t("IPv6 查询地址")}
+                      extra={t("返回纯文本 IPv6 的地址")}
                     >
                       <Input placeholder="https://api6.ipify.org" />
                     </Form.Item>
@@ -526,8 +554,8 @@ export function DdnsPage() {
               )}
               <Form.Item
                 name="api_base"
-                label="Cloudflare API 地址"
-                extra="一般无需修改"
+                label={t("Cloudflare API 地址")}
+                extra={t("一般无需修改")}
               >
                 <Input placeholder="https://api.cloudflare.com/client/v4" />
               </Form.Item>
@@ -538,7 +566,7 @@ export function DdnsPage() {
                 permission="system:ddns:update"
                 loading={saveMutation.isPending}
               >
-                保存配置
+                {t("保存配置")}
               </PermissionButton>
             </Form>
           </Card>

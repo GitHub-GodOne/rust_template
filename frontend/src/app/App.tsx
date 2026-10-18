@@ -4,18 +4,24 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { ConfigProvider, message, theme } from "antd";
+import enUS from "antd/locale/en_US";
 import zhCN from "antd/locale/zh_CN";
+import dayjs from "dayjs";
+import "dayjs/locale/zh-cn";
 import { BrowserRouter } from "react-router-dom";
 import { ApiRequestError } from "../api/client";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { isEnglish, t } from "../i18n";
 import { AppRouter } from "./router";
+
+dayjs.locale(isEnglish ? "en" : "zh-cn");
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
       void message.error({
         key: "query-error",
-        content: error.message || "数据加载失败，请重试",
+        content: error.message || t("数据加载失败，请重试"),
       });
     },
   }),
@@ -36,7 +42,7 @@ const queryClient = new QueryClient({
 export function App() {
   return (
     <ConfigProvider
-      locale={zhCN}
+      locale={isEnglish ? enUS : zhCN}
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {

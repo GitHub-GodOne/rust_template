@@ -72,6 +72,7 @@ import {
   upstreamLabel,
 } from "./certificateView";
 import "./certificates.css";
+import { t } from "../../../i18n";
 
 type MappingFormValues = Required<
   Pick<SaveDomainMappingParams, "domain" | "mode" | "upstream_port">
@@ -88,29 +89,29 @@ type CertificateFormValues = {
 type SettingsFormValues = SaveCertificateSettingsParams;
 
 const mappingStatusLabels: Record<string, string> = {
-  active: "运行中",
-  pending: "等待中",
-  error: "异常",
-  disabled: "已停用",
+  active: t("运行中"),
+  pending: t("等待中"),
+  error: t("异常"),
+  disabled: t("已停用"),
 };
 
 const certificateStatusLabels: Record<string, string> = {
-  pending: "待申请",
-  issuing: "签发中",
-  active: "有效",
-  failed: "失败",
+  pending: t("待申请"),
+  issuing: t("签发中"),
+  active: t("有效"),
+  failed: t("失败"),
 };
 
 const ipModeOptions: { value: IpMode; label: string }[] = [
-  { value: "off", label: "不解析" },
-  { value: "auto", label: "自动检测本机公网地址" },
-  { value: "manual", label: "手动指定地址" },
+  { value: "off", label: t("不解析") },
+  { value: "auto", label: t("自动检测本机公网地址") },
+  { value: "manual", label: t("手动指定地址") },
 ];
 
 const ipModeLabels: Record<string, string> = {
-  off: "不解析",
-  auto: "自动",
-  manual: "手动",
+  off: t("不解析"),
+  auto: t("自动"),
+  manual: t("手动"),
 };
 
 const defaultMapping: MappingFormValues = {
@@ -182,7 +183,7 @@ function MappingDialog({
         : createDomainMapping(payload);
     },
     onSuccess: (result) => {
-      message.success(editing ? "域名映射已更新" : "域名映射已创建");
+      message.success(editing ? t("域名映射已更新") : t("域名映射已创建"));
       if (result.notice) {
         message.warning(result.notice, 6);
       }
@@ -190,16 +191,16 @@ function MappingDialog({
       queryClient.invalidateQueries({ queryKey: ["admin-certificates"] });
       onClose();
     },
-    onError: (error) => message.error(errorText(error, "保存域名映射失败")),
+    onError: (error) => message.error(errorText(error, t("保存域名映射失败"))),
   });
 
   return (
     <Modal
-      title={editing ? "编辑域名映射" : "新增域名映射"}
+      title={editing ? t("编辑域名映射") : t("新增域名映射")}
       open={open}
       onCancel={onClose}
       onOk={() => form.submit()}
-      okText={editing ? "保存" : "创建"}
+      okText={editing ? t("保存") : t("创建")}
       confirmLoading={saveMutation.isPending}
       width="min(680px, 96vw)"
       className="cert-modal"
@@ -213,14 +214,16 @@ function MappingDialog({
         initialValues={defaultMapping}
         onFinish={(values) => saveMutation.mutate(values)}
       >
-        <Form.Item name="mode" label="映射方式">
+        <Form.Item name="mode" label={t("映射方式")}>
           <Radio.Group className="cert-mode-group">
             <Radio.Button value="direct">
               <span className="cert-mode-title">
-                <SafetyCertificateOutlined /> 内置 HTTPS 直连
+                <SafetyCertificateOutlined /> {t("内置 HTTPS 直连")}
               </span>
               <span className="cert-mode-description">
-                自动申请证书，监听 443 或自定义端口，解析 IPv4/IPv6 到本机
+                {t(
+                  "自动申请证书，监听 443 或自定义端口，解析 IPv4/IPv6 到本机",
+                )}
               </span>
             </Radio.Button>
             <Radio.Button value="tunnel">
@@ -228,7 +231,7 @@ function MappingDialog({
                 <CloudOutlined /> Cloudflare Tunnel
               </span>
               <span className="cert-mode-description">
-                通过 cloudflared 穿透，无需公网 IP 和端口转发，固定 443
+                {t("通过 cloudflared 穿透，无需公网 IP 和端口转发，固定 443")}
               </span>
             </Radio.Button>
           </Radio.Group>
@@ -236,27 +239,27 @@ function MappingDialog({
         <div className="cert-form-grid">
           <Form.Item
             name="domain"
-            label="域名"
-            rules={[{ required: true, message: "请输入域名" }]}
+            label={t("域名")}
+            rules={[{ required: true, message: t("请输入域名") }]}
           >
             <Input placeholder="app.example.com" autoComplete="off" />
           </Form.Item>
-          <Form.Item name="name" label="名称">
-            <Input placeholder="默认使用域名" />
+          <Form.Item name="name" label={t("名称")}>
+            <Input placeholder={t("默认使用域名")} />
           </Form.Item>
         </div>
         <div className="cert-form-grid">
           <Form.Item
             name="upstream_host"
-            label="本地服务地址"
-            rules={[{ required: true, message: "请输入本地服务地址" }]}
+            label={t("本地服务地址")}
+            rules={[{ required: true, message: t("请输入本地服务地址") }]}
           >
             <Input placeholder="127.0.0.1" />
           </Form.Item>
           <Form.Item
             name="upstream_port"
-            label="本地服务端口"
-            rules={[{ required: true, message: "请输入本地服务端口" }]}
+            label={t("本地服务端口")}
+            rules={[{ required: true, message: t("请输入本地服务端口") }]}
           >
             <InputNumber min={1} max={65535} className="full-width" />
           </Form.Item>
@@ -265,31 +268,33 @@ function MappingDialog({
           <>
             <Form.Item
               name="public_port"
-              label="HTTPS 端口"
+              label={t("HTTPS 端口")}
               rules={[
-                { required: true, message: "请输入 HTTPS 端口" },
+                { required: true, message: t("请输入 HTTPS 端口") },
                 {
                   validator: (_, value?: number) =>
                     value && value === serverPort
                       ? Promise.reject(
-                          new Error(`与后台服务端口 ${serverPort} 冲突`),
+                          new Error(t("与后台服务端口 {0} 冲突", serverPort)),
                         )
                       : Promise.resolve(),
                 },
               ]}
               extra={
                 isPrivilegedPort(publicPort)
-                  ? "1024 以下端口需要以管理员身份运行（Linux 可授予 CAP_NET_BIND_SERVICE），否则请改用 8443 等端口"
-                  : "访问地址会带上端口号，同一端口可服务多个域名"
+                  ? t(
+                      "1024 以下端口需要以管理员身份运行（Linux 可授予 CAP_NET_BIND_SERVICE），否则请改用 8443 等端口",
+                    )
+                  : t("访问地址会带上端口号，同一端口可服务多个域名")
               }
             >
               <InputNumber min={1} max={65535} className="full-width" />
             </Form.Item>
             <div className="cert-form-grid">
-              <Form.Item name="ipv4_mode" label="IPv4 解析（A 记录）">
+              <Form.Item name="ipv4_mode" label={t("IPv4 解析（A 记录）")}>
                 <Select options={ipModeOptions} />
               </Form.Item>
-              <Form.Item name="ipv6_mode" label="IPv6 解析（AAAA 记录）">
+              <Form.Item name="ipv6_mode" label={t("IPv6 解析（AAAA 记录）")}>
                 <Select options={ipModeOptions} />
               </Form.Item>
             </div>
@@ -298,8 +303,8 @@ function MappingDialog({
                 {ipv4Mode === "manual" ? (
                   <Form.Item
                     name="ipv4_address"
-                    label="IPv4 地址"
-                    rules={[{ required: true, message: "请输入 IPv4 地址" }]}
+                    label={t("IPv4 地址")}
+                    rules={[{ required: true, message: t("请输入 IPv4 地址") }]}
                   >
                     <Input placeholder="203.0.113.10" />
                   </Form.Item>
@@ -309,8 +314,8 @@ function MappingDialog({
                 {ipv6Mode === "manual" ? (
                   <Form.Item
                     name="ipv6_address"
-                    label="IPv6 地址"
-                    rules={[{ required: true, message: "请输入 IPv6 地址" }]}
+                    label={t("IPv6 地址")}
+                    rules={[{ required: true, message: t("请输入 IPv6 地址") }]}
                   >
                     <Input placeholder="2001:db8::10" />
                   </Form.Item>
@@ -319,9 +324,9 @@ function MappingDialog({
             ) : null}
             <div className="cert-switch-row">
               <span>
-                <strong>自动申请证书</strong>
+                <strong>{t("自动申请证书")}</strong>
                 <Typography.Text type="secondary">
-                  没有覆盖该域名的证书时，保存后立即用 Let's Encrypt 申请
+                  {t("没有覆盖该域名的证书时，保存后立即用 Let's Encrypt 申请")}
                 </Typography.Text>
               </span>
               <Form.Item
@@ -329,7 +334,7 @@ function MappingDialog({
                 valuePropName="checked"
                 noStyle
               >
-                <Switch aria-label="自动申请证书" />
+                <Switch aria-label={t("自动申请证书")} />
               </Form.Item>
             </div>
           </>
@@ -338,18 +343,20 @@ function MappingDialog({
             type="info"
             showIcon
             className="cert-inline-alert"
-            message="Cloudflare 会在边缘提供 HTTPS 并通过隧道转发到本地服务，域名会被设置为指向隧道的代理 CNAME 记录。"
+            message={t(
+              "Cloudflare 会在边缘提供 HTTPS 并通过隧道转发到本地服务，域名会被设置为指向隧道的代理 CNAME 记录。",
+            )}
           />
         )}
         <div className="cert-switch-row">
           <span>
-            <strong>启用</strong>
+            <strong>{t("启用")}</strong>
             <Typography.Text type="secondary">
-              停用后不再对外提供访问，配置保留
+              {t("停用后不再对外提供访问，配置保留")}
             </Typography.Text>
           </span>
           <Form.Item name="enabled" valuePropName="checked" noStyle>
-            <Switch aria-label="启用" />
+            <Switch aria-label={t("启用")} />
           </Form.Item>
         </div>
         <div className="cert-route-preview" aria-live="polite">
@@ -393,22 +400,22 @@ function CertificateDialog({
     onSuccess: (certificate) => {
       message.success(
         certificate.issuing
-          ? "已开始申请证书，通常需要 1 到 3 分钟"
-          : "证书记录已创建",
+          ? t("已开始申请证书，通常需要 1 到 3 分钟")
+          : t("证书记录已创建"),
       );
       queryClient.invalidateQueries({ queryKey: ["admin-certificates"] });
       onClose();
     },
-    onError: (error) => message.error(errorText(error, "创建证书失败")),
+    onError: (error) => message.error(errorText(error, t("创建证书失败"))),
   });
 
   return (
     <Modal
-      title="申请证书"
+      title={t("申请证书")}
       open={open}
       onCancel={onClose}
       onOk={() => form.submit()}
-      okText="确定"
+      okText={t("确定")}
       confirmLoading={createMutation.isPending}
       width="min(560px, 96vw)"
       className="cert-modal"
@@ -422,13 +429,13 @@ function CertificateDialog({
       >
         <Form.Item
           name="domain"
-          label="主域名"
-          rules={[{ required: true, message: "请输入主域名" }]}
-          extra="支持通配符，例如 *.example.com"
+          label={t("主域名")}
+          rules={[{ required: true, message: t("请输入主域名") }]}
+          extra={t("支持通配符，例如 *.example.com")}
         >
           <Input placeholder="example.com" />
         </Form.Item>
-        <Form.Item name="alt_names" label="附加域名">
+        <Form.Item name="alt_names" label={t("附加域名")}>
           <Select
             mode="tags"
             tokenSeparators={[",", " ", "，"]}
@@ -438,24 +445,24 @@ function CertificateDialog({
         </Form.Item>
         <div className="cert-switch-row">
           <span>
-            <strong>自动续签</strong>
+            <strong>{t("自动续签")}</strong>
             <Typography.Text type="secondary">
-              到期前按设置的天数自动续签
+              {t("到期前按设置的天数自动续签")}
             </Typography.Text>
           </span>
           <Form.Item name="auto_renew" valuePropName="checked" noStyle>
-            <Switch aria-label="自动续签" />
+            <Switch aria-label={t("自动续签")} />
           </Form.Item>
         </div>
         <div className="cert-switch-row">
           <span>
-            <strong>立即申请</strong>
+            <strong>{t("立即申请")}</strong>
             <Typography.Text type="secondary">
-              通过 Cloudflare DNS 验证域名所有权
+              {t("通过 Cloudflare DNS 验证域名所有权")}
             </Typography.Text>
           </span>
           <Form.Item name="issue_now" valuePropName="checked" noStyle>
-            <Switch aria-label="立即申请" />
+            <Switch aria-label={t("立即申请")} />
           </Form.Item>
         </div>
       </Form>
@@ -484,12 +491,12 @@ function SettingsPanel({ settings }: { settings?: CertificateSettings }) {
         cloudflare_api_token: values.cloudflare_api_token?.trim() || undefined,
       }),
     onSuccess: (saved) => {
-      message.success("设置已保存");
+      message.success(t("设置已保存"));
       queryClient.setQueryData(["admin-certificate-settings"], saved);
       form.setFieldValue("cloudflare_api_token", "");
       queryClient.invalidateQueries({ queryKey: ["admin-domain-mappings"] });
     },
-    onError: (error) => message.error(errorText(error, "保存设置失败")),
+    onError: (error) => message.error(errorText(error, t("保存设置失败"))),
   });
 
   return (
@@ -503,40 +510,42 @@ function SettingsPanel({ settings }: { settings?: CertificateSettings }) {
     >
       <Row gutter={[16, 0]}>
         <Col xs={24} lg={12}>
-          <Card size="small" title="证书申请（Let's Encrypt）">
+          <Card size="small" title={t("证书申请（Let's Encrypt）")}>
             <Form.Item
               name="acme_email"
-              label="联系邮箱"
-              extra="用于接收证书到期等通知，可留空"
+              label={t("联系邮箱")}
+              extra={t("用于接收证书到期等通知，可留空")}
             >
               <Input placeholder="ops@example.com" />
             </Form.Item>
-            <Form.Item name="acme_directory" label="证书环境">
+            <Form.Item name="acme_directory" label={t("证书环境")}>
               <Select
                 options={[
-                  { value: "production", label: "正式环境（浏览器信任）" },
+                  { value: "production", label: t("正式环境（浏览器信任）") },
                   {
                     value: "staging",
-                    label: "测试环境（不受信任，用于调试，不占额度）",
+                    label: t("测试环境（不受信任，用于调试，不占额度）"),
                   },
                 ]}
               />
             </Form.Item>
             <div className="cert-form-grid">
-              <Form.Item name="renew_before_days" label="提前续签（天）">
+              <Form.Item name="renew_before_days" label={t("提前续签（天）")}>
                 <InputNumber min={1} max={60} className="full-width" />
               </Form.Item>
               <Form.Item
                 name="propagation_timeout_seconds"
-                label="DNS 生效等待（秒）"
+                label={t("DNS 生效等待（秒）")}
               >
                 <InputNumber min={0} max={600} className="full-width" />
               </Form.Item>
             </div>
             <Form.Item
               name="ipv4_lookup_url"
-              label="公网 IPv4 查询地址"
-              extra="IPv4 解析选择自动时使用；IPv6 沿用「IPv6 动态解析」的检测方式"
+              label={t("公网 IPv4 查询地址")}
+              extra={t(
+                "IPv4 解析选择自动时使用；IPv6 沿用「IPv6 动态解析」的检测方式",
+              )}
             >
               <Input placeholder="https://api.ipify.org" />
             </Form.Item>
@@ -549,13 +558,15 @@ function SettingsPanel({ settings }: { settings?: CertificateSettings }) {
                 type="info"
                 showIcon
                 className="cert-inline-alert"
-                message="未单独设置 Token，正在使用「IPv6 动态解析」中的 Cloudflare 凭据。"
+                message={t(
+                  "未单独设置 Token，正在使用「IPv6 动态解析」中的 Cloudflare 凭据。",
+                )}
               />
             ) : null}
-            <Form.Item name="cloudflare_auth_mode" label="认证方式">
+            <Form.Item name="cloudflare_auth_mode" label={t("认证方式")}>
               <Select
                 options={[
-                  { value: "api_token", label: "API Token（推荐）" },
+                  { value: "api_token", label: t("API Token（推荐）") },
                   { value: "global_api_key", label: "Global API Key" },
                 ]}
               />
@@ -565,21 +576,23 @@ function SettingsPanel({ settings }: { settings?: CertificateSettings }) {
               label={
                 authMode === "global_api_key" ? "Global API Key" : "API Token"
               }
-              extra="需要权限：Zone · DNS · Edit；使用隧道还需 Account · Cloudflare Tunnel · Edit"
+              extra={t(
+                "需要权限：Zone · DNS · Edit；使用隧道还需 Account · Cloudflare Tunnel · Edit",
+              )}
             >
               <Input.Password
                 autoComplete="new-password"
                 placeholder={
                   settings?.cloudflare_api_token_set
-                    ? "已设置，留空保持不变"
-                    : "留空则使用 IPv6 动态解析的凭据"
+                    ? t("已设置，留空保持不变")
+                    : t("留空则使用 IPv6 动态解析的凭据")
                 }
               />
             </Form.Item>
             {authMode === "global_api_key" ? (
               <Form.Item
                 name="cloudflare_api_email"
-                label="Cloudflare 账号邮箱"
+                label={t("Cloudflare 账号邮箱")}
               >
                 <Input />
               </Form.Item>
@@ -587,23 +600,25 @@ function SettingsPanel({ settings }: { settings?: CertificateSettings }) {
             <Form.Item
               name="cloudflare_account_id"
               label="Account ID"
-              extra="使用 Cloudflare Tunnel 时必填，可在 Cloudflare 控制台右侧找到"
+              extra={t(
+                "使用 Cloudflare Tunnel 时必填，可在 Cloudflare 控制台右侧找到",
+              )}
             >
               <Input placeholder="0123456789abcdef0123456789abcdef" />
             </Form.Item>
             <div className="cert-form-grid">
-              <Form.Item name="tunnel_name" label="隧道名称">
-                <Input placeholder="默认 gpt-images-主机名" />
+              <Form.Item name="tunnel_name" label={t("隧道名称")}>
+                <Input placeholder={t("默认 gpt-images-主机名")} />
               </Form.Item>
               <Form.Item
                 name="cloudflared_path"
-                label="cloudflared 路径"
-                extra="留空则自动在 PATH 中查找"
+                label={t("cloudflared 路径")}
+                extra={t("留空则自动在 PATH 中查找")}
               >
                 <Input placeholder="/usr/local/bin/cloudflared" />
               </Form.Item>
             </div>
-            <Form.Item name="cloudflare_api_base" label="API 地址（高级）">
+            <Form.Item name="cloudflare_api_base" label={t("API 地址（高级）")}>
               <Input placeholder="https://api.cloudflare.com/client/v4" />
             </Form.Item>
           </Card>
@@ -617,7 +632,7 @@ function SettingsPanel({ settings }: { settings?: CertificateSettings }) {
           icon={<SaveOutlined />}
           loading={saveMutation.isPending}
         >
-          保存设置
+          {t("保存设置")}
         </PermissionButton>
       </div>
     </Form>
@@ -676,22 +691,22 @@ export function CertificatesPage() {
     mutationFn: syncDomainMapping,
     onSuccess: (result) => {
       if (result.mapping.status === "error") {
-        message.warning(result.mapping.last_error || "同步完成，但存在问题");
+        message.warning(result.mapping.last_error || t("同步完成，但存在问题"));
       } else {
-        message.success("已同步");
+        message.success(t("已同步"));
       }
       refresh();
     },
-    onError: (error) => message.error(errorText(error, "同步失败")),
+    onError: (error) => message.error(errorText(error, t("同步失败"))),
   });
   const deleteMappingMutation = useMutation({
     mutationFn: (mapping: DomainMappingRecord) =>
       deleteDomainMapping(mapping.id),
     onSuccess: () => {
-      message.success("域名映射已删除");
+      message.success(t("域名映射已删除"));
       refresh();
     },
-    onError: (error) => message.error(errorText(error, "删除失败")),
+    onError: (error) => message.error(errorText(error, t("删除失败"))),
   });
   const toggleMappingMutation = useMutation({
     mutationFn: (mapping: DomainMappingRecord) =>
@@ -703,25 +718,25 @@ export function CertificatesPage() {
         issue_certificate: false,
       }),
     onSuccess: refresh,
-    onError: (error) => message.error(errorText(error, "操作失败")),
+    onError: (error) => message.error(errorText(error, t("操作失败"))),
   });
   const issueMutation = useMutation({
     mutationFn: (certificate: CertificateRecord) =>
       issueCertificate(certificate.id),
     onSuccess: () => {
-      message.success("已开始申请证书，通常需要 1 到 3 分钟");
+      message.success(t("已开始申请证书，通常需要 1 到 3 分钟"));
       refresh();
     },
-    onError: (error) => message.error(errorText(error, "申请证书失败")),
+    onError: (error) => message.error(errorText(error, t("申请证书失败"))),
   });
   const deleteCertificateMutation = useMutation({
     mutationFn: (certificate: CertificateRecord) =>
       deleteCertificate(certificate.id),
     onSuccess: () => {
-      message.success("证书已删除");
+      message.success(t("证书已删除"));
       refresh();
     },
-    onError: (error) => message.error(errorText(error, "删除失败")),
+    onError: (error) => message.error(errorText(error, t("删除失败"))),
   });
   const autoRenewMutation = useMutation({
     mutationFn: (certificate: CertificateRecord) =>
@@ -729,15 +744,15 @@ export function CertificatesPage() {
         auto_renew: !certificate.auto_renew,
       }),
     onSuccess: refresh,
-    onError: (error) => message.error(errorText(error, "操作失败")),
+    onError: (error) => message.error(errorText(error, t("操作失败"))),
   });
   const restartMutation = useMutation({
     mutationFn: restartTunnel,
     onSuccess: () => {
-      message.success("cloudflared 已重启");
+      message.success(t("cloudflared 已重启"));
       refresh();
     },
-    onError: (error) => message.error(errorText(error, "重启失败")),
+    onError: (error) => message.error(errorText(error, t("重启失败"))),
   });
 
   const runtime = runtimeQuery.data;
@@ -760,7 +775,7 @@ export function CertificatesPage() {
 
   const mappingColumns: ColumnsType<DomainMappingRecord> = [
     {
-      title: "域名",
+      title: t("域名"),
       dataIndex: "domain",
       render: (_, mapping) => (
         <div className="cert-cell-main">
@@ -774,7 +789,7 @@ export function CertificatesPage() {
       ),
     },
     {
-      title: "方式",
+      title: t("方式"),
       dataIndex: "mode",
       width: 128,
       render: (mode: string) =>
@@ -784,12 +799,12 @@ export function CertificatesPage() {
           </Tag>
         ) : (
           <Tag icon={<SafetyCertificateOutlined />} color="blue">
-            HTTPS 直连
+            {t("HTTPS 直连")}
           </Tag>
         ),
     },
     {
-      title: "本地服务",
+      title: t("本地服务"),
       key: "upstream",
       render: (_, mapping) => (
         <code className="cert-code">
@@ -802,7 +817,9 @@ export function CertificatesPage() {
       key: "dns",
       render: (_, mapping) =>
         mapping.mode === "tunnel" ? (
-          <Typography.Text type="secondary">CNAME → 隧道</Typography.Text>
+          <Typography.Text type="secondary">
+            {t("CNAME → 隧道")}
+          </Typography.Text>
         ) : (
           <Space size={4} wrap>
             <Tag>IPv4 {ipModeLabels[mapping.ipv4_mode]}</Tag>
@@ -811,7 +828,7 @@ export function CertificatesPage() {
         ),
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 120,
       render: (status: string, mapping) => {
@@ -828,7 +845,7 @@ export function CertificatesPage() {
       },
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 260,
@@ -844,7 +861,7 @@ export function CertificatesPage() {
             }
             onClick={() => syncMutation.mutate(mapping.id)}
           >
-            同步
+            {t("同步")}
           </PermissionButton>
           <PermissionButton
             permission="system:certificate:update"
@@ -853,7 +870,7 @@ export function CertificatesPage() {
             icon={<EditOutlined />}
             onClick={() => setMappingDialog({ open: true, editing: mapping })}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <PermissionButton
             permission="system:certificate:update"
@@ -861,13 +878,13 @@ export function CertificatesPage() {
             type="text"
             onClick={() => toggleMappingMutation.mutate(mapping)}
           >
-            {mapping.enabled ? "停用" : "启用"}
+            {mapping.enabled ? t("停用") : t("启用")}
           </PermissionButton>
           <Popconfirm
-            title="删除该域名映射？"
-            description="同时删除它在 Cloudflare 上创建的解析记录"
+            title={t("删除该域名映射？")}
+            description={t("同时删除它在 Cloudflare 上创建的解析记录")}
             okButtonProps={{ danger: true }}
-            okText="删除"
+            okText={t("删除")}
             onConfirm={() => deleteMappingMutation.mutate(mapping)}
           >
             <PermissionButton
@@ -877,7 +894,7 @@ export function CertificatesPage() {
               danger
               icon={<DeleteOutlined />}
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </>
@@ -887,7 +904,7 @@ export function CertificatesPage() {
 
   const certificateColumns: ColumnsType<CertificateRecord> = [
     {
-      title: "域名",
+      title: t("域名"),
       dataIndex: "domain",
       render: (_, certificate) => (
         <div className="cert-cell-main">
@@ -901,7 +918,7 @@ export function CertificatesPage() {
       ),
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (status: string, certificate) => {
@@ -919,7 +936,7 @@ export function CertificatesPage() {
       },
     },
     {
-      title: "到期时间",
+      title: t("到期时间"),
       dataIndex: "not_after",
       render: (value: string | null, certificate) =>
         value ? (
@@ -927,8 +944,8 @@ export function CertificatesPage() {
             <span>{value}</span>
             <Tag color={expiryTone(certificate.days_remaining)}>
               {(certificate.days_remaining ?? 0) < 0
-                ? "已过期"
-                : `剩余 ${certificate.days_remaining} 天`}
+                ? t("已过期")
+                : t("剩余 {0} 天", certificate.days_remaining)}
             </Tag>
           </Space>
         ) : (
@@ -936,26 +953,26 @@ export function CertificatesPage() {
         ),
     },
     {
-      title: "颁发者",
+      title: t("颁发者"),
       dataIndex: "issuer",
       render: (value?: string | null) => value || "-",
     },
     {
-      title: "自动续签",
+      title: t("自动续签"),
       dataIndex: "auto_renew",
       width: 100,
       render: (value: boolean, certificate) => (
         <Switch
           size="small"
           checked={value}
-          aria-label="自动续签"
+          aria-label={t("自动续签")}
           disabled={!canUpdate}
           onChange={() => autoRenewMutation.mutate(certificate)}
         />
       ),
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 190,
@@ -969,13 +986,13 @@ export function CertificatesPage() {
             disabled={certificate.issuing}
             onClick={() => issueMutation.mutate(certificate)}
           >
-            {certificate.status === "active" ? "续签" : "申请"}
+            {certificate.status === "active" ? t("续签") : t("申请")}
           </PermissionButton>
           <Popconfirm
-            title="删除该证书？"
-            description="证书文件会一并删除"
+            title={t("删除该证书？")}
+            description={t("证书文件会一并删除")}
             okButtonProps={{ danger: true }}
-            okText="删除"
+            okText={t("删除")}
             onConfirm={() => deleteCertificateMutation.mutate(certificate)}
           >
             <PermissionButton
@@ -985,7 +1002,7 @@ export function CertificatesPage() {
               danger
               icon={<DeleteOutlined />}
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </>
@@ -998,11 +1015,11 @@ export function CertificatesPage() {
   return (
     <div className="cert-page">
       <PageHeader
-        title="证书与域名"
+        title={t("证书与域名")}
         extra={
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={refresh}>
-              刷新
+              {t("刷新")}
             </Button>
             {tab === "certificates" ? (
               <PermissionButton
@@ -1011,7 +1028,7 @@ export function CertificatesPage() {
                 icon={<PlusOutlined />}
                 onClick={() => setCertificateDialogOpen(true)}
               >
-                申请证书
+                {t("申请证书")}
               </PermissionButton>
             ) : (
               <PermissionButton
@@ -1020,7 +1037,7 @@ export function CertificatesPage() {
                 icon={<PlusOutlined />}
                 onClick={() => setMappingDialog({ open: true, editing: null })}
               >
-                新增映射
+                {t("新增映射")}
               </PermissionButton>
             )}
           </Space>
@@ -1028,23 +1045,23 @@ export function CertificatesPage() {
       />
       <div className="cert-summary">
         <div className="cert-summary-item">
-          <span>运行中的映射</span>
+          <span>{t("运行中的映射")}</span>
           <strong>{summary.active}</strong>
         </div>
         <div
           className={`cert-summary-item${summary.problems ? " is-error" : ""}`}
         >
-          <span>异常映射</span>
+          <span>{t("异常映射")}</span>
           <strong>{summary.problems}</strong>
         </div>
         <div
           className={`cert-summary-item${summary.expiring ? " is-warning" : ""}`}
         >
-          <span>14 天内到期证书</span>
+          <span>{t("14 天内到期证书")}</span>
           <strong>{summary.expiring}</strong>
         </div>
         <div className="cert-summary-item">
-          <span>HTTPS 监听端口</span>
+          <span>{t("HTTPS 监听端口")}</span>
           <strong>
             {runtime?.listeners.filter((listener) => listener.running).length ??
               0}
@@ -1057,7 +1074,7 @@ export function CertificatesPage() {
         items={[
           {
             key: "mappings",
-            label: "域名映射",
+            label: t("域名映射"),
             children: (
               <DataTable<DomainMappingRecord>
                 loading={mappingsQuery.isLoading}
@@ -1066,7 +1083,11 @@ export function CertificatesPage() {
                 pagination={false}
                 locale={{
                   emptyText: (
-                    <Empty description="还没有域名映射：把本地服务端口发布为 https://域名" />
+                    <Empty
+                      description={t(
+                        "还没有域名映射：把本地服务端口发布为 https://域名",
+                      )}
+                    />
                   ),
                 }}
                 expandable={{
@@ -1084,14 +1105,14 @@ export function CertificatesPage() {
           },
           {
             key: "certificates",
-            label: "证书",
+            label: t("证书"),
             children: (
               <DataTable<CertificateRecord>
                 loading={certificatesQuery.isLoading}
                 dataSource={certificates}
                 columns={certificateColumns}
                 pagination={false}
-                locale={{ emptyText: <Empty description="还没有证书" /> }}
+                locale={{ emptyText: <Empty description={t("还没有证书")} /> }}
                 expandable={{
                   rowExpandable: (certificate) =>
                     Boolean(certificate.last_error),
@@ -1108,11 +1129,11 @@ export function CertificatesPage() {
           },
           {
             key: "runtime",
-            label: "运行状态",
+            label: t("运行状态"),
             children: (
               <Row gutter={[16, 16]}>
                 <Col xs={24} lg={10}>
-                  <Card size="small" title="HTTPS 监听">
+                  <Card size="small" title={t("HTTPS 监听")}>
                     {runtime?.listeners.length ? (
                       <div className="cert-listener-list">
                         {runtime.listeners.map((listener) => (
@@ -1122,7 +1143,7 @@ export function CertificatesPage() {
                               <Tag
                                 color={listener.running ? "success" : "error"}
                               >
-                                {listener.running ? "监听中" : "未监听"}
+                                {listener.running ? t("监听中") : t("未监听")}
                               </Tag>
                             </div>
                             {listener.hosts.length ? (
@@ -1141,7 +1162,7 @@ export function CertificatesPage() {
                     ) : (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="证书签发成功后会自动开始监听"
+                        description={t("证书签发成功后会自动开始监听")}
                       />
                     )}
                   </Card>
@@ -1159,7 +1180,7 @@ export function CertificatesPage() {
                               runtime.tunnel.running ? "success" : "default"
                             }
                           >
-                            {runtime.tunnel.running ? "运行中" : "未运行"}
+                            {runtime.tunnel.running ? t("运行中") : t("未运行")}
                           </Tag>
                         ) : null}
                       </Space>
@@ -1173,7 +1194,7 @@ export function CertificatesPage() {
                         loading={restartMutation.isPending}
                         onClick={() => restartMutation.mutate()}
                       >
-                        重启
+                        {t("重启")}
                       </PermissionButton>
                     }
                   >
@@ -1182,22 +1203,25 @@ export function CertificatesPage() {
                         type="warning"
                         showIcon
                         className="cert-inline-alert"
-                        message="本机未找到 cloudflared"
+                        message={t("本机未找到 cloudflared")}
                         description={
                           <span>
-                            macOS：<code>brew install cloudflared</code>；
-                            Debian/Ubuntu：参考 Cloudflare 官方安装文档；
-                            Windows：
-                            <code>winget install Cloudflare.cloudflared</code>。
-                            安装后在「设置」中填写路径或确保它在 PATH 中。
+                            macOS：<code>brew install cloudflared</code>
+                            {t(
+                              "； Debian/Ubuntu：参考 Cloudflare 官方安装文档； Windows：",
+                            )}
+                            <code>winget install Cloudflare.cloudflared</code>
+                            {t(
+                              "。 安装后在「设置」中填写路径或确保它在 PATH 中。",
+                            )}
                           </span>
                         }
                       />
                     ) : null}
                     <dl className="cert-facts">
-                      <dt>程序</dt>
-                      <dd>{runtime?.tunnel.binary ?? "未找到"}</dd>
-                      <dt>隧道</dt>
+                      <dt>{t("程序")}</dt>
+                      <dd>{runtime?.tunnel.binary ?? t("未找到")}</dd>
+                      <dt>{t("隧道")}</dt>
                       <dd>
                         {runtime?.tunnel_name}
                         {runtime?.tunnel_id ? (
@@ -1207,18 +1231,21 @@ export function CertificatesPage() {
                           </Typography.Text>
                         ) : null}
                       </dd>
-                      <dt>进程</dt>
+                      <dt>{t("进程")}</dt>
                       <dd>
                         {runtime?.tunnel.pid
                           ? `PID ${runtime.tunnel.pid}`
                           : "-"}
                         {runtime?.tunnel.restarts
-                          ? `，已重启 ${runtime.tunnel.restarts} 次`
+                          ? t("，已重启 {0} 次", runtime.tunnel.restarts)
                           : ""}
                       </dd>
                     </dl>
                     {runtime?.tunnel.recent_logs.length ? (
-                      <pre className="cert-logs" aria-label="cloudflared 日志">
+                      <pre
+                        className="cert-logs"
+                        aria-label={t("cloudflared 日志")}
+                      >
                         {runtime.tunnel.recent_logs.slice(-30).join("\n")}
                       </pre>
                     ) : null}
@@ -1231,7 +1258,7 @@ export function CertificatesPage() {
             key: "settings",
             label: (
               <span>
-                <ApiOutlined /> 设置
+                <ApiOutlined /> {t("设置")}
               </span>
             ),
             children: <SettingsPanel settings={settingsQuery.data} />,

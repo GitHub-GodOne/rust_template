@@ -68,6 +68,7 @@ import {
   stripAnsi,
 } from "./projectCliModel";
 import "./project-cli.css";
+import { t } from "../../../i18n";
 
 const RUN_PERMISSION = "system:project_cli:run";
 const POLL_MS = 700;
@@ -77,22 +78,22 @@ const ENVIRONMENTS = ["development", "production", "test"];
 
 const RISK_TAGS: Record<CliRisk, { color: string; label: string } | null> = {
   safe: null,
-  caution: { color: "orange", label: "谨慎" },
-  danger: { color: "red", label: "危险" },
+  caution: { color: "orange", label: t("谨慎") },
+  danger: { color: "red", label: t("危险") },
 };
 
 const STATUS_TAGS: Record<
   ProjectCliRunStatus,
   { color: string; label: string }
 > = {
-  running: { color: "processing", label: "运行中" },
-  success: { color: "success", label: "成功" },
-  failed: { color: "error", label: "失败" },
-  cancelled: { color: "default", label: "已停止" },
+  running: { color: "processing", label: t("运行中") },
+  success: { color: "success", label: t("成功") },
+  failed: { color: "error", label: t("失败") },
+  cancelled: { color: "default", label: t("已停止") },
 };
 
 function errorText(error: unknown) {
-  return error instanceof Error ? error.message : "操作失败";
+  return error instanceof Error ? error.message : t("操作失败");
 }
 
 /** Streams a run's output by polling from the last sequence number. */
@@ -180,7 +181,7 @@ export function ProjectCliPage() {
     mutationFn: () => fetchProjectCliCatalog(true),
     onSuccess: (data) => {
       queryClient.setQueryData(["project-cli", "catalog"], data);
-      message.success(`已重新读取 ${data.commands.length} 条命令`);
+      message.success(t("已重新读取 {0} 条命令", data.commands.length));
     },
     onError: (error) => message.error(errorText(error)),
   });
@@ -236,32 +237,34 @@ export function ProjectCliPage() {
   return (
     <div className="pcli-page">
       <PageHeader
-        title="项目命令"
-        subtitle="项目命令行一览：查看用法、拼好参数后直接在服务器上执行"
+        title={t("项目命令")}
+        subtitle={t("项目命令行一览：查看用法、拼好参数后直接在服务器上执行")}
         icon={<BuildOutlined />}
-        breadcrumb={["系统管理", "项目命令"]}
+        breadcrumb={[t("系统管理"), t("项目命令")]}
         extra={
           <div className="pcli-header-actions">
             {catalog && !isMobile ? (
-              <Tooltip title="命令默认在这个环境下执行">
-                <Tag className="pcli-env-tag">环境 {catalog.environment}</Tag>
+              <Tooltip title={t("命令默认在这个环境下执行")}>
+                <Tag className="pcli-env-tag">
+                  {t("环境 {0}", catalog.environment)}
+                </Tag>
               </Tooltip>
             ) : null}
             <Badge count={runningCount} size="small">
               <Button
                 icon={<HistoryOutlined />}
                 onClick={() => setHistoryOpen(true)}
-                aria-label="运行记录"
+                aria-label={t("运行记录")}
               >
-                {isMobile ? null : "运行记录"}
+                {isMobile ? null : t("运行记录")}
               </Button>
             </Badge>
-            <Tooltip title="重新读取全部命令和参数">
+            <Tooltip title={t("重新读取全部命令和参数")}>
               <Button
                 icon={<ReloadOutlined />}
                 loading={refresh.isPending}
                 onClick={() => refresh.mutate()}
-                aria-label="刷新命令"
+                aria-label={t("刷新命令")}
               />
             </Tooltip>
           </div>
@@ -273,7 +276,7 @@ export function ProjectCliPage() {
           className="pcli-alert"
           type="warning"
           showIcon
-          message="部分命令读取失败"
+          message={t("部分命令读取失败")}
           description={catalog.warnings.join("；")}
         />
       ) : null}
@@ -288,11 +291,11 @@ export function ProjectCliPage() {
 
       <div className="pcli-workspace" ref={workspaceRef}>
         {showList ? (
-          <aside className="pcli-list" aria-label="命令列表">
+          <aside className="pcli-list" aria-label={t("命令列表")}>
             <div className="pcli-list-search">
               <Input.Search
                 allowClear
-                placeholder="搜索命令、参数或说明"
+                placeholder={t("搜索命令、参数或说明")}
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
               />
@@ -305,7 +308,7 @@ export function ProjectCliPage() {
               ) : sections.length === 0 ? (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="没有匹配的命令"
+                  description={t("没有匹配的命令")}
                 />
               ) : (
                 sections.map((section) => (
@@ -329,7 +332,11 @@ export function ProjectCliPage() {
             </div>
             {catalog ? (
               <div className="pcli-list-footer">
-                共 {catalog.commands.length} 条命令 · 自动读取自{" "}
+                {t(
+                  "共 {0} 条命令 · 自动读取自{1}",
+                  catalog.commands.length,
+                  " ",
+                )}
                 <code>{catalog.binary_name}</code>
               </div>
             ) : null}
@@ -357,7 +364,7 @@ export function ProjectCliPage() {
               />
             ) : (
               <div className="pcli-detail-empty">
-                <Empty description="从左侧选择一条命令" />
+                <Empty description={t("从左侧选择一条命令")} />
               </div>
             )}
             <RunConsole
@@ -375,15 +382,16 @@ export function ProjectCliPage() {
       </div>
 
       <Drawer
-        title="运行记录"
+        title={t("运行记录")}
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         width={isMobile ? "100%" : 520}
         className="pcli-history"
       >
         <Typography.Paragraph type="secondary" className="pcli-history-tip">
-          运行记录和输出保存在数据库中，保留最近 500 次；单次输出超过 2 MB
-          时只保留最新部分。
+          {t(
+            "运行记录和输出保存在数据库中，保留最近 500 次；单次输出超过 2 MB 时只保留最新部分。",
+          )}
         </Typography.Paragraph>
         {runsQuery.data?.items.length ? (
           <ul className="pcli-history-list">
@@ -420,7 +428,7 @@ export function ProjectCliPage() {
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="还没有运行过命令"
+            description={t("还没有运行过命令")}
           />
         )}
         {(runsQuery.data?.total ?? 0) > HISTORY_PAGE_SIZE ? (
@@ -472,7 +480,10 @@ function CommandRow({
           />
         ) : null}
         {command.long_running ? (
-          <ClockCircleOutlined className="pcli-row-long" title="持续运行" />
+          <ClockCircleOutlined
+            className="pcli-row-long"
+            title={t("持续运行")}
+          />
         ) : null}
       </span>
       <span className="pcli-row-desc">{command.note ?? command.about}</span>
@@ -490,7 +501,7 @@ function ArgField({
   onChange: (value: CliValues[string]) => void;
 }) {
   const placeholder = arg.default_value
-    ? `默认 ${arg.default_value}`
+    ? t("默认 {0}", arg.default_value)
     : (arg.value_name ?? undefined);
   const list = Array.isArray(value)
     ? value
@@ -513,7 +524,7 @@ function ArgField({
           <Select
             mode="tags"
             className="pcli-field"
-            placeholder="可选：填写值，留空表示不带值"
+            placeholder={t("可选：填写值，留空表示不带值")}
             value={list}
             open={false}
             suffixIcon={null}
@@ -546,7 +557,7 @@ function ArgField({
       <Select
         mode="tags"
         className="pcli-field"
-        placeholder={`${placeholder ?? "值"}，回车添加多个`}
+        placeholder={t("{0}，回车添加多个", placeholder ?? t("值"))}
         value={list}
         open={false}
         suffixIcon={null}
@@ -649,9 +660,9 @@ function CommandPanel({
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(preview);
-      message.success("命令已复制");
+      message.success(t("命令已复制"));
     } catch {
-      message.error("复制失败，请手动选择命令文本");
+      message.error(t("复制失败，请手动选择命令文本"));
     }
   };
 
@@ -661,7 +672,9 @@ function CommandPanel({
     <div key={arg.id} className={`pcli-arg is-${arg.kind}`}>
       <div className="pcli-arg-head">
         <code className="pcli-arg-label">{argLabel(arg)}</code>
-        {arg.required ? <span className="pcli-arg-required">必填</span> : null}
+        {arg.required ? (
+          <span className="pcli-arg-required">{t("必填")}</span>
+        ) : null}
       </div>
       {arg.help ? <div className="pcli-arg-help">{arg.help}</div> : null}
       <ArgField
@@ -683,14 +696,14 @@ function CommandPanel({
               type="text"
               icon={<ArrowLeftOutlined />}
               onClick={onBack}
-              aria-label="返回命令列表"
+              aria-label={t("返回命令列表")}
             />
           ) : null}
           <div className="pcli-panel-title">
             <code>{key}</code>
             {risk ? <Tag color={risk.color}>{risk.label}</Tag> : null}
             {command.long_running ? (
-              <Tag icon={<ClockCircleOutlined />}>持续运行</Tag>
+              <Tag icon={<ClockCircleOutlined />}>{t("持续运行")}</Tag>
             ) : null}
           </div>
         </header>
@@ -705,22 +718,22 @@ function CommandPanel({
           <>
             {params.length > 0 ? (
               <div className="pcli-args">
-                <div className="pcli-args-title">任务参数</div>
+                <div className="pcli-args-title">{t("任务参数")}</div>
                 {params.map(renderArg)}
               </div>
             ) : null}
             {options.length > 0 ? (
               <div className="pcli-args">
-                <div className="pcli-args-title">选项</div>
+                <div className="pcli-args-title">{t("选项")}</div>
                 {options.map(renderArg)}
               </div>
             ) : null}
             <div className="pcli-args">
-              <div className="pcli-args-title">附加参数</div>
+              <div className="pcli-args-title">{t("附加参数")}</div>
               <Input
                 className="pcli-field"
                 value={extra}
-                placeholder="可选，原样追加到命令末尾，例如 --help"
+                placeholder={t("可选，原样追加到命令末尾，例如 --help")}
                 onChange={(event) => setExtra(event.target.value)}
               />
             </div>
@@ -734,11 +747,11 @@ function CommandPanel({
                     onChange={(next) => setProgram(next as "cargo" | "binary")}
                     options={[
                       { value: "cargo", label: "cargo loco" },
-                      { value: "binary", label: "可执行文件" },
+                      { value: "binary", label: t("可执行文件") },
                     ]}
                   />
                 ) : (
-                  <span>命令</span>
+                  <span>{t("命令")}</span>
                 )}
                 <Button
                   type="text"
@@ -746,7 +759,7 @@ function CommandPanel({
                   icon={<CopyOutlined />}
                   onClick={() => void copy()}
                 >
-                  复制
+                  {t("复制")}
                 </Button>
               </div>
               <code className="pcli-preview-line">{preview}</code>
@@ -756,7 +769,9 @@ function CommandPanel({
               {canRun ? (
                 <Tooltip
                   title={
-                    missing.length ? `请先填写 ${missing.join("、")}` : null
+                    missing.length
+                      ? t("请先填写 {0}", missing.join("、"))
+                      : null
                   }
                 >
                   <Button
@@ -767,17 +782,17 @@ function CommandPanel({
                     loading={run.isPending}
                     onClick={start}
                   >
-                    在服务器上执行
+                    {t("在服务器上执行")}
                   </Button>
                 </Tooltip>
               ) : (
                 <Typography.Text type="secondary">
-                  没有执行权限，可以复制命令到终端运行
+                  {t("没有执行权限，可以复制命令到终端运行")}
                 </Typography.Text>
               )}
               {command.long_running ? (
                 <Typography.Text type="secondary" className="pcli-actions-hint">
-                  会一直运行，可在下方随时停止
+                  {t("会一直运行，可在下方随时停止")}
                 </Typography.Text>
               ) : null}
             </div>
@@ -787,7 +802,7 @@ function CommandPanel({
             type="info"
             showIcon
             className="pcli-group-hint"
-            message="这是一个命令组，请在左侧选择具体的子命令"
+            message={t("这是一个命令组，请在左侧选择具体的子命令")}
           />
         )}
       </div>
@@ -797,16 +812,16 @@ function CommandPanel({
         title={
           <span className="pcli-confirm-title">
             <WarningOutlined />
-            确认执行{command.risk === "danger" ? "危险" : ""}命令
+            {t("确认执行{0}命令", command.risk === "danger" ? t("危险") : "")}
           </span>
         }
-        okText="执行"
+        okText={t("执行")}
         okButtonProps={{
           danger: command.risk === "danger",
           disabled: command.risk === "danger" && confirmText.trim() !== key,
           loading: run.isPending,
         }}
-        cancelText="取消"
+        cancelText={t("取消")}
         onOk={() => run.mutate()}
         onCancel={() => setConfirmOpen(false)}
       >
@@ -815,7 +830,7 @@ function CommandPanel({
         {command.risk === "danger" ? (
           <div className="pcli-confirm-input">
             <span>
-              请输入 <code>{key}</code> 确认：
+              {t("请输入")} <code>{key}</code> {t("确认：")}
             </span>
             <Input
               autoFocus
@@ -897,7 +912,7 @@ function RunConsole({
         </code>
         <span className="pcli-console-meta">
           {run?.exit_code !== undefined && run?.exit_code !== null
-            ? `退出码 ${run.exit_code}`
+            ? t("退出码 {0}", run.exit_code)
             : null}
           {run?.duration_ms ? ` · ${formatDuration(run.duration_ms)}` : null}
         </span>
@@ -909,7 +924,7 @@ function RunConsole({
             loading={cancel.isPending}
             onClick={() => cancel.mutate(run.id)}
           >
-            停止
+            {t("停止")}
           </Button>
         ) : null}
         <Button
@@ -918,7 +933,7 @@ function RunConsole({
           className="pcli-console-close"
           onClick={onClose}
         >
-          收起
+          {t("收起")}
         </Button>
       </div>
       <pre
@@ -932,7 +947,9 @@ function RunConsole({
         }}
       >
         {run?.truncated ? (
-          <span className="is-system">（较早的输出已省略）{"\n"}</span>
+          <span className="is-system">
+            {t("（较早的输出已省略）{0}", "\n")}
+          </span>
         ) : null}
         {chunks.map((chunk) => (
           <span key={chunk.seq} className={`is-${chunk.stream}`}>

@@ -26,6 +26,7 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const levelColor: Record<string, string> = {
   info: "blue",
@@ -56,7 +57,7 @@ export function NotificationsPage() {
   const createMutation = useMutation({
     mutationFn: createNotification,
     onSuccess: () => {
-      message.success("通知已创建");
+      message.success(t("通知已创建"));
       setOpen(false);
       form.resetFields();
       queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
@@ -65,48 +66,50 @@ export function NotificationsPage() {
   const readMutation = useMutation({
     mutationFn: markNotificationRead,
     onSuccess: () => {
-      message.success("通知已标记已读");
+      message.success(t("通知已标记已读"));
       queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
     },
   });
   const deleteMutation = useMutation({
     mutationFn: deleteNotification,
     onSuccess: () => {
-      message.success("通知已删除");
+      message.success(t("通知已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
     },
   });
 
   const columns: ColumnsType<NotificationRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "标题", dataIndex: "title", width: 220 },
+    { title: t("标题"), dataIndex: "title", width: 220 },
     {
-      title: "级别",
+      title: t("级别"),
       dataIndex: "level",
       width: 100,
       render: (value) => (
         <Tag color={levelColor[value] ?? "default"}>{value}</Tag>
       ),
     },
-    { title: "分类", dataIndex: "category", width: 120 },
-    { title: "目标", dataIndex: "target_type", width: 100 },
+    { title: t("分类"), dataIndex: "category", width: 120 },
+    { title: t("目标"), dataIndex: "target_type", width: 100 },
     {
-      title: "已读",
+      title: t("已读"),
       dataIndex: "read_at",
       width: 90,
       render: (value) => (
-        <Tag color={value ? "green" : "orange"}>{value ? "已读" : "未读"}</Tag>
+        <Tag color={value ? "green" : "orange"}>
+          {value ? t("已读") : t("未读")}
+        </Tag>
       ),
     },
-    { title: "时间", dataIndex: "created_at", width: 220 },
+    { title: t("时间"), dataIndex: "created_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 240,
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => setDetail(record)}>
-            详情
+            {t("详情")}
           </Button>
           <PermissionButton
             size="small"
@@ -114,10 +117,10 @@ export function NotificationsPage() {
             disabled={Boolean(record.read_at)}
             onClick={() => readMutation.mutate(record.id)}
           >
-            已读
+            {t("已读")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除通知？"
+            title={t("确认删除通知？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -126,7 +129,7 @@ export function NotificationsPage() {
               icon={<DeleteOutlined />}
               permission="system:notification:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -136,15 +139,15 @@ export function NotificationsPage() {
 
   return (
     <CrudPage
-      title="通知中心"
-      subtitle="站内通知、系统提醒和运维事件的统一入口"
-      breadcrumb={["系统管理", "通知中心"]}
+      title={t("通知中心")}
+      subtitle={t("站内通知、系统提醒和运维事件的统一入口")}
+      breadcrumb={[t("系统管理"), t("通知中心")]}
       icon={<BellOutlined />}
       toolbar={
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="搜索标题或内容"
+            placeholder={t("搜索标题或内容")}
             onSearch={(value) => {
               setPage(1);
               setKeyword(value);
@@ -153,17 +156,17 @@ export function NotificationsPage() {
           />
           <Select
             allowClear
-            placeholder="级别"
+            placeholder={t("级别")}
             value={level}
             onChange={(value) => {
               setPage(1);
               setLevel(value);
             }}
             options={[
-              { value: "info", label: "信息" },
-              { value: "success", label: "成功" },
-              { value: "warning", label: "警告" },
-              { value: "error", label: "错误" },
+              { value: "info", label: t("信息") },
+              { value: "success", label: t("成功") },
+              { value: "warning", label: t("警告") },
+              { value: "error", label: t("错误") },
             ]}
             className="admin-filter-select"
           />
@@ -171,7 +174,7 @@ export function NotificationsPage() {
             actions={[
               {
                 key: "create",
-                label: "新增通知",
+                label: t("新增通知"),
                 icon: <PlusOutlined />,
                 primary: true,
                 permission: "system:notification:create",
@@ -201,7 +204,7 @@ export function NotificationsPage() {
         }}
       />
       <Modal
-        title="新增通知"
+        title={t("新增通知")}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
@@ -212,14 +215,26 @@ export function NotificationsPage() {
           layout="vertical"
           onFinish={(values) => createMutation.mutate(values)}
         >
-          <Form.Item name="title" label="标题" rules={[{ required: true }]}>
+          <Form.Item
+            name="title"
+            label={t("标题")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="content" label="内容" rules={[{ required: true }]}>
+          <Form.Item
+            name="content"
+            label={t("内容")}
+            rules={[{ required: true }]}
+          >
             <Input.TextArea rows={4} />
           </Form.Item>
           <Space className="full-width" align="start">
-            <Form.Item name="level" label="级别" rules={[{ required: true }]}>
+            <Form.Item
+              name="level"
+              label={t("级别")}
+              rules={[{ required: true }]}
+            >
               <Select
                 options={["info", "success", "warning", "error"].map(
                   (value) => ({ value, label: value }),
@@ -228,21 +243,21 @@ export function NotificationsPage() {
             </Form.Item>
             <Form.Item
               name="category"
-              label="分类"
+              label={t("分类")}
               rules={[{ required: true }]}
             >
               <Input />
             </Form.Item>
             <Form.Item
               name="target_type"
-              label="目标"
+              label={t("目标")}
               rules={[{ required: true }]}
             >
               <Select
                 options={[
-                  { value: "all", label: "全部" },
-                  { value: "user", label: "用户" },
-                  { value: "tenant", label: "租户" },
+                  { value: "all", label: t("全部") },
+                  { value: "user", label: t("用户") },
+                  { value: "tenant", label: t("租户") },
                 ]}
               />
             </Form.Item>
@@ -250,7 +265,7 @@ export function NotificationsPage() {
         </Form>
       </Modal>
       <Drawer
-        title="通知详情"
+        title={t("通知详情")}
         open={Boolean(detail)}
         onClose={() => setDetail(null)}
         width={560}
@@ -262,7 +277,7 @@ export function NotificationsPage() {
             </Tag>
             <h3>{detail.title}</h3>
             <div>{detail.content}</div>
-            <div>创建时间：{detail.created_at}</div>
+            <div>{t("创建时间：{0}", detail.created_at)}</div>
           </Space>
         )}
       </Drawer>

@@ -21,6 +21,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t, tData } from "../../../i18n";
 
 export function TenantsPage() {
   const [page, setPage] = useState(1);
@@ -40,7 +41,7 @@ export function TenantsPage() {
     mutationFn: (values: SaveTenantParams) =>
       editing ? updateTenant(editing.id, values) : createTenant(values),
     onSuccess: () => {
-      message.success("租户已保存");
+      message.success(t("租户已保存"));
       setFormOpen(false);
       setEditing(null);
       form.resetFields();
@@ -51,37 +52,42 @@ export function TenantsPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteTenant,
     onSuccess: () => {
-      message.success("租户已删除");
+      message.success(t("租户已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-tenants"] });
     },
   });
 
   const columns: ColumnsType<TenantRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "租户名称", dataIndex: "name", width: 180 },
-    { title: "租户编码", dataIndex: "code", width: 180 },
-    { title: "说明", dataIndex: "description", ellipsis: true },
     {
-      title: "状态",
+      title: t("租户名称"),
+      dataIndex: "name",
+      width: 180,
+      render: (value: string) => tData(value),
+    },
+    { title: t("租户编码"), dataIndex: "code", width: 180 },
+    { title: t("说明"), dataIndex: "description", ellipsis: true },
+    {
+      title: t("状态"),
       dataIndex: "enabled",
       width: 100,
       render: (enabled) => <StatusTag active={enabled} />,
     },
     {
-      title: "部门管理",
+      title: t("部门管理"),
       dataIndex: "departments_enabled",
       width: 110,
       render: (enabled) => <StatusTag active={enabled} />,
     },
     {
-      title: "系统租户",
+      title: t("系统租户"),
       dataIndex: "is_system",
       width: 110,
       render: (isSystem) => <StatusTag active={isSystem} />,
     },
-    { title: "创建时间", dataIndex: "created_at", width: 210 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 210 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       render: (_, record) => (
@@ -102,10 +108,10 @@ export function TenantsPage() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除租户？"
+            title={t("确认删除租户？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -115,7 +121,7 @@ export function TenantsPage() {
               icon={<DeleteOutlined />}
               permission="system:tenant:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -125,15 +131,15 @@ export function TenantsPage() {
 
   return (
     <CrudPage
-      title="租户管理"
-      subtitle="维护平台租户，作为用户、角色和后续业务数据隔离的基础"
-      breadcrumb={["系统管理", "租户管理"]}
+      title={t("租户管理")}
+      subtitle={t("维护平台租户，作为用户、角色和后续业务数据隔离的基础")}
+      breadcrumb={[t("系统管理"), t("租户管理")]}
       icon={<ApartmentOutlined />}
       toolbar={
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="搜索租户名称、编码"
+            placeholder={t("搜索租户名称、编码")}
             className="admin-search-input"
             onSearch={(value) => {
               setPage(1);
@@ -144,7 +150,7 @@ export function TenantsPage() {
             actions={[
               {
                 key: "create",
-                label: "新增",
+                label: t("新增"),
                 icon: <PlusOutlined />,
                 primary: true,
                 permission: "system:tenant:create",
@@ -174,7 +180,7 @@ export function TenantsPage() {
         }}
       />
       <Modal
-        title={editing ? "编辑租户" : "新增租户"}
+        title={editing ? t("编辑租户") : t("新增租户")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -185,21 +191,29 @@ export function TenantsPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="name" label="租户名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t("租户名称")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="租户编码" rules={[{ required: true }]}>
+          <Form.Item
+            name="code"
+            label={t("租户编码")}
+            rules={[{ required: true }]}
+          >
             <Input disabled={editing?.is_system} />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
           <Form.Item
             name="departments_enabled"
-            label="启用部门管理"
+            label={t("启用部门管理")}
             valuePropName="checked"
           >
             <Switch />

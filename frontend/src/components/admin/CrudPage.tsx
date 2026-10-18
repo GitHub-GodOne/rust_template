@@ -2,6 +2,7 @@ import { MoreOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Drawer, Grid } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { t } from "../../i18n";
 
 /**
  * Standard admin page: one card that fills the content area. Filters and
@@ -63,7 +64,7 @@ export function CrudPage({
                   setMobileToolbarOpen(true);
                 }}
               >
-                操作
+                {t("操作")}
               </Button>
             ) : null}
           </div>
@@ -80,7 +81,7 @@ export function CrudPage({
       </Card>
       {toolbar ? (
         <Drawer
-          title={`${title} · 操作`}
+          title={t("{0} · 操作", title)}
           open={isMobile && mobileToolbarOpen}
           onClose={() => setMobileToolbarOpen(false)}
           placement="bottom"

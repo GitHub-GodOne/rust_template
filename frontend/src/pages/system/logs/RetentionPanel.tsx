@@ -15,6 +15,7 @@ import {
   runRetention,
   saveRetention,
 } from "../../../api/admin/logs";
+import { t } from "../../../i18n";
 
 const DEFAULT_DAYS = 90;
 const MAX_DAYS = 3650;
@@ -55,12 +56,12 @@ export function RetentionPanel({
       queryClient.setQueryData(["log-retention"], next);
       message.success(
         next.retention_days === 0
-          ? "日志将永久保留"
-          : `日志保留 ${next.retention_days} 天`,
+          ? t("日志将永久保留")
+          : t("日志保留 {0} 天", next.retention_days),
       );
     },
     onError: (error) =>
-      message.error(error instanceof Error ? error.message : "保存失败"),
+      message.error(error instanceof Error ? error.message : t("保存失败")),
   });
 
   const purge = useMutation({
@@ -68,14 +69,14 @@ export function RetentionPanel({
     onSuccess: (result) => {
       message.success(
         result.deleted > 0
-          ? `已清理 ${result.deleted} 条过期日志`
-          : "没有需要清理的日志",
+          ? t("已清理 {0} 条过期日志", result.deleted)
+          : t("没有需要清理的日志"),
       );
       queryClient.invalidateQueries({ queryKey: ["log-retention"] });
       queryClient.invalidateQueries({ queryKey: ["admin-logs"] });
     },
     onError: (error) =>
-      message.error(error instanceof Error ? error.message : "清理失败"),
+      message.error(error instanceof Error ? error.message : t("清理失败")),
   });
 
   const last = status?.last_cleanup;
@@ -84,16 +85,19 @@ export function RetentionPanel({
     <div className="retention-panel">
       <div className="retention-head">
         <div>
-          <strong>日志保留</strong>
+          <strong>{t("日志保留")}</strong>
           <Typography.Paragraph type="secondary">
-            超过保留期的日志每 {status?.interval_hours ?? 6}{" "}
-            小时自动清理一次，对应系统设置中的「日志保留天数」。
+            {t(
+              "超过保留期的日志每 {0}{1}小时自动清理一次，对应系统设置中的「日志保留天数」。",
+              status?.interval_hours ?? 6,
+              " ",
+            )}
           </Typography.Paragraph>
         </div>
       </div>
       <div className="retention-controls">
         <Space wrap>
-          <span>保留</span>
+          <span>{t("保留")}</span>
           <InputNumber
             min={1}
             max={MAX_DAYS}
@@ -101,17 +105,17 @@ export function RetentionPanel({
             value={days}
             disabled={!canEdit || forever}
             onChange={(value) => setDays(value ?? DEFAULT_DAYS)}
-            addonAfter="天"
-            aria-label="保留天数"
+            addonAfter={t("天")}
+            aria-label={t("保留天数")}
             className="retention-days"
           />
           <Switch
             checked={forever}
             disabled={!canEdit}
             onChange={setForever}
-            aria-label="永久保留"
+            aria-label={t("永久保留")}
           />
-          <span>永久保留</span>
+          <span>{t("永久保留")}</span>
         </Space>
         <Space wrap>
           {canEdit ? (
@@ -121,20 +125,24 @@ export function RetentionPanel({
               loading={save.isPending}
               onClick={() => save.mutate()}
             >
-              保存
+              {t("保存")}
             </Button>
           ) : null}
           {canPurge ? (
             <Popconfirm
-              title="立即清理过期日志？"
+              title={t("立即清理过期日志？")}
               description={
                 status && status.retention_days > 0
-                  ? `将删除 ${status.expired_count} 条超过 ${status.retention_days} 天的日志，无法恢复`
-                  : "当前为永久保留，不会删除任何日志"
+                  ? t(
+                      "将删除 {0} 条超过 {1} 天的日志，无法恢复",
+                      status.expired_count,
+                      status.retention_days,
+                    )
+                  : t("当前为永久保留，不会删除任何日志")
               }
-              okText="清理"
+              okText={t("清理")}
               okButtonProps={{ danger: true }}
-              cancelText="取消"
+              cancelText={t("取消")}
               onConfirm={() => purge.mutate()}
               disabled={dirty}
             >
@@ -142,9 +150,9 @@ export function RetentionPanel({
                 icon={<ClearOutlined />}
                 loading={purge.isPending}
                 disabled={dirty}
-                title={dirty ? "请先保存保留天数" : undefined}
+                title={dirty ? t("请先保存保留天数") : undefined}
               >
-                立即清理
+                {t("立即清理")}
               </Button>
             </Popconfirm>
           ) : null}
@@ -153,25 +161,33 @@ export function RetentionPanel({
       {status ? (
         <ul className="retention-facts">
           <li>
-            共 {status.total_count} 条，最早 {formatTime(status.oldest_at)}
+            {t(
+              "共 {0} 条，最早 {1}",
+              status.total_count,
+              formatTime(status.oldest_at),
+            )}
           </li>
           <li>
             {status.retention_days > 0
-              ? `超过保留期待清理：${status.expired_count} 条`
-              : "永久保留，不会自动清理"}
+              ? t("超过保留期待清理：{0} 条", status.expired_count)
+              : t("永久保留，不会自动清理")}
           </li>
           <li>
-            上次清理：
-            {last
-              ? `${formatTime(last.ran_at)}（${
-                  last.trigger === "manual" ? "手动" : "自动"
-                }），${
-                  last.error ? `失败：${last.error}` : `删除 ${last.deleted} 条`
-                }`
-              : "服务启动后尚未运行"}
+            {t(
+              "上次清理：{0}",
+              last
+                ? `${formatTime(last.ran_at)}（${
+                    last.trigger === "manual" ? t("手动") : t("自动")
+                  }），${
+                    last.error
+                      ? t("失败：{0}", last.error)
+                      : t("删除 {0} 条", last.deleted)
+                  }`
+                : t("服务启动后尚未运行"),
+            )}
           </li>
           {status.next_run_at ? (
-            <li>下次自动清理：{formatTime(status.next_run_at)}</li>
+            <li>{t("下次自动清理：{0}", formatTime(status.next_run_at))}</li>
           ) : null}
         </ul>
       ) : null}

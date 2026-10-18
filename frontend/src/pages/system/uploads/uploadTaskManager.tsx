@@ -30,6 +30,7 @@ import {
   createUploadTask,
   uploadTaskChunk,
 } from "../../../api/admin/uploads";
+import { t } from "../../../i18n";
 import {
   type RunningUpload,
   useUploadTasksStore,
@@ -136,32 +137,44 @@ export function uploadTaskStatus(
   running?: RunningUpload,
 ) {
   if (running?.paused) {
-    return { label: "暂停", color: "default", icon: <PauseCircleOutlined /> };
+    return {
+      label: t("暂停"),
+      color: "default",
+      icon: <PauseCircleOutlined />,
+    };
   }
   if (running) {
     return {
-      label: "上传中",
+      label: t("上传中"),
       color: "processing",
       icon: <CloudUploadOutlined />,
     };
   }
   if (task.status === "completed") {
-    return { label: "已完成", color: "success", icon: <CheckCircleOutlined /> };
+    return {
+      label: t("已完成"),
+      color: "success",
+      icon: <CheckCircleOutlined />,
+    };
   }
   if (task.status === "failed") {
     return {
-      label: "可重试",
+      label: t("可重试"),
       color: "error",
       icon: <ExclamationCircleOutlined />,
     };
   }
   if (task.status === "importing") {
-    return { label: "入库中", color: "gold", icon: <CloudSyncOutlined /> };
+    return { label: t("入库中"), color: "gold", icon: <CloudSyncOutlined /> };
   }
   if (task.uploaded_chunks.length > 0) {
-    return { label: "可续传", color: "warning", icon: <ReloadOutlined /> };
+    return { label: t("可续传"), color: "warning", icon: <ReloadOutlined /> };
   }
-  return { label: "等待上传", color: "default", icon: <PauseCircleOutlined /> };
+  return {
+    label: t("等待上传"),
+    color: "default",
+    icon: <PauseCircleOutlined />,
+  };
 }
 
 export function isTaskFullyUploaded(task: UploadTaskRecord) {
@@ -200,7 +213,7 @@ export function useUploadTaskManager({
     lifecycle?: ChunkUploadLifecycle,
   ) => {
     if (!bucketId && !existingTask?.storage_bucket_id) {
-      const error = new Error("请先选择存储桶");
+      const error = new Error(t("请先选择存储桶"));
       message.warning(error.message);
       lifecycle?.onError?.(error);
       return;
@@ -277,7 +290,7 @@ export function useUploadTaskManager({
       }
       const running = useUploadTasksStore.getState().runningUploads[task.id];
       if (running?.paused) {
-        message.info("上传已暂停，可在上传任务页面继续");
+        message.info(t("上传已暂停，可在上传任务页面继续"));
         lifecycle?.onPaused?.(task);
         return;
       }
@@ -286,7 +299,7 @@ export function useUploadTaskManager({
         lifecycle?.onProgress?.(100);
         task = await completeUploadTask(task.id);
         message.success(
-          `${task.original_name} 已提交入库，上传任务页面会自动更新结果`,
+          t("{0} 已提交入库，上传任务页面会自动更新结果", task.original_name),
         );
         setTaskRunning(task.id);
         queryClient.invalidateQueries({ queryKey: ["admin-upload-tasks"] });
@@ -298,7 +311,7 @@ export function useUploadTaskManager({
       if (task) {
         setTaskRunning(task.id);
       }
-      message.error(error instanceof Error ? error.message : "分片上传失败");
+      message.error(error instanceof Error ? error.message : t("分片上传失败"));
       lifecycle?.onError?.(error);
       queryClient.invalidateQueries({ queryKey: ["admin-upload-tasks"] });
     }
@@ -323,14 +336,14 @@ export function useUploadTaskManager({
           ),
       );
       message.success(
-        `${nextTask.original_name} 已提交入库，上传任务页面会自动更新结果`,
+        t("{0} 已提交入库，上传任务页面会自动更新结果", nextTask.original_name),
       );
       queryClient.invalidateQueries({ queryKey: ["admin-upload-tasks"] });
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     } catch (error) {
       message.error(
-        error instanceof Error ? error.message : "入库任务提交失败",
+        error instanceof Error ? error.message : t("入库任务提交失败"),
       );
       queryClient.invalidateQueries({ queryKey: ["admin-upload-tasks"] });
     }
@@ -356,7 +369,7 @@ export function createUploadTaskColumns({
 }: UploadTaskColumnActions): ColumnsType<UploadTaskRecord> {
   return [
     {
-      title: "文件",
+      title: t("文件"),
       dataIndex: "original_name",
       ellipsis: true,
       render: (value, task) => (
@@ -369,7 +382,7 @@ export function createUploadTaskColumns({
       ),
     },
     {
-      title: "状态",
+      title: t("状态"),
       key: "status",
       width: 110,
       render: (_, task) => {
@@ -382,7 +395,7 @@ export function createUploadTaskColumns({
       },
     },
     {
-      title: "进度",
+      title: t("进度"),
       key: "progress",
       width: 220,
       render: (_, task) => {
@@ -399,25 +412,25 @@ export function createUploadTaskColumns({
       },
     },
     {
-      title: "大小",
+      title: t("大小"),
       dataIndex: "size_bytes",
       width: 110,
       render: formatBytes,
     },
     {
-      title: "分片",
+      title: t("分片"),
       key: "chunks",
       width: 120,
       render: (_, task) =>
         `${task.uploaded_chunks.length}/${task.total_chunks}`,
     },
     {
-      title: "更新时间",
+      title: t("更新时间"),
       dataIndex: "updated_at",
       width: 220,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 260,
       render: (_, task) => {
@@ -431,7 +444,7 @@ export function createUploadTaskColumns({
                 icon={<PauseCircleOutlined />}
                 onClick={() => pauseTask(task.id)}
               >
-                暂停
+                {t("暂停")}
               </Button>
             ) : null}
             {running?.paused ? (
@@ -440,7 +453,7 @@ export function createUploadTaskColumns({
                 icon={<PlayCircleOutlined />}
                 onClick={() => resumeTask(task)}
               >
-                继续
+                {t("继续")}
               </Button>
             ) : null}
             {!running && task.status !== "completed" ? (
@@ -450,7 +463,7 @@ export function createUploadTaskColumns({
                   icon={<CloudSyncOutlined />}
                   onClick={() => submitTaskImport(task)}
                 >
-                  {task.status === "importing" ? "重新入库" : "重试入库"}
+                  {task.status === "importing" ? t("重新入库") : t("重试入库")}
                 </Button>
               ) : (
                 <Upload
@@ -461,7 +474,7 @@ export function createUploadTaskColumns({
                   }}
                 >
                   <Button size="small" icon={<ReloadOutlined />}>
-                    续传缺失分片
+                    {t("续传缺失分片")}
                   </Button>
                 </Upload>
               )

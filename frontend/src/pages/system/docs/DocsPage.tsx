@@ -1,15 +1,20 @@
 import { ApiOutlined } from "@ant-design/icons";
 import { CrudPage } from "../../../components/admin/CrudPage";
+import { t } from "../../../i18n";
 
 export function DocsPage() {
   return (
     <CrudPage
-      title="接口文档"
+      title={t("接口文档")}
       subtitle="OpenAPI / Swagger"
       icon={<ApiOutlined />}
     >
       <div className="docs-frame-shell">
-        <iframe className="docs-frame" src="/swagger-ui" title="接口文档" />
+        <iframe
+          className="docs-frame"
+          src="/swagger-ui"
+          title={t("接口文档")}
+        />
       </div>
     </CrudPage>
   );

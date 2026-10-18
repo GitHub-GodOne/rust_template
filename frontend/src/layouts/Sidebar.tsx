@@ -23,6 +23,7 @@ import {
 } from "../stores/ui";
 import { renderMenuIcon } from "./icons";
 import "./sidebar.css";
+import { t } from "../i18n";
 
 const { Sider } = Layout;
 
@@ -102,11 +103,11 @@ function SidebarContent({
     <>
       <div className="admin-brand">
         {onToggleCollapsed && collapsed ? (
-          <Tooltip title="展开导航" placement="right">
+          <Tooltip title={t("展开导航")} placement="right">
             <button
               type="button"
               className="admin-brand-mark admin-brand-mark-toggle"
-              aria-label="展开导航"
+              aria-label={t("展开导航")}
               onClick={onToggleCollapsed}
             >
               <span className="admin-brand-mark-letter">G</span>
@@ -118,16 +119,16 @@ function SidebarContent({
         )}
         {!collapsed && (
           <div className="admin-brand-copy">
-            <div className="admin-brand-title">后台管理</div>
+            <div className="admin-brand-title">{t("后台管理")}</div>
             <div className="admin-brand-subtitle">Admin Template</div>
           </div>
         )}
         {onToggleCollapsed && !collapsed ? (
-          <Tooltip title="收起导航" placement="right">
+          <Tooltip title={t("收起导航")} placement="right">
             <button
               type="button"
               className="admin-sidebar-collapse"
-              aria-label="收起导航"
+              aria-label={t("收起导航")}
               onClick={onToggleCollapsed}
             >
               <MenuFoldOutlined />
@@ -296,8 +297,8 @@ function SidebarSplitter({ collapsed }: { collapsed: boolean }) {
     <Tooltip
       title={
         collapsed
-          ? "点击展开，拖动调整宽度"
-          : "拖动调整宽度，点击收起，双击恢复默认"
+          ? t("点击展开，拖动调整宽度")
+          : t("拖动调整宽度，点击收起，双击恢复默认")
       }
       placement="right"
       mouseEnterDelay={0.6}
@@ -307,7 +308,7 @@ function SidebarSplitter({ collapsed }: { collapsed: boolean }) {
         // biome-ignore lint/a11y/useSemanticElements: a focusable, draggable window splitter; <hr> cannot be interactive
         role="separator"
         aria-orientation="vertical"
-        aria-label="调整导航宽度"
+        aria-label={t("调整导航宽度")}
         aria-valuemin={SIDEBAR_COLLAPSED_WIDTH}
         aria-valuemax={420}
         aria-valuenow={collapsed ? SIDEBAR_COLLAPSED_WIDTH : width}

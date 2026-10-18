@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const ts = require("typescript");
+const { i18n, i18nRequire } = require("./support/i18n-stub.cjs");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 
@@ -15,6 +16,7 @@ const output = { exports: {} };
 vm.runInNewContext(compiled, {
   exports: output.exports,
   require(name) {
+    if (/(^|\/)i18n$/.test(name)) return i18n;
     if (name === "../../../api/admin/monitoring") return { fetchTemperatureHistory: () => Promise.resolve({ items: [], total: 0 }) };
     if (name === "../../../components/admin/DataTable") {
       return { DataTable: ({ columns, dataSource }) => React.createElement("table", {}, dataSource.map((row) =>

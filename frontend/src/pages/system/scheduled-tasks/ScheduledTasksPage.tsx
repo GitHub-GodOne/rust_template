@@ -37,6 +37,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t } from "../../../i18n";
 
 const statusColor: Record<string, string> = {
   idle: "default",
@@ -68,7 +69,7 @@ export function ScheduledTasksPage() {
         ? updateScheduledTask(editing.id, values)
         : createScheduledTask(values),
     onSuccess: () => {
-      message.success("定时任务已保存");
+      message.success(t("定时任务已保存"));
       setOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ["admin-scheduled-tasks"] });
@@ -77,14 +78,14 @@ export function ScheduledTasksPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteScheduledTask,
     onSuccess: () => {
-      message.success("定时任务已删除");
+      message.success(t("定时任务已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-scheduled-tasks"] });
     },
   });
   const runMutation = useMutation({
     mutationFn: runScheduledTask,
     onSuccess: (run) => {
-      message.success(`任务执行完成：${run.status}`);
+      message.success(t("任务执行完成：{0}", run.status));
       queryClient.invalidateQueries({ queryKey: ["admin-scheduled-tasks"] });
       queryClient.invalidateQueries({
         queryKey: ["admin-scheduled-task-runs"],
@@ -94,18 +95,18 @@ export function ScheduledTasksPage() {
 
   const taskColumns: ColumnsType<ScheduledTaskRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 160 },
-    { title: "编码", dataIndex: "code", width: 180 },
-    { title: "类型", dataIndex: "task_type", width: 160 },
+    { title: t("名称"), dataIndex: "name", width: 160 },
+    { title: t("编码"), dataIndex: "code", width: 180 },
+    { title: t("类型"), dataIndex: "task_type", width: 160 },
     { title: "Cron", dataIndex: "cron_expr", width: 150 },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       render: (value) => (
@@ -113,13 +114,13 @@ export function ScheduledTasksPage() {
       ),
     },
     {
-      title: "上次执行",
+      title: t("上次执行"),
       dataIndex: "last_run_at",
       width: 220,
       render: (value) => value ?? "-",
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 280,
       render: (_, record) => (
@@ -130,7 +131,7 @@ export function ScheduledTasksPage() {
             permission="system:scheduled_task:run"
             onClick={() => runMutation.mutate(record.id)}
           >
-            运行
+            {t("运行")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -142,10 +143,10 @@ export function ScheduledTasksPage() {
               setOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除任务？"
+            title={t("确认删除任务？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -154,7 +155,7 @@ export function ScheduledTasksPage() {
               icon={<DeleteOutlined />}
               permission="system:scheduled_task:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -164,26 +165,31 @@ export function ScheduledTasksPage() {
 
   const runColumns: ColumnsType<TaskRunRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "任务", dataIndex: "code", width: 180 },
+    { title: t("任务"), dataIndex: "code", width: 180 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       render: (value) => (
         <Tag color={statusColor[value] ?? "default"}>{value}</Tag>
       ),
     },
-    { title: "触发", dataIndex: "triggered_by", width: 100 },
+    { title: t("触发"), dataIndex: "triggered_by", width: 100 },
     {
-      title: "耗时",
+      title: t("耗时"),
       dataIndex: "duration_ms",
       width: 100,
       render: (value) => (value ? `${value} ms` : "-"),
     },
-    { title: "开始时间", dataIndex: "started_at", width: 220 },
-    { title: "错误", dataIndex: "error_message", width: 240, ellipsis: true },
+    { title: t("开始时间"), dataIndex: "started_at", width: 220 },
     {
-      title: "操作",
+      title: t("错误"),
+      dataIndex: "error_message",
+      width: 240,
+      ellipsis: true,
+    },
+    {
+      title: t("操作"),
       key: "actions",
       width: 100,
       render: (_, record) => (
@@ -192,7 +198,7 @@ export function ScheduledTasksPage() {
           permission="system:scheduled_task:list"
           onClick={() => setRunDetail(record)}
         >
-          详情
+          {t("详情")}
         </PermissionButton>
       ),
     },
@@ -200,16 +206,16 @@ export function ScheduledTasksPage() {
 
   return (
     <CrudPage
-      title="定时任务"
-      subtitle="管理可配置任务、手动触发和查看执行记录"
-      breadcrumb={["系统管理", "定时任务"]}
+      title={t("定时任务")}
+      subtitle={t("管理可配置任务、手动触发和查看执行记录")}
+      breadcrumb={[t("系统管理"), t("定时任务")]}
       icon={<ScheduleOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增任务",
+              label: t("新增任务"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:scheduled_task:create",
@@ -233,7 +239,7 @@ export function ScheduledTasksPage() {
         items={[
           {
             key: "tasks",
-            label: "任务列表",
+            label: t("任务列表"),
             children: (
               <DataTable<ScheduledTaskRecord>
                 columns={taskColumns}
@@ -249,7 +255,7 @@ export function ScheduledTasksPage() {
           },
           {
             key: "runs",
-            label: "执行记录",
+            label: t("执行记录"),
             children: (
               <DataTable<TaskRunRecord>
                 columns={runColumns}
@@ -266,7 +272,7 @@ export function ScheduledTasksPage() {
         ]}
       />
       <Modal
-        title={editing ? "编辑任务" : "新增任务"}
+        title={editing ? t("编辑任务") : t("新增任务")}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
@@ -277,18 +283,22 @@ export function ScheduledTasksPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="编码" rules={[{ required: true }]}>
+          <Form.Item name="code" label={t("编码")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="task_type" label="类型" rules={[{ required: true }]}>
+          <Form.Item
+            name="task_type"
+            label={t("类型")}
+            rules={[{ required: true }]}
+          >
             <Select
               options={[
-                { value: "cleanup_logs", label: "日志清理" },
-                { value: "database_backup", label: "数据库备份" },
-                { value: "webhook_notify", label: "Webhook 通知" },
+                { value: "cleanup_logs", label: t("日志清理") },
+                { value: "database_backup", label: t("数据库备份") },
+                { value: "webhook_notify", label: t("Webhook 通知") },
               ]}
             />
           </Form.Item>
@@ -298,13 +308,13 @@ export function ScheduledTasksPage() {
           <Form.Item name="payload" label="Payload JSON">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
       <Drawer
-        title="执行详情"
+        title={t("执行详情")}
         open={Boolean(runDetail)}
         onClose={() => setRunDetail(null)}
         width={640}
@@ -314,8 +324,8 @@ export function ScheduledTasksPage() {
             <Tag color={statusColor[runDetail.status] ?? "default"}>
               {runDetail.status}
             </Tag>
-            <div>输出：{runDetail.output ?? "-"}</div>
-            <div>错误：{runDetail.error_message ?? "-"}</div>
+            <div>{t("输出：{0}", runDetail.output ?? "-")}</div>
+            <div>{t("错误：{0}", runDetail.error_message ?? "-")}</div>
           </Space>
         )}
       </Drawer>

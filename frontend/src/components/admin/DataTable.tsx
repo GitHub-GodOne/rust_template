@@ -9,6 +9,7 @@ import {
   isValidElement,
   useState,
 } from "react";
+import { t } from "../../i18n";
 import { standardTablePaginationProps } from "./StandardTablePagination";
 
 type ActionElementProps = {
@@ -84,8 +85,8 @@ function ResponsiveTableActions({
           type="text"
           size="small"
           icon={<MoreOutlined />}
-          aria-label="更多操作"
-          title="更多操作"
+          aria-label={t("更多操作")}
+          title={t("更多操作")}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => {
             event.stopPropagation();
@@ -115,7 +116,12 @@ function isActionColumn<T extends object>(
   if (String(column.key ?? "") === "actions") {
     return true;
   }
-  return typeof column.title === "string" && column.title.trim() === "操作";
+  // Titles are translated; match the source text as well as the current language.
+  if (typeof column.title !== "string") {
+    return false;
+  }
+  const title = column.title.trim();
+  return title === t("操作") || title === "操作";
 }
 
 function responsiveColumns<T extends object>(
@@ -191,7 +197,7 @@ export function DataTable<T extends object>({
         />
       </div>
       <Drawer
-        title="更多操作"
+        title={t("更多操作")}
         open={isMobile && mobileActions !== null}
         placement="bottom"
         height="auto"

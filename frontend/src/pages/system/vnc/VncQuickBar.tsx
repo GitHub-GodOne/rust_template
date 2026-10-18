@@ -17,6 +17,7 @@ import {
   message,
 } from "antd";
 import { useState } from "react";
+import { t } from "../../../i18n";
 import {
   KEYS,
   type KeyStroke,
@@ -82,50 +83,50 @@ export function VncQuickBar({
     <div
       className="vnc-quickbar"
       role="toolbar"
-      aria-label="VNC 快捷操作"
+      aria-label={t("VNC 快捷操作")}
       // Keep focus (and the phone keyboard) where it is while tapping keys.
       onMouseDown={(event) => event.preventDefault()}
     >
-      <Tooltip title="打开键盘">
+      <Tooltip title={t("打开键盘")}>
         <Button
           type="text"
           className="vnc-quickbar-keyboard"
           icon={<FontSizeOutlined />}
-          aria-label="打开键盘"
+          aria-label={t("打开键盘")}
           disabled={!connected}
           onClick={onOpenKeyboard}
         />
       </Tooltip>
-      <Tooltip title="下一次点击发送右键">
+      <Tooltip title={t("下一次点击发送右键")}>
         <Button
           type="text"
           className={rightClickArmed ? "is-active" : undefined}
           icon={<RightClickIcon />}
-          aria-label="右键"
+          aria-label={t("右键")}
           aria-pressed={rightClickArmed}
           disabled={!connected}
           onClick={onToggleRightClick}
         >
-          <span className="vnc-quickbar-label">右键</span>
+          <span className="vnc-quickbar-label">{t("右键")}</span>
         </Button>
       </Tooltip>
       <Tooltip
         title={
           trackpad
-            ? "触控板模式：拖动移动光标，轻点单击"
-            : "触摸模式：点哪里就点击哪里"
+            ? t("触控板模式：拖动移动光标，轻点单击")
+            : t("触摸模式：点哪里就点击哪里")
         }
       >
         <Button
           type="text"
           className={trackpad ? "is-active" : undefined}
           icon={<AimOutlined />}
-          aria-label="触控板模式"
+          aria-label={t("触控板模式")}
           aria-pressed={trackpad}
           onClick={onToggleTrackpad}
         >
           <span className="vnc-quickbar-label">
-            {trackpad ? "触控板" : "触摸"}
+            {trackpad ? t("触控板") : t("触摸")}
           </span>
         </Button>
       </Tooltip>
@@ -135,7 +136,7 @@ export function VncQuickBar({
         return (
           <Tooltip
             key={name}
-            title={`按住 ${MODIFIER_LABELS[name]}，与下一个按键组合`}
+            title={t("按住 {0}，与下一个按键组合", MODIFIER_LABELS[name])}
           >
             <Button
               type="text"
@@ -174,14 +175,14 @@ export function VncQuickBar({
       >
         Ctrl+Alt+Del
       </Button>
-      <Tooltip title="更多快捷键与文本发送">
+      <Tooltip title={t("更多快捷键与文本发送")}>
         <Button
           type="text"
           icon={<AppstoreOutlined />}
-          aria-label="更多快捷键"
+          aria-label={t("更多快捷键")}
           onClick={onOpenShortcuts}
         >
-          <span className="vnc-quickbar-label">更多</span>
+          <span className="vnc-quickbar-label">{t("更多")}</span>
         </Button>
       </Tooltip>
     </div>
@@ -228,22 +229,22 @@ export function VncShortcutsDrawer({
     try {
       setText(await navigator.clipboard.readText());
     } catch {
-      message.warning("浏览器未允许读取剪贴板，请直接粘贴到输入框");
+      message.warning(t("浏览器未允许读取剪贴板，请直接粘贴到输入框"));
     }
   };
 
   const copyRemoteClipboard = async () => {
     try {
       await navigator.clipboard.writeText(remoteClipboard);
-      message.success("已复制远程剪贴板内容");
+      message.success(t("已复制远程剪贴板内容"));
     } catch {
-      message.warning("浏览器未允许写入剪贴板");
+      message.warning(t("浏览器未允许写入剪贴板"));
     }
   };
 
   return (
     <Drawer
-      title="快捷操作"
+      title={t("快捷操作")}
       open={open}
       placement="bottom"
       height="auto"
@@ -255,27 +256,29 @@ export function VncShortcutsDrawer({
       <div className="vnc-shortcut-settings">
         <div className="vnc-shortcut-setting">
           <span>
-            <strong>触控板模式</strong>
+            <strong>{t("触控板模式")}</strong>
             <Typography.Text type="secondary">
-              拖动移动光标，轻点单击，双指轻点右键，双指滑动滚动，长按拖拽
+              {t(
+                "拖动移动光标，轻点单击，双指轻点右键，双指滑动滚动，长按拖拽",
+              )}
             </Typography.Text>
           </span>
           <Switch
             checked={trackpad}
-            aria-label="触控板模式"
+            aria-label={t("触控板模式")}
             onChange={onToggleTrackpad}
           />
         </div>
         <div className="vnc-shortcut-setting">
           <span>
-            <strong>显示本地指针光圈</strong>
+            <strong>{t("显示本地指针光圈")}</strong>
             <Typography.Text type="secondary">
-              在鼠标或手指位置显示跟随的光圈
+              {t("在鼠标或手指位置显示跟随的光圈")}
             </Typography.Text>
           </span>
           <Switch
             checked={showLocalPointer}
-            aria-label="显示本地指针光圈"
+            aria-label={t("显示本地指针光圈")}
             onChange={onToggleLocalPointer}
           />
         </div>
@@ -305,11 +308,11 @@ export function VncShortcutsDrawer({
         </section>
       ))}
       <section className="vnc-shortcut-group">
-        <h4>发送文本</h4>
+        <h4>{t("发送文本")}</h4>
         <Input.TextArea
           value={text}
           autoSize={{ minRows: 2, maxRows: 6 }}
-          placeholder="输入或粘贴要发送到远程电脑的文字"
+          placeholder={t("输入或粘贴要发送到远程电脑的文字")}
           onChange={(event) => setText(event.target.value)}
         />
         <Space wrap className="vnc-shortcut-text-actions">
@@ -317,18 +320,18 @@ export function VncShortcutsDrawer({
             icon={<SnippetsOutlined />}
             onClick={() => void readLocalClipboard()}
           >
-            读取本机剪贴板
+            {t("读取本机剪贴板")}
           </Button>
           <Button
             icon={<CopyOutlined />}
             disabled={!connected || !text}
             onClick={() => {
               if (onPasteToRemote(text)) {
-                message.success("已写入远程剪贴板，可在远程按 Ctrl+V 粘贴");
+                message.success(t("已写入远程剪贴板，可在远程按 Ctrl+V 粘贴"));
               }
             }}
           >
-            写入远程剪贴板
+            {t("写入远程剪贴板")}
           </Button>
           <Button
             type="primary"
@@ -341,12 +344,14 @@ export function VncShortcutsDrawer({
               }
             }}
           >
-            模拟键入
+            {t("模拟键入")}
           </Button>
         </Space>
         {remoteClipboard ? (
           <div className="vnc-remote-clipboard">
-            <Typography.Text type="secondary">远程剪贴板</Typography.Text>
+            <Typography.Text type="secondary">
+              {t("远程剪贴板")}
+            </Typography.Text>
             <Typography.Paragraph
               ellipsis={{ rows: 2 }}
               className="vnc-remote-clipboard-text"
@@ -358,7 +363,7 @@ export function VncShortcutsDrawer({
               icon={<CopyOutlined />}
               onClick={() => void copyRemoteClipboard()}
             >
-              复制到本机
+              {t("复制到本机")}
             </Button>
           </div>
         ) : null}

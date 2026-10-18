@@ -1,0 +1,28 @@
+/* Language switch: header button and the floating one on login/setup. */
+.language-switch.ant-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding-inline: 8px;
+}
+
+.language-switch-label {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+.page-language-switch.ant-btn {
+	position: fixed;
+	top: calc(12px + env(safe-area-inset-top));
+	right: 16px;
+	z-index: 20;
+	background: rgb(255 255 255 / 72%);
+	backdrop-filter: blur(6px);
+}
+
+@media (max-width: 768px) {
+	.admin-header .language-switch-label {
+		display: none;
+	}
+}

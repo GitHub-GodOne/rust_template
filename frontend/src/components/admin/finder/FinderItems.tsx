@@ -23,6 +23,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { t } from "../../../i18n";
 import type { FinderView } from "./FinderShell";
 import {
   type FinderItem,
@@ -58,10 +59,10 @@ export function FinderKindIcon({ kind }: { kind: FinderKind }) {
 }
 
 const SORT_COLUMNS: { key: FinderSortKey; label: string }[] = [
-  { key: "name", label: "名称" },
-  { key: "modified", label: "修改日期" },
-  { key: "size", label: "大小" },
-  { key: "kind", label: "种类" },
+  { key: "name", label: t("名称") },
+  { key: "modified", label: t("修改日期") },
+  { key: "size", label: t("大小") },
+  { key: "kind", label: t("种类") },
 ];
 
 function isTouchDevice() {
@@ -156,7 +157,7 @@ export function FinderItems({
     <button
       type="button"
       className="finder-item-more"
-      aria-label={`更多操作：${item.name}`}
+      aria-label={t("更多操作：{0}", item.name)}
       onClick={(event) => openMenu(event, item)}
       onDoubleClick={(event) => event.stopPropagation()}
     >
@@ -176,7 +177,10 @@ export function FinderItems({
     content = loading ? null : (
       <div className="finder-empty">
         {empty ?? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="空文件夹" />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t("空文件夹")}
+          />
         )}
       </div>
     );

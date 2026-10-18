@@ -35,6 +35,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t, tData } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 
 export function RolesPage() {
@@ -68,7 +69,7 @@ export function RolesPage() {
     mutationFn: (values: SaveRoleParams) =>
       editing ? updateRole(editing.id, values) : createRole(values),
     onSuccess: () => {
-      message.success("角色已保存");
+      message.success(t("角色已保存"));
       setFormOpen(false);
       setEditing(null);
       form.resetFields();
@@ -79,7 +80,7 @@ export function RolesPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteRole,
     onSuccess: () => {
-      message.success("角色已删除");
+      message.success(t("角色已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-roles"] });
       queryClient.invalidateQueries({ queryKey: ["admin-roles-all"] });
     },
@@ -88,18 +89,22 @@ export function RolesPage() {
     mutationFn: () =>
       saveRoleDataScopes(dataScopeRole?.id ?? 0, selectedDataScopeIds),
     onSuccess: () => {
-      message.success("数据权限已保存");
+      message.success(t("数据权限已保存"));
       setDataScopeRole(null);
     },
   });
 
   const columns: ColumnsType<RoleRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "角色名称", dataIndex: "name" },
-    { title: "角色编码", dataIndex: "code" },
-    { title: "说明", dataIndex: "description" },
     {
-      title: "租户",
+      title: t("角色名称"),
+      dataIndex: "name",
+      render: (value: string) => tData(value),
+    },
+    { title: t("角色编码"), dataIndex: "code" },
+    { title: t("说明"), dataIndex: "description" },
+    {
+      title: t("租户"),
       dataIndex: "tenant_id",
       width: 140,
       render: (tenantId) =>
@@ -107,20 +112,20 @@ export function RolesPage() {
           ? ((tenantsQuery.data?.items ?? []).find(
               (tenant) => tenant.id === tenantId,
             )?.name ?? tenantId)
-          : "平台级",
+          : t("平台级"),
     },
     {
-      title: "系统角色",
+      title: t("系统角色"),
       dataIndex: "is_system",
       render: (isSystem) => <StatusTag active={isSystem} />,
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "enabled",
       render: (enabled) => <StatusTag active={enabled} />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 260,
       render: (_, record) => (
@@ -141,7 +146,7 @@ export function RolesPage() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -152,7 +157,7 @@ export function RolesPage() {
               fetchRoleDataScopes(record.id).then(setSelectedDataScopeIds);
             }}
           >
-            数据权限
+            {t("数据权限")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -161,7 +166,7 @@ export function RolesPage() {
             permission="system:role:delete"
             onClick={() => deleteMutation.mutate(record.id)}
           >
-            删除
+            {t("删除")}
           </PermissionButton>
         </Space>
       ),
@@ -170,16 +175,16 @@ export function RolesPage() {
 
   return (
     <CrudPage
-      title="角色管理"
-      subtitle="按角色聚合用户、菜单、按钮和接口权限"
-      breadcrumb={["系统管理", "角色管理"]}
+      title={t("角色管理")}
+      subtitle={t("按角色聚合用户、菜单、按钮和接口权限")}
+      breadcrumb={[t("系统管理"), t("角色管理")]}
       icon={<TeamOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增",
+              label: t("新增"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:role:create",
@@ -205,7 +210,7 @@ export function RolesPage() {
         }}
       />
       <Modal
-        title={editing ? "编辑角色" : "新增角色"}
+        title={editing ? t("编辑角色") : t("新增角色")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -216,20 +221,28 @@ export function RolesPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="name" label="角色名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t("角色名称")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="角色编码" rules={[{ required: true }]}>
+          <Form.Item
+            name="code"
+            label={t("角色编码")}
+            rules={[{ required: true }]}
+          >
             <Input disabled={editing?.is_system} />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={3} />
           </Form.Item>
           {showTenantSelect ? (
-            <Form.Item name="tenant_id" label="租户">
+            <Form.Item name="tenant_id" label={t("租户")}>
               <Select
                 allowClear
-                placeholder="留空表示平台级角色"
+                placeholder={t("留空表示平台级角色")}
                 options={(tenantsQuery.data?.items ?? []).map((tenant) => ({
                   value: tenant.id,
                   label: `${tenant.name}（${tenant.code}）`,
@@ -237,13 +250,13 @@ export function RolesPage() {
               />
             </Form.Item>
           ) : null}
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title={`分配数据权限：${dataScopeRole?.name ?? ""}`}
+        title={t("分配数据权限：{0}", dataScopeRole?.name ?? "")}
         open={Boolean(dataScopeRole)}
         onCancel={() => setDataScopeRole(null)}
         onOk={() => saveDataScopesMutation.mutate()}
@@ -264,7 +277,7 @@ export function RolesPage() {
           </Space>
         </Checkbox.Group>
         {dataScopesQuery.isFetching ? (
-          <div className="modal-hint">正在加载数据权限...</div>
+          <div className="modal-hint">{t("正在加载数据权限...")}</div>
         ) : null}
       </Modal>
     </CrudPage>

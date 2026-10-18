@@ -37,15 +37,16 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const templateTypeOptions = [
-  { value: "auth", label: "认证" },
-  { value: "system", label: "系统" },
-  { value: "marketing", label: "营销" },
+  { value: "auth", label: t("认证") },
+  { value: "system", label: t("系统") },
+  { value: "marketing", label: t("营销") },
 ];
 
 const defaultVariables = JSON.stringify(
-  [{ name: "name", description: "用户名称" }],
+  [{ name: "name", description: t("用户名称") }],
   null,
   2,
 );
@@ -67,7 +68,7 @@ function parseJsonInput(value: string) {
   try {
     return JSON.parse(value || "{}");
   } catch {
-    message.error("变量 JSON 格式不正确");
+    message.error(t("变量 JSON 格式不正确"));
     return undefined;
   }
 }
@@ -114,7 +115,7 @@ export function EmailTemplatesPage() {
         ? updateEmailTemplate(editing.id, values)
         : createEmailTemplate(values),
     onSuccess: () => {
-      message.success("邮箱模板已保存");
+      message.success(t("邮箱模板已保存"));
       setFormOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ["admin-email-templates"] });
@@ -123,7 +124,7 @@ export function EmailTemplatesPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteEmailTemplate,
     onSuccess: () => {
-      message.success("邮箱模板已删除");
+      message.success(t("邮箱模板已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-email-templates"] });
     },
   });
@@ -141,36 +142,36 @@ export function EmailTemplatesPage() {
       payload: { to: string; locals: unknown };
     }) => testSendEmailTemplate(id, payload),
     onSuccess: () => {
-      message.success("测试邮件已提交发送");
+      message.success(t("测试邮件已提交发送"));
       setTesting(null);
     },
   });
 
   const columns: ColumnsType<EmailTemplateRecord> = [
-    { title: "编码", dataIndex: "code", width: 220 },
-    { title: "名称", dataIndex: "name", width: 180 },
+    { title: t("编码"), dataIndex: "code", width: 220 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
     {
-      title: "类型",
+      title: t("类型"),
       dataIndex: "template_type",
       width: 100,
       render: (value) => <Tag>{value}</Tag>,
     },
-    { title: "主题", dataIndex: "subject", width: 220, ellipsis: true },
+    { title: t("主题"), dataIndex: "subject", width: 220, ellipsis: true },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "内置",
+      title: t("内置"),
       dataIndex: "is_builtin",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
-    { title: "更新时间", dataIndex: "updated_at", width: 220 },
+    { title: t("更新时间"), dataIndex: "updated_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 320,
       render: (_, record) => (
@@ -185,7 +186,7 @@ export function EmailTemplatesPage() {
               previewForm.setFieldsValue({ locals: defaultLocals });
             }}
           >
-            预览
+            {t("预览")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -196,7 +197,7 @@ export function EmailTemplatesPage() {
               testForm.setFieldsValue({ locals: defaultLocals });
             }}
           >
-            测试
+            {t("测试")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -211,10 +212,10 @@ export function EmailTemplatesPage() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除邮箱模板？"
+            title={t("确认删除邮箱模板？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -224,7 +225,7 @@ export function EmailTemplatesPage() {
               icon={<DeleteOutlined />}
               permission="system:email_template:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -234,16 +235,16 @@ export function EmailTemplatesPage() {
 
   return (
     <CrudPage
-      title="邮箱模板"
-      subtitle="管理认证、系统和营销邮件模板，支持变量预览与测试发送"
-      breadcrumb={["系统管理", "邮箱模板"]}
+      title={t("邮箱模板")}
+      subtitle={t("管理认证、系统和营销邮件模板，支持变量预览与测试发送")}
+      breadcrumb={[t("系统管理"), t("邮箱模板")]}
       icon={<MailOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增模板",
+              label: t("新增模板"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:email_template:create",
@@ -267,7 +268,7 @@ export function EmailTemplatesPage() {
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="搜索编码、名称"
+            placeholder={t("搜索编码、名称")}
             onSearch={(value) => {
               setPage(1);
               setKeyword(value);
@@ -276,7 +277,7 @@ export function EmailTemplatesPage() {
           />
           <Select
             allowClear
-            placeholder="模板类型"
+            placeholder={t("模板类型")}
             options={templateTypeOptions}
             value={templateType}
             onChange={(value) => {
@@ -299,7 +300,7 @@ export function EmailTemplatesPage() {
       </Space>
 
       <Modal
-        title={editing ? "编辑邮箱模板" : "新增邮箱模板"}
+        title={editing ? t("编辑邮箱模板") : t("新增邮箱模板")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -312,58 +313,70 @@ export function EmailTemplatesPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="code" label="模板编码" rules={[{ required: true }]}>
+          <Form.Item
+            name="code"
+            label={t("模板编码")}
+            rules={[{ required: true }]}
+          >
             <Input
               placeholder="auth_welcome"
               disabled={Boolean(editing?.is_builtin)}
             />
           </Form.Item>
-          <Form.Item name="name" label="模板名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t("模板名称")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item
             name="template_type"
-            label="模板类型"
+            label={t("模板类型")}
             rules={[{ required: true }]}
           >
             <Select options={templateTypeOptions} />
           </Form.Item>
           <Form.Item
             name="subject"
-            label="邮件主题"
+            label={t("邮件主题")}
             rules={[{ required: true }]}
           >
             <Input />
           </Form.Item>
           <Form.Item
             name="html_body"
-            label="HTML 内容"
+            label={t("HTML 内容")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={8} />
           </Form.Item>
           <Form.Item
             name="text_body"
-            label="纯文本内容"
+            label={t("纯文本内容")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={5} />
           </Form.Item>
           <Form.Item
             name="variables"
-            label="变量说明 JSON"
+            label={t("变量说明 JSON")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={5} />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t("描述")}>
             <Input.TextArea rows={2} />
           </Form.Item>
           <Space>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item name="is_builtin" label="内置" valuePropName="checked">
+            <Form.Item
+              name="is_builtin"
+              label={t("内置")}
+              valuePropName="checked"
+            >
               <Switch disabled={Boolean(editing?.is_builtin)} />
             </Form.Item>
           </Space>
@@ -371,7 +384,7 @@ export function EmailTemplatesPage() {
       </Modal>
 
       <Drawer
-        title="模板预览"
+        title={t("模板预览")}
         open={Boolean(previewing)}
         onClose={() => setPreviewing(null)}
         width={760}
@@ -388,7 +401,7 @@ export function EmailTemplatesPage() {
                 }
               }}
             >
-              <Form.Item name="locals" label="预览变量 JSON">
+              <Form.Item name="locals" label={t("预览变量 JSON")}>
                 <Input.TextArea rows={8} />
               </Form.Item>
               <PermissionButton
@@ -397,12 +410,12 @@ export function EmailTemplatesPage() {
                 loading={previewMutation.isPending}
                 onClick={() => previewForm.submit()}
               >
-                生成预览
+                {t("生成预览")}
               </PermissionButton>
             </Form>
             {previewResult && (
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="主题">
+                <Descriptions.Item label={t("主题")}>
                   {previewResult.subject}
                 </Descriptions.Item>
                 <Descriptions.Item label="HTML">
@@ -410,7 +423,7 @@ export function EmailTemplatesPage() {
                     {previewResult.html_body}
                   </pre>
                 </Descriptions.Item>
-                <Descriptions.Item label="纯文本">
+                <Descriptions.Item label={t("纯文本")}>
                   <pre className="admin-code-block">
                     {previewResult.text_body}
                   </pre>
@@ -422,7 +435,7 @@ export function EmailTemplatesPage() {
       </Drawer>
 
       <Modal
-        title="测试发送"
+        title={t("测试发送")}
         open={Boolean(testing)}
         onCancel={() => setTesting(null)}
         onOk={() => testForm.submit()}
@@ -443,10 +456,14 @@ export function EmailTemplatesPage() {
               }
             }}
           >
-            <Form.Item name="to" label="收件邮箱" rules={[{ required: true }]}>
+            <Form.Item
+              name="to"
+              label={t("收件邮箱")}
+              rules={[{ required: true }]}
+            >
               <Input placeholder="admin@example.com" />
             </Form.Item>
-            <Form.Item name="locals" label="测试变量 JSON">
+            <Form.Item name="locals" label={t("测试变量 JSON")}>
               <Input.TextArea rows={8} />
             </Form.Item>
           </Form>

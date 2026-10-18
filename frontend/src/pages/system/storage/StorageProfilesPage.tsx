@@ -42,11 +42,12 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 
 const providerOptions = [
-  { value: "local", label: "本地存储" },
-  { value: "s3_compatible", label: "S3 兼容 / R2 / MinIO" },
+  { value: "local", label: t("本地存储") },
+  { value: "s3_compatible", label: t("S3 兼容 / R2 / MinIO") },
 ];
 
 export function StorageProfilesPage() {
@@ -115,7 +116,7 @@ export function StorageProfilesPage() {
         : createStorageProfile(payload);
     },
     onSuccess: (profile) => {
-      message.success("存储配置已保存");
+      message.success(t("存储配置已保存"));
       setProfileOpen(false);
       setEditingProfile(null);
       setSelectedProfileId(profile.id);
@@ -126,7 +127,7 @@ export function StorageProfilesPage() {
   const deleteProfileMutation = useMutation({
     mutationFn: deleteStorageProfile,
     onSuccess: () => {
-      message.success("存储配置已删除");
+      message.success(t("存储配置已删除"));
       setSelectedProfileId(undefined);
       queryClient.invalidateQueries({ queryKey: ["admin-storage-profiles"] });
     },
@@ -157,7 +158,7 @@ export function StorageProfilesPage() {
         : createStorageBucket(activeProfileId ?? 0, payload);
     },
     onSuccess: () => {
-      message.success("桶配置已保存");
+      message.success(t("桶配置已保存"));
       setBucketOpen(false);
       setEditingBucket(null);
       queryClient.invalidateQueries({ queryKey: ["admin-storage-buckets"] });
@@ -168,7 +169,7 @@ export function StorageProfilesPage() {
   const deleteBucketMutation = useMutation({
     mutationFn: deleteStorageBucket,
     onSuccess: () => {
-      message.success("桶配置已删除");
+      message.success(t("桶配置已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-storage-buckets"] });
       queryClient.invalidateQueries({ queryKey: ["admin-storage-profiles"] });
     },
@@ -212,16 +213,16 @@ export function StorageProfilesPage() {
 
   const profileColumns: ColumnsType<StorageProfileRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 180, ellipsis: true },
-    { title: "编码", dataIndex: "code", width: 170, ellipsis: true },
+    { title: t("名称"), dataIndex: "name", width: 180, ellipsis: true },
+    { title: t("编码"), dataIndex: "code", width: 170, ellipsis: true },
     {
-      title: "类型",
+      title: t("类型"),
       dataIndex: "provider",
       width: 150,
       render: (value) => <Tag icon={<CloudServerOutlined />}>{value}</Tag>,
     },
     {
-      title: "本地路径 / Endpoint",
+      title: t("本地路径 / Endpoint"),
       key: "location",
       width: 300,
       render: (_, record) => {
@@ -236,8 +237,10 @@ export function StorageProfilesPage() {
             copyable={{
               text: value,
               tooltips: [
-                record.provider === "local" ? "复制本地路径" : "复制 Endpoint",
-                "已复制",
+                record.provider === "local"
+                  ? t("复制本地路径")
+                  : t("复制 Endpoint"),
+                t("已复制"),
               ],
             }}
             style={{ maxWidth: 260 }}
@@ -248,7 +251,7 @@ export function StorageProfilesPage() {
       },
     },
     {
-      title: "存储桶 / Region",
+      title: t("存储桶 / Region"),
       key: "bucket-region",
       width: 160,
       ellipsis: true,
@@ -258,20 +261,20 @@ export function StorageProfilesPage() {
           : (record.region ?? "-"),
     },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "默认",
+      title: t("默认"),
       dataIndex: "is_default",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
-    { title: "创建时间", dataIndex: "created_at", width: 210 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 210 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 280,
       render: (_, record) => (
@@ -281,7 +284,7 @@ export function StorageProfilesPage() {
             permission="system:storage:list"
             onClick={() => setSelectedProfileId(record.id)}
           >
-            桶配置
+            {t("桶配置")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -290,7 +293,7 @@ export function StorageProfilesPage() {
             loading={testProfileMutation.isPending}
             onClick={() => testProfileMutation.mutate(record.id)}
           >
-            测试
+            {t("测试")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -298,10 +301,10 @@ export function StorageProfilesPage() {
             permission="system:storage:update"
             onClick={() => openEditProfile(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除存储配置？"
+            title={t("确认删除存储配置？")}
             onConfirm={() => deleteProfileMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -310,7 +313,7 @@ export function StorageProfilesPage() {
               icon={<DeleteOutlined />}
               permission="system:storage:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -320,43 +323,43 @@ export function StorageProfilesPage() {
 
   const bucketColumns: ColumnsType<StorageBucketRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 180, ellipsis: true },
-    { title: "桶", dataIndex: "bucket", width: 180, ellipsis: true },
+    { title: t("名称"), dataIndex: "name", width: 180, ellipsis: true },
+    { title: t("桶"), dataIndex: "bucket", width: 180, ellipsis: true },
     {
-      title: "基础 Prefix",
+      title: t("基础 Prefix"),
       dataIndex: "base_prefix",
       width: 180,
       ellipsis: true,
       render: (value) => value ?? "-",
     },
     {
-      title: "本地根目录",
+      title: t("本地根目录"),
       dataIndex: "local_root",
       width: 240,
       ellipsis: true,
       render: (value) => value ?? "-",
     },
     {
-      title: "公开前缀",
+      title: t("公开前缀"),
       dataIndex: "public_prefix",
       width: 220,
       ellipsis: true,
       render: (value) => value ?? "-",
     },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "默认",
+      title: t("默认"),
       dataIndex: "is_default",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       render: (_, record) => (
@@ -367,10 +370,10 @@ export function StorageProfilesPage() {
             permission="system:storage:update"
             onClick={() => openEditBucket(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除桶配置？"
+            title={t("确认删除桶配置？")}
             onConfirm={() => deleteBucketMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -379,7 +382,7 @@ export function StorageProfilesPage() {
               icon={<DeleteOutlined />}
               permission="system:storage:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -389,22 +392,22 @@ export function StorageProfilesPage() {
 
   return (
     <CrudPage
-      title="存储配置"
-      subtitle="统一配置本地存储、Cloudflare R2 和 S3 兼容资源桶"
-      breadcrumb={["系统管理", "存储配置"]}
+      title={t("存储配置")}
+      subtitle={t("统一配置本地存储、Cloudflare R2 和 S3 兼容资源桶")}
+      breadcrumb={[t("系统管理"), t("存储配置")]}
       icon={<CloudServerOutlined />}
     >
       <Tabs
         items={[
           {
             key: "profiles",
-            label: "存储配置",
+            label: t("存储配置"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Space wrap>
                   <Input.Search
                     allowClear
-                    placeholder="搜索名称、编码"
+                    placeholder={t("搜索名称、编码")}
                     onSearch={(value) => {
                       setPage(1);
                       setKeyword(value);
@@ -415,7 +418,7 @@ export function StorageProfilesPage() {
                     actions={[
                       {
                         key: "create",
-                        label: "新增配置",
+                        label: t("新增配置"),
                         icon: <PlusOutlined />,
                         primary: true,
                         permission: "system:storage:create",
@@ -442,12 +445,12 @@ export function StorageProfilesPage() {
           },
           {
             key: "buckets",
-            label: "桶配置",
+            label: t("桶配置"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Space wrap>
                   <Select
-                    placeholder="选择存储配置"
+                    placeholder={t("选择存储配置")}
                     value={activeProfileId}
                     options={profiles.map((profile) => ({
                       value: profile.id,
@@ -463,7 +466,7 @@ export function StorageProfilesPage() {
                     actions={[
                       {
                         key: "create-bucket",
-                        label: "新增桶",
+                        label: t("新增桶"),
                         icon: <PlusOutlined />,
                         primary: true,
                         permission: "system:storage:create",
@@ -485,7 +488,7 @@ export function StorageProfilesPage() {
         ]}
       />
       <Modal
-        title={editingProfile ? "编辑存储配置" : "新增存储配置"}
+        title={editingProfile ? t("编辑存储配置") : t("新增存储配置")}
         open={profileOpen}
         onCancel={() => setProfileOpen(false)}
         onOk={() => profileForm.submit()}
@@ -499,7 +502,7 @@ export function StorageProfilesPage() {
         >
           <Form.Item
             name="tenant_id"
-            label="所属租户"
+            label={t("所属租户")}
             rules={[{ required: true }]}
           >
             <Select
@@ -508,24 +511,24 @@ export function StorageProfilesPage() {
                 value: tenant.id,
                 label: `${tenant.name} / ${tenant.code}`,
               }))}
-              placeholder="请选择租户"
+              placeholder={t("请选择租户")}
             />
           </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="编码" rules={[{ required: true }]}>
+          <Form.Item name="code" label={t("编码")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item
             name="provider"
-            label="存储类型"
+            label={t("存储类型")}
             rules={[{ required: true }]}
           >
             <Select options={providerOptions} />
           </Form.Item>
           <Form.Item name="endpoint" label="Endpoint">
-            <Input placeholder="R2 / MinIO / S3 兼容服务地址" />
+            <Input placeholder={t("R2 / MinIO / S3 兼容服务地址")} />
           </Form.Item>
           <Form.Item name="region" label="Region">
             <Input />
@@ -536,18 +539,24 @@ export function StorageProfilesPage() {
           <Form.Item name="secret_access_key" label="Secret Access Key">
             <Input.Password />
           </Form.Item>
-          <Form.Item name="public_base_url" label="公开访问 Base URL">
+          <Form.Item name="public_base_url" label={t("公开访问 Base URL")}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={2} />
           </Form.Item>
           <Space wrap>
             <Form.Item name="enabled" valuePropName="checked">
-              <Switch checkedChildren="启用" unCheckedChildren="停用" />
+              <Switch
+                checkedChildren={t("启用")}
+                unCheckedChildren={t("停用")}
+              />
             </Form.Item>
             <Form.Item name="is_default" valuePropName="checked">
-              <Switch checkedChildren="默认" unCheckedChildren="普通" />
+              <Switch
+                checkedChildren={t("默认")}
+                unCheckedChildren={t("普通")}
+              />
             </Form.Item>
             <Form.Item name="path_style" valuePropName="checked">
               <Switch
@@ -559,7 +568,7 @@ export function StorageProfilesPage() {
         </Form>
       </Modal>
       <Modal
-        title={editingBucket ? "编辑桶配置" : "新增桶配置"}
+        title={editingBucket ? t("编辑桶配置") : t("新增桶配置")}
         open={bucketOpen}
         onCancel={() => setBucketOpen(false)}
         onOk={() => bucketForm.submit()}
@@ -571,41 +580,51 @@ export function StorageProfilesPage() {
           layout="vertical"
           onFinish={(values) => saveBucketMutation.mutate(values)}
         >
-          <Form.Item name="tenant_id" label="所属租户">
+          <Form.Item name="tenant_id" label={t("所属租户")}>
             <Select
               disabled
               options={tenantOptions.map((tenant) => ({
                 value: tenant.id,
                 label: `${tenant.name} / ${tenant.code}`,
               }))}
-              placeholder="跟随当前存储配置"
+              placeholder={t("跟随当前存储配置")}
             />
           </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item
             name="bucket"
-            label="桶 / 本地桶标识"
+            label={t("桶 / 本地桶标识")}
             rules={[{ required: true }]}
           >
             <Input />
           </Form.Item>
-          <Form.Item name="base_prefix" label="基础 Prefix">
+          <Form.Item name="base_prefix" label={t("基础 Prefix")}>
             <Input />
           </Form.Item>
-          <Form.Item name="local_root" label="本地根目录">
-            <Input placeholder="本地存储使用，例如 storage/uploads/platform-assets" />
+          <Form.Item name="local_root" label={t("本地根目录")}>
+            <Input
+              placeholder={t(
+                "本地存储使用，例如 storage/uploads/platform-assets",
+              )}
+            />
           </Form.Item>
-          <Form.Item name="public_prefix" label="公开访问 Prefix">
+          <Form.Item name="public_prefix" label={t("公开访问 Prefix")}>
             <Input />
           </Form.Item>
           <Space wrap>
             <Form.Item name="enabled" valuePropName="checked">
-              <Switch checkedChildren="启用" unCheckedChildren="停用" />
+              <Switch
+                checkedChildren={t("启用")}
+                unCheckedChildren={t("停用")}
+              />
             </Form.Item>
             <Form.Item name="is_default" valuePropName="checked">
-              <Switch checkedChildren="默认" unCheckedChildren="普通" />
+              <Switch
+                checkedChildren={t("默认")}
+                unCheckedChildren={t("普通")}
+              />
             </Form.Item>
           </Space>
         </Form>

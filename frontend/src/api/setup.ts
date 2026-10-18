@@ -1,4 +1,5 @@
 import axios from "axios";
+import { t } from "../i18n";
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -53,7 +54,7 @@ const setupClient = axios.create({
 
 function unwrap<T>(response: { data: ApiEnvelope<T> }): T {
   if (!response.data.success || response.data.data === null) {
-    throw new Error(response.data.message || "请求失败");
+    throw new Error(response.data.message || t("请求失败"));
   }
   return response.data.data;
 }
@@ -65,14 +66,14 @@ function setupError(error: unknown): Error {
       return new Error(message);
     }
     if (error.code === "ECONNABORTED") {
-      return new Error("连接测试超时，请检查数据库地址和网络");
+      return new Error(t("连接测试超时，请检查数据库地址和网络"));
     }
     if (error.message === "Network Error") {
-      return new Error("无法连接安装服务，请确认后端仍在运行");
+      return new Error(t("无法连接安装服务，请确认后端仍在运行"));
     }
-    return new Error(error.message || "请求失败");
+    return new Error(error.message || t("请求失败"));
   }
-  return error instanceof Error ? error : new Error("请求失败");
+  return error instanceof Error ? error : new Error(t("请求失败"));
 }
 
 export async function getSetupStatus(): Promise<SetupStatus> {

@@ -4,13 +4,14 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const ts = require("typescript");
+const { i18n, i18nRequire } = require("./support/i18n-stub.cjs");
 
 const source = fs.readFileSync(path.join(__dirname, "../src/layouts/menuTrail.ts"), "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const output = { exports: {} };
-vm.runInNewContext(compiled, { exports: output.exports });
+vm.runInNewContext(compiled, { require: i18nRequire, exports: output.exports });
 const trail = output.exports;
 const labels = (items) => JSON.parse(JSON.stringify(items.map(trail.menuLabel)));
 

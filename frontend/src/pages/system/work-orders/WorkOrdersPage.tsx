@@ -42,22 +42,23 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const statusOptions = [
-  { value: "open", label: "待处理" },
-  { value: "assigned", label: "已分配" },
-  { value: "in_progress", label: "处理中" },
-  { value: "pending", label: "挂起" },
-  { value: "resolved", label: "已解决" },
-  { value: "closed", label: "已关闭" },
-  { value: "cancelled", label: "已取消" },
+  { value: "open", label: t("待处理") },
+  { value: "assigned", label: t("已分配") },
+  { value: "in_progress", label: t("处理中") },
+  { value: "pending", label: t("挂起") },
+  { value: "resolved", label: t("已解决") },
+  { value: "closed", label: t("已关闭") },
+  { value: "cancelled", label: t("已取消") },
 ];
 
 const priorityOptions = [
-  { value: "low", label: "低" },
-  { value: "normal", label: "普通" },
-  { value: "high", label: "高" },
-  { value: "urgent", label: "紧急" },
+  { value: "low", label: t("低") },
+  { value: "normal", label: t("普通") },
+  { value: "high", label: t("高") },
+  { value: "urgent", label: t("紧急") },
 ];
 
 const statusColor: Record<string, string> = {
@@ -135,7 +136,7 @@ export function WorkOrdersPage() {
   const createMutation = useMutation({
     mutationFn: createWorkOrder,
     onSuccess: () => {
-      message.success("工单已创建");
+      message.success(t("工单已创建"));
       setOpen(false);
       form.resetFields();
       invalidate();
@@ -148,7 +149,7 @@ export function WorkOrdersPage() {
     }: { id: number; payload: SaveWorkOrderParams }) =>
       updateWorkOrder(id, payload),
     onSuccess: () => {
-      message.success("工单已更新");
+      message.success(t("工单已更新"));
       setOpen(false);
       setEditing(null);
       form.resetFields();
@@ -158,7 +159,7 @@ export function WorkOrdersPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteWorkOrder,
     onSuccess: () => {
-      message.success("工单已删除");
+      message.success(t("工单已删除"));
       invalidate();
     },
   });
@@ -171,7 +172,7 @@ export function WorkOrdersPage() {
       payload: { status: string; comment?: string };
     }) => transitionWorkOrder(id, payload),
     onSuccess: () => {
-      message.success("状态已更新");
+      message.success(t("状态已更新"));
       transitionForm.resetFields();
       invalidate();
     },
@@ -180,7 +181,7 @@ export function WorkOrdersPage() {
     mutationFn: ({ id, body }: { id: number; body: string }) =>
       createWorkOrderComment(id, { body }),
     onSuccess: () => {
-      message.success("评论已添加");
+      message.success(t("评论已添加"));
       commentForm.resetFields();
       invalidate();
     },
@@ -194,7 +195,7 @@ export function WorkOrdersPage() {
       payload: { assignee_id: number; note?: string };
     }) => assignWorkOrder(id, payload),
     onSuccess: () => {
-      message.success("工单已分配");
+      message.success(t("工单已分配"));
       assignForm.resetFields();
       invalidate();
     },
@@ -208,7 +209,7 @@ export function WorkOrdersPage() {
       payload: { upload_file_id: number; description?: string };
     }) => addWorkOrderAttachment(id, payload),
     onSuccess: () => {
-      message.success("附件已绑定");
+      message.success(t("附件已绑定"));
       attachmentForm.resetFields();
       invalidate();
     },
@@ -217,7 +218,7 @@ export function WorkOrdersPage() {
     mutationFn: ({ id, attachmentId }: { id: number; attachmentId: number }) =>
       deleteWorkOrderAttachment(id, attachmentId),
     onSuccess: () => {
-      message.success("附件引用已移除");
+      message.success(t("附件引用已移除"));
       invalidate();
     },
   });
@@ -235,10 +236,10 @@ export function WorkOrdersPage() {
   };
 
   const columns: ColumnsType<WorkOrderRecord> = [
-    { title: "编号", dataIndex: "order_no", width: 190 },
-    { title: "标题", dataIndex: "title", width: 240 },
+    { title: t("编号"), dataIndex: "order_no", width: 190 },
+    { title: t("标题"), dataIndex: "title", width: 240 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (value) => (
@@ -248,7 +249,7 @@ export function WorkOrdersPage() {
       ),
     },
     {
-      title: "优先级",
+      title: t("优先级"),
       dataIndex: "priority",
       width: 100,
       render: (value) => (
@@ -257,20 +258,20 @@ export function WorkOrdersPage() {
         </Tag>
       ),
     },
-    { title: "分类", dataIndex: "category", width: 120 },
-    { title: "创建人", dataIndex: "creator_id", width: 100 },
-    { title: "负责人", dataIndex: "assignee_id", width: 100 },
-    { title: "截止时间", dataIndex: "due_at", width: 220 },
-    { title: "创建时间", dataIndex: "created_at", width: 220 },
+    { title: t("分类"), dataIndex: "category", width: 120 },
+    { title: t("创建人"), dataIndex: "creator_id", width: 100 },
+    { title: t("负责人"), dataIndex: "assignee_id", width: 100 },
+    { title: t("截止时间"), dataIndex: "due_at", width: 220 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 260,
       fixed: "right",
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => setDetailId(record.id)}>
-            详情
+            {t("详情")}
           </Button>
           <PermissionButton
             size="small"
@@ -278,10 +279,10 @@ export function WorkOrdersPage() {
             permission="system:work_order:update"
             onClick={() => openEditor(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除工单？"
+            title={t("确认删除工单？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -290,7 +291,7 @@ export function WorkOrdersPage() {
               icon={<DeleteOutlined />}
               permission="system:work_order:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -302,15 +303,15 @@ export function WorkOrdersPage() {
 
   return (
     <CrudPage
-      title="工单管理"
-      subtitle="统一处理问题反馈、任务分派、状态流转和附件记录"
-      breadcrumb={["系统管理", "工单管理"]}
+      title={t("工单管理")}
+      subtitle={t("统一处理问题反馈、任务分派、状态流转和附件记录")}
+      breadcrumb={[t("系统管理"), t("工单管理")]}
       icon={<ProfileOutlined />}
       toolbar={
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="搜索编号、标题或描述"
+            placeholder={t("搜索编号、标题或描述")}
             onSearch={(value) => {
               setPage(1);
               setKeyword(value);
@@ -319,7 +320,7 @@ export function WorkOrdersPage() {
           />
           <Select
             allowClear
-            placeholder="状态"
+            placeholder={t("状态")}
             value={status}
             onChange={(value) => {
               setPage(1);
@@ -330,7 +331,7 @@ export function WorkOrdersPage() {
           />
           <Select
             allowClear
-            placeholder="优先级"
+            placeholder={t("优先级")}
             value={priority}
             onChange={(value) => {
               setPage(1);
@@ -343,7 +344,7 @@ export function WorkOrdersPage() {
             actions={[
               {
                 key: "create",
-                label: "新增工单",
+                label: t("新增工单"),
                 icon: <PlusOutlined />,
                 primary: true,
                 permission: "system:work_order:create",
@@ -365,7 +366,7 @@ export function WorkOrdersPage() {
         }}
       />
       <Modal
-        title={editing ? "编辑工单" : "新增工单"}
+        title={editing ? t("编辑工单") : t("新增工单")}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
@@ -384,55 +385,59 @@ export function WorkOrdersPage() {
             }
           }}
         >
-          <Form.Item name="title" label="标题" rules={[{ required: true }]}>
+          <Form.Item
+            name="title"
+            label={t("标题")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item
             name="description"
-            label="描述"
+            label={t("描述")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={4} />
           </Form.Item>
           <Space className="full-width" align="start" wrap>
-            <Form.Item name="category" label="分类">
+            <Form.Item name="category" label={t("分类")}>
               <Select
                 options={[
-                  { value: "technical", label: "技术" },
-                  { value: "billing", label: "计费" },
-                  { value: "account", label: "账号" },
-                  { value: "other", label: "其他" },
+                  { value: "technical", label: t("技术") },
+                  { value: "billing", label: t("计费") },
+                  { value: "account", label: t("账号") },
+                  { value: "other", label: t("其他") },
                 ]}
                 className="admin-filter-select"
               />
             </Form.Item>
-            <Form.Item name="priority" label="优先级">
+            <Form.Item name="priority" label={t("优先级")}>
               <Select
                 options={priorityOptions}
                 className="admin-filter-select"
               />
             </Form.Item>
-            <Form.Item name="assignee_id" label="负责人 ID">
+            <Form.Item name="assignee_id" label={t("负责人 ID")}>
               <InputNumber min={1} />
             </Form.Item>
           </Space>
-          <Form.Item name="due_at" label="截止时间 RFC3339">
+          <Form.Item name="due_at" label={t("截止时间 RFC3339")}>
             <Input placeholder="2026-05-28T12:00:00+08:00" />
           </Form.Item>
-          <Form.Item name="metadata" label="扩展数据 JSON">
+          <Form.Item name="metadata" label={t("扩展数据 JSON")}>
             <Input.TextArea rows={3} placeholder='{"source":"admin"}' />
           </Form.Item>
-          <Form.Item name="attachment_file_ids" label="附件素材 ID">
+          <Form.Item name="attachment_file_ids" label={t("附件素材 ID")}>
             <Select
               mode="tags"
               tokenSeparators={[","]}
-              placeholder="输入素材 ID"
+              placeholder={t("输入素材 ID")}
             />
           </Form.Item>
         </Form>
       </Modal>
       <Drawer
-        title="工单详情"
+        title={t("工单详情")}
         open={Boolean(detailId)}
         onClose={() => setDetailId(null)}
         width={760}
@@ -449,20 +454,20 @@ export function WorkOrdersPage() {
             >
               <Form.Item name="status" rules={[{ required: true }]}>
                 <Select
-                  placeholder="新状态"
+                  placeholder={t("新状态")}
                   options={statusOptions}
                   style={{ width: 140 }}
                 />
               </Form.Item>
               <Form.Item name="comment">
-                <Input placeholder="流转备注" />
+                <Input placeholder={t("流转备注")} />
               </Form.Item>
               <PermissionButton
                 htmlType="submit"
                 permission="system:work_order:transition"
                 loading={transitionMutation.isPending}
               >
-                流转
+                {t("流转")}
               </PermissionButton>
             </Form>
             <Form
@@ -473,17 +478,17 @@ export function WorkOrdersPage() {
               }
             >
               <Form.Item name="assignee_id" rules={[{ required: true }]}>
-                <InputNumber min={1} placeholder="负责人 ID" />
+                <InputNumber min={1} placeholder={t("负责人 ID")} />
               </Form.Item>
               <Form.Item name="note">
-                <Input placeholder="分配备注" />
+                <Input placeholder={t("分配备注")} />
               </Form.Item>
               <PermissionButton
                 htmlType="submit"
                 permission="system:work_order:assign"
                 loading={assignMutation.isPending}
               >
-                分配
+                {t("分配")}
               </PermissionButton>
             </Form>
             <Form
@@ -494,17 +499,17 @@ export function WorkOrdersPage() {
               }
             >
               <Form.Item name="upload_file_id" rules={[{ required: true }]}>
-                <InputNumber min={1} placeholder="素材 ID" />
+                <InputNumber min={1} placeholder={t("素材 ID")} />
               </Form.Item>
               <Form.Item name="description">
-                <Input placeholder="附件说明" />
+                <Input placeholder={t("附件说明")} />
               </Form.Item>
               <PermissionButton
                 htmlType="submit"
                 permission="system:work_order:attachment"
                 loading={addAttachmentMutation.isPending}
               >
-                绑定附件
+                {t("绑定附件")}
               </PermissionButton>
             </Form>
             <Form
@@ -515,7 +520,7 @@ export function WorkOrdersPage() {
               }
             >
               <Form.Item name="body" rules={[{ required: true }]}>
-                <Input.TextArea rows={3} placeholder="添加评论" />
+                <Input.TextArea rows={3} placeholder={t("添加评论")} />
               </Form.Item>
               <PermissionButton
                 htmlType="submit"
@@ -523,11 +528,11 @@ export function WorkOrdersPage() {
                 permission="system:work_order:comment"
                 loading={commentMutation.isPending}
               >
-                添加评论
+                {t("添加评论")}
               </PermissionButton>
             </Form>
             <div>
-              <h3>附件</h3>
+              <h3>{t("附件")}</h3>
               <Space direction="vertical" className="full-width">
                 {detail.attachments.map((attachment) => (
                   <Space key={attachment.id}>
@@ -535,9 +540,9 @@ export function WorkOrdersPage() {
                       #{attachment.upload_file_id}{" "}
                       {attachment.original_name ?? "-"}
                     </span>
-                    {attachment.url && <a href={attachment.url}>打开</a>}
+                    {attachment.url && <a href={attachment.url}>{t("打开")}</a>}
                     <Popconfirm
-                      title="确认移除附件引用？"
+                      title={t("确认移除附件引用？")}
                       onConfirm={() =>
                         deleteAttachmentMutation.mutate({
                           id: detail.id,
@@ -550,7 +555,7 @@ export function WorkOrdersPage() {
                         danger
                         permission="system:work_order:attachment"
                       >
-                        移除
+                        {t("移除")}
                       </PermissionButton>
                     </Popconfirm>
                   </Space>
@@ -568,38 +573,40 @@ function DetailContent({ detail }: { detail: WorkOrderDetailRecord }) {
   return (
     <Space direction="vertical" size="large" className="full-width">
       <Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label="编号">{detail.order_no}</Descriptions.Item>
-        <Descriptions.Item label="状态">
+        <Descriptions.Item label={t("编号")}>
+          {detail.order_no}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("状态")}>
           <Tag color={statusColor[detail.status] ?? "default"}>
             {labelOf(statusOptions, detail.status)}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="标题" span={2}>
+        <Descriptions.Item label={t("标题")} span={2}>
           {detail.title}
         </Descriptions.Item>
-        <Descriptions.Item label="优先级">
+        <Descriptions.Item label={t("优先级")}>
           <Tag color={priorityColor[detail.priority] ?? "default"}>
             {labelOf(priorityOptions, detail.priority)}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="分类">
+        <Descriptions.Item label={t("分类")}>
           {detail.category ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="创建人">
+        <Descriptions.Item label={t("创建人")}>
           {detail.creator_id ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="负责人">
+        <Descriptions.Item label={t("负责人")}>
           {detail.assignee_id ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="截止时间" span={2}>
+        <Descriptions.Item label={t("截止时间")} span={2}>
           {detail.due_at ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="描述" span={2}>
+        <Descriptions.Item label={t("描述")} span={2}>
           {detail.description}
         </Descriptions.Item>
       </Descriptions>
       <div>
-        <h3>评论与流转</h3>
+        <h3>{t("评论与流转")}</h3>
         <Timeline
           items={detail.comments.map((comment) => ({
             children: (

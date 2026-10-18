@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 export type TerminalStatus =
   | "idle"
   | "connecting"
@@ -51,42 +52,42 @@ export function statusOverlay(
       return {
         tone: "busy",
         title: options.reconnectAttempt
-          ? `正在自动重连（第 ${options.reconnectAttempt} 次）`
-          : "正在连接",
-        description: "稍等片刻，终端即将就绪",
+          ? t("正在自动重连（第 {0} 次）", options.reconnectAttempt)
+          : t("正在连接"),
+        description: t("稍等片刻，终端即将就绪"),
         action: null,
       };
     case "detached":
       return {
         tone: "warning",
-        title: "连接已断开",
-        description: "网络中断或页面切到了后台，服务器上的会话仍然保留",
+        title: t("连接已断开"),
+        description: t("网络中断或页面切到了后台，服务器上的会话仍然保留"),
         action: "reconnect",
-        actionLabel: "重新连接",
+        actionLabel: t("重新连接"),
       };
     case "closed":
       return {
         tone: "idle",
-        title: "会话已结束",
-        description: "终端进程已退出或会话已被关闭",
+        title: t("会话已结束"),
+        description: t("终端进程已退出或会话已被关闭"),
         action: "new",
-        actionLabel: "新建连接",
+        actionLabel: t("新建连接"),
       };
     case "error":
       return {
         tone: "error",
-        title: "连接失败",
-        description: options.errorMessage || "无法连接到终端，请稍后重试",
+        title: t("连接失败"),
+        description: options.errorMessage || t("无法连接到终端，请稍后重试"),
         action: "reconnect",
-        actionLabel: "重试",
+        actionLabel: t("重试"),
       };
     default:
       return {
         tone: "idle",
-        title: "终端未连接",
-        description: "选择目标后连接，即可开始使用",
+        title: t("终端未连接"),
+        description: t("选择目标后连接，即可开始使用"),
         action: "connect",
-        actionLabel: "连接",
+        actionLabel: t("连接"),
       };
   }
 }

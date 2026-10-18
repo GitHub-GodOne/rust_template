@@ -36,6 +36,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t } from "../../../i18n";
 
 function normalizeEmpty(value?: string | null) {
   return value?.trim() ? value.trim() : null;
@@ -108,7 +109,7 @@ export function ApiKeysPage() {
         : createApiKey(payload);
     },
     onSuccess: (record) => {
-      message.success(editing ? "API 授权已更新" : "API 授权已创建");
+      message.success(editing ? t("API 授权已更新") : t("API 授权已创建"));
       setFormOpen(false);
       setEditing(null);
       form.resetFields();
@@ -116,23 +117,23 @@ export function ApiKeysPage() {
       if (!editing) {
         void navigator.clipboard
           .writeText(record.token)
-          .then(() => message.success("新密钥已复制"))
+          .then(() => message.success(t("新密钥已复制")))
           .catch(() => undefined);
       }
     },
     onError: (error) => {
-      message.error(error.message || "API 授权保存失败");
+      message.error(error.message || t("API 授权保存失败"));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteApiKey,
     onSuccess: () => {
-      message.success("API 授权已删除");
+      message.success(t("API 授权已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-api-keys"] });
     },
     onError: (error) => {
-      message.error(error.message || "API 授权删除失败");
+      message.error(error.message || t("API 授权删除失败"));
     },
   });
 
@@ -141,7 +142,7 @@ export function ApiKeysPage() {
       await navigator.clipboard.writeText(value);
       message.success(success);
     } catch {
-      message.error("复制失败，请检查浏览器剪贴板权限");
+      message.error(t("复制失败，请检查浏览器剪贴板权限"));
     }
   };
 
@@ -163,7 +164,7 @@ export function ApiKeysPage() {
 
   const columns: ColumnsType<ApiKeyRecord> = [
     { title: "ID", dataIndex: "id", width: 72 },
-    { title: "名称", dataIndex: "name", width: 180, ellipsis: true },
+    { title: t("名称"), dataIndex: "name", width: 180, ellipsis: true },
     {
       title: "Bearer Token",
       dataIndex: "token",
@@ -173,46 +174,56 @@ export function ApiKeysPage() {
           className="api-key-token"
           code
           ellipsis={{ tooltip: String(value) }}
-          copyable={{ text: String(value), tooltips: ["复制密钥", "已复制"] }}
+          copyable={{
+            text: String(value),
+            tooltips: [t("复制密钥"), t("已复制")],
+          }}
         >
           {String(value)}
         </Typography.Text>
       ),
     },
     {
-      title: "说明",
+      title: t("说明"),
       dataIndex: "description",
       width: 220,
       ellipsis: true,
       render: (value) => value || "-",
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "权限主体",
+      title: t("权限主体"),
       dataIndex: "created_by",
       width: 150,
       render: (value) =>
-        value ? <Tag color="default">用户 #{value}</Tag> : <Tag>未绑定</Tag>,
+        value ? (
+          <Tag color="default">
+            {t("用户 #")}
+            {value}
+          </Tag>
+        ) : (
+          <Tag>{t("未绑定")}</Tag>
+        ),
     },
     {
-      title: "最近调用",
+      title: t("最近调用"),
       dataIndex: "last_used_at",
       width: 190,
       render: formatDateTime,
     },
     {
-      title: "创建时间",
+      title: t("创建时间"),
       dataIndex: "created_at",
       width: 190,
       render: formatDateTime,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 330,
       fixed: "right",
@@ -222,10 +233,10 @@ export function ApiKeysPage() {
             size="small"
             icon={<CopyOutlined />}
             onClick={() =>
-              copyText(buildApiCurl(record.token), "通用 curl 已复制")
+              copyText(buildApiCurl(record.token), t("通用 curl 已复制"))
             }
           >
-            复制 curl
+            {t("复制 curl")}
           </Button>
           <PermissionButton
             size="small"
@@ -233,11 +244,11 @@ export function ApiKeysPage() {
             permission="system:api_key:update"
             onClick={() => openEditor(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除这个 API 授权？"
-            description="使用该密钥的第三方应用会立即失去访问权限。"
+            title={t("确认删除这个 API 授权？")}
+            description={t("使用该密钥的第三方应用会立即失去访问权限。")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -246,7 +257,7 @@ export function ApiKeysPage() {
               icon={<DeleteOutlined />}
               permission="system:api_key:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -256,16 +267,16 @@ export function ApiKeysPage() {
 
   return (
     <CrudPage
-      title="API 授权"
-      subtitle="管理可长期调用后端接口的 Bearer 密钥"
-      breadcrumb={["系统管理", "API 授权"]}
+      title={t("API 授权")}
+      subtitle={t("管理可长期调用后端接口的 Bearer 密钥")}
+      breadcrumb={[t("系统管理"), t("API 授权")]}
       icon={<KeyOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增授权",
+              label: t("新增授权"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:api_key:create",
@@ -273,7 +284,7 @@ export function ApiKeysPage() {
             },
             {
               key: "refresh",
-              label: "刷新",
+              label: t("刷新"),
               icon: <ReloadOutlined />,
               onClick: () => apiKeysQuery.refetch(),
             },
@@ -285,13 +296,15 @@ export function ApiKeysPage() {
         className="api-key-scope-alert"
         type="info"
         showIcon
-        message="永久 API 密钥可用于全部后端接口"
-        description="密钥不会绕过权限：每次请求都会继承创建者当前的角色和功能权限。停用密钥、删除所属用户或移除权限后会立即失效。"
+        message={t("永久 API 密钥可用于全部后端接口")}
+        description={t(
+          "密钥不会绕过权限：每次请求都会继承创建者当前的角色和功能权限。停用密钥、删除所属用户或移除权限后会立即失效。",
+        )}
       />
       <Space wrap className="api-key-filter-bar">
         <Input.Search
           allowClear
-          placeholder="搜索名称或说明"
+          placeholder={t("搜索名称或说明")}
           value={keywordInput}
           onChange={(event) => {
             const value = event.target.value;
@@ -309,15 +322,15 @@ export function ApiKeysPage() {
         />
         <Select
           allowClear
-          placeholder="全部状态"
+          placeholder={t("全部状态")}
           value={enabled}
           onChange={(value) => {
             setPage(1);
             setEnabled(value);
           }}
           options={[
-            { value: true, label: "已启用" },
-            { value: false, label: "已停用" },
+            { value: true, label: t("已启用") },
+            { value: false, label: t("已停用") },
           ]}
           className="admin-filter-select"
         />
@@ -337,7 +350,7 @@ export function ApiKeysPage() {
         }}
       />
       <Modal
-        title={editing ? "编辑 API 授权" : "新增 API 授权"}
+        title={editing ? t("编辑 API 授权") : t("新增 API 授权")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -347,8 +360,10 @@ export function ApiKeysPage() {
         <Alert
           type="warning"
           showIcon
-          message="请把密钥当作密码保存"
-          description="自定义 Token 不能包含空格，也不能使用登录 JWT 的三段式格式。创建时留空会自动生成 eyJ0_ 开头的永久密钥；编辑时清空可轮换为新密钥。"
+          message={t("请把密钥当作密码保存")}
+          description={t(
+            "自定义 Token 不能包含空格，也不能使用登录 JWT 的三段式格式。创建时留空会自动生成 eyJ0_ 开头的永久密钥；编辑时清空可轮换为新密钥。",
+          )}
           className="api-key-form-alert"
         />
         <Form
@@ -358,24 +373,28 @@ export function ApiKeysPage() {
         >
           <Form.Item
             name="name"
-            label="名称"
+            label={t("名称")}
             rules={[
-              { required: true, whitespace: true, message: "请输入授权名称" },
+              {
+                required: true,
+                whitespace: true,
+                message: t("请输入授权名称"),
+              },
             ]}
           >
-            <Input placeholder="例如 n8n 自动化" maxLength={120} />
+            <Input placeholder={t("例如 n8n 自动化")} maxLength={120} />
           </Form.Item>
           <Form.Item name="token" label="Bearer Token">
             <Input.TextArea
               rows={3}
               autoSize={{ minRows: 3, maxRows: 6 }}
-              placeholder="留空自动生成，或输入不含空格的自定义密钥"
+              placeholder={t("留空自动生成，或输入不含空格的自定义密钥")}
             />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={2} maxLength={500} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

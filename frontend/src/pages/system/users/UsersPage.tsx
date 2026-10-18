@@ -29,6 +29,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t, tData } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 
 type UserFormValues = SaveUserParams & { password?: string };
@@ -79,12 +80,12 @@ export function UsersPage() {
         return updateUser(editing.id, values);
       }
       if (!values.password) {
-        throw new Error("请输入初始密码");
+        throw new Error(t("请输入初始密码"));
       }
       return createUser({ ...values, password: values.password });
     },
     onSuccess: () => {
-      message.success("用户已保存");
+      message.success(t("用户已保存"));
       setFormOpen(false);
       setEditing(null);
       form.resetFields();
@@ -94,14 +95,14 @@ export function UsersPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteUser,
     onSuccess: () => {
-      message.success("用户已删除");
+      message.success(t("用户已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
   });
   const saveRolesMutation = useMutation({
     mutationFn: () => saveUserRoles(roleUser?.id ?? 0, selectedRoleIds),
     onSuccess: () => {
-      message.success("角色已保存");
+      message.success(t("角色已保存"));
       setRoleUser(null);
     },
   });
@@ -112,7 +113,7 @@ export function UsersPage() {
         current_department_id: selectedCurrentDepartmentId,
       }),
     onSuccess: () => {
-      message.success("部门已保存");
+      message.success(t("部门已保存"));
       setDepartmentUser(null);
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
@@ -129,21 +130,23 @@ export function UsersPage() {
 
   const columns: ColumnsType<UserRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "姓名", dataIndex: "name", width: 160 },
-    { title: "邮箱", dataIndex: "email" },
+    { title: t("姓名"), dataIndex: "name", width: 160 },
+    { title: t("邮箱"), dataIndex: "email" },
     {
-      title: "租户",
+      title: t("租户"),
       dataIndex: "tenant_id",
       width: 140,
       render: (tenantId) =>
         tenantId
-          ? ((tenantsQuery.data?.items ?? []).find(
-              (tenant) => tenant.id === tenantId,
-            )?.name ?? tenantId)
-          : "平台级",
+          ? tData(
+              (tenantsQuery.data?.items ?? []).find(
+                (tenant) => tenant.id === tenantId,
+              )?.name,
+            ) || tenantId
+          : t("平台级"),
     },
     {
-      title: "当前部门",
+      title: t("当前部门"),
       dataIndex: "current_department_id",
       width: 150,
       render: (departmentId) =>
@@ -151,16 +154,16 @@ export function UsersPage() {
           ? ((departmentsQuery.data?.items ?? []).find(
               (department) => department.id === departmentId,
             )?.name ?? departmentId)
-          : "未设置",
+          : t("未设置"),
     },
     {
-      title: "验证状态",
+      title: t("验证状态"),
       dataIndex: "is_verified",
       render: (verified) => <StatusTag active={verified} />,
     },
-    { title: "创建时间", dataIndex: "created_at", width: 210 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 210 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 260,
       render: (_, record) => (
@@ -179,7 +182,7 @@ export function UsersPage() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -192,7 +195,7 @@ export function UsersPage() {
               });
             }}
           >
-            角色
+            {t("角色")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -213,7 +216,7 @@ export function UsersPage() {
               });
             }}
           >
-            部门
+            {t("部门")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -221,7 +224,7 @@ export function UsersPage() {
             permission="system:user:delete"
             onClick={() => deleteMutation.mutate(record.id)}
           >
-            删除
+            {t("删除")}
           </PermissionButton>
         </Space>
       ),
@@ -230,16 +233,16 @@ export function UsersPage() {
 
   return (
     <CrudPage
-      title="用户管理"
-      subtitle="维护后台登录账号、状态和角色关系"
-      breadcrumb={["系统管理", "用户管理"]}
+      title={t("用户管理")}
+      subtitle={t("维护后台登录账号、状态和角色关系")}
+      breadcrumb={[t("系统管理"), t("用户管理")]}
       icon={<UserOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增",
+              label: t("新增"),
               icon: <UserOutlined />,
               primary: true,
               permission: "system:user:create",
@@ -264,7 +267,7 @@ export function UsersPage() {
         }}
       />
       <Modal
-        title={editing ? "编辑用户" : "新增用户"}
+        title={editing ? t("编辑用户") : t("新增用户")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -275,24 +278,24 @@ export function UsersPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("姓名")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item
             name="email"
-            label="邮箱"
+            label={t("邮箱")}
             rules={[{ required: true, type: "email" }]}
           >
             <Input />
           </Form.Item>
           {showTenantSelect ? (
-            <Form.Item name="tenant_id" label="租户">
+            <Form.Item name="tenant_id" label={t("租户")}>
               <Select
                 allowClear
-                placeholder="请选择租户"
+                placeholder={t("请选择租户")}
                 options={(tenantsQuery.data?.items ?? []).map((tenant) => ({
                   value: tenant.id,
-                  label: `${tenant.name}（${tenant.code}）`,
+                  label: `${tData(tenant.name)}（${tenant.code}）`,
                 }))}
               />
             </Form.Item>
@@ -300,7 +303,7 @@ export function UsersPage() {
           {!editing && (
             <Form.Item
               name="password"
-              label="初始密码"
+              label={t("初始密码")}
               rules={[{ required: true }]}
             >
               <Input.Password />
@@ -309,7 +312,7 @@ export function UsersPage() {
         </Form>
       </Modal>
       <Modal
-        title={`分配角色：${roleUser?.name ?? ""}`}
+        title={t("分配角色：{0}", roleUser?.name ?? "")}
         open={Boolean(roleUser)}
         onCancel={() => setRoleUser(null)}
         onOk={() => saveRolesMutation.mutate()}
@@ -324,17 +327,17 @@ export function UsersPage() {
           <Space direction="vertical">
             {(rolesQuery.data?.items ?? []).map((role) => (
               <Checkbox key={role.id} value={role.id}>
-                {role.name}（{role.code}）
+                {tData(role.name)}（{role.code}）
               </Checkbox>
             ))}
           </Space>
         </Checkbox.Group>
         {userRolesQuery.isFetching ? (
-          <div className="modal-hint">正在加载已分配角色...</div>
+          <div className="modal-hint">{t("正在加载已分配角色...")}</div>
         ) : null}
       </Modal>
       <Modal
-        title={`分配部门：${departmentUser?.name ?? ""}`}
+        title={t("分配部门：{0}", departmentUser?.name ?? "")}
         open={Boolean(departmentUser)}
         onCancel={() => setDepartmentUser(null)}
         onOk={() => saveDepartmentsMutation.mutate()}
@@ -345,11 +348,11 @@ export function UsersPage() {
             mode="multiple"
             allowClear
             className="admin-full-width"
-            placeholder="请选择用户所属部门"
+            placeholder={t("请选择用户所属部门")}
             value={selectedDepartmentIds}
             options={availableDepartments.map((department) => ({
               value: department.id,
-              label: `${department.name}（${department.code}）`,
+              label: `${tData(department.name)}（${department.code}）`,
             }))}
             onChange={(values) => {
               const ids = values.map(Number);
@@ -366,11 +369,11 @@ export function UsersPage() {
             allowClear
             className="admin-full-width"
             disabled={selectedDepartmentIds.length === 0}
-            placeholder="请选择当前默认部门"
+            placeholder={t("请选择当前默认部门")}
             value={selectedCurrentDepartmentId ?? undefined}
             options={selectedDepartmentOptions.map((department) => ({
               value: department.id,
-              label: `${department.name}（${department.code}）`,
+              label: `${tData(department.name)}（${department.code}）`,
             }))}
             onChange={(value) => setSelectedCurrentDepartmentId(value ?? null)}
           />

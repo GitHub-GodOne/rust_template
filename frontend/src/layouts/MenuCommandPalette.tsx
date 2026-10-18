@@ -12,6 +12,7 @@ import {
   defaultAdminMenus,
   mergeMenuItems,
 } from "../app/menu";
+import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 import { renderMenuIcon } from "./icons";
 
@@ -169,8 +170,8 @@ export function MenuCommandPalette({
           ref={inputRef}
           value={query}
           variant="borderless"
-          placeholder="搜索菜单或功能"
-          aria-label="搜索菜单"
+          placeholder={t("搜索菜单或功能")}
+          aria-label={t("搜索菜单")}
           aria-controls="menu-command-results"
           aria-expanded={open}
           role="combobox"
@@ -209,16 +210,16 @@ export function MenuCommandPalette({
         <Button
           type="text"
           className="menu-command-close"
-          aria-label="关闭菜单搜索"
+          aria-label={t("关闭菜单搜索")}
           icon={<CloseOutlined />}
           onClick={close}
         />
       </div>
 
       <div className="menu-command-section-head">
-        <Typography.Text type="secondary">菜单</Typography.Text>
+        <Typography.Text type="secondary">{t("菜单")}</Typography.Text>
         <Typography.Text type="secondary">
-          {filteredDestinations.length} 项
+          {t("{0} 项", filteredDestinations.length)}
         </Typography.Text>
       </div>
 
@@ -259,7 +260,7 @@ export function MenuCommandPalette({
           <Empty
             className="menu-command-empty"
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="没有匹配的菜单"
+            description={t("没有匹配的菜单")}
           />
         )}
       </div>

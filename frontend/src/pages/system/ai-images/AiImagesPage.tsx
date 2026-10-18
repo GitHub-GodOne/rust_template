@@ -62,6 +62,7 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const sizeOptions = [
   { value: "1024x1024", label: "1024 x 1024" },
@@ -70,14 +71,14 @@ const sizeOptions = [
 ];
 
 const qualityOptions = [
-  { value: "high", label: "高质量" },
-  { value: "medium", label: "中质量" },
-  { value: "low", label: "低质量" },
+  { value: "high", label: t("高质量") },
+  { value: "medium", label: t("中质量") },
+  { value: "low", label: t("低质量") },
 ];
 
 const saveModeOptions = [
-  { value: "local", label: "本地目录" },
-  { value: "storage", label: "存储桶 / 素材库" },
+  { value: "local", label: t("本地目录") },
+  { value: "storage", label: t("存储桶 / 素材库") },
 ];
 
 type ConfigFormValues = SaveAiImageConfigParams;
@@ -93,10 +94,10 @@ type GenerateFormValues = {
 
 function statusTag(status: string) {
   if (status === "success") {
-    return <Tag color="green">成功</Tag>;
+    return <Tag color="green">{t("成功")}</Tag>;
   }
   if (status === "failed") {
-    return <Tag color="red">失败</Tag>;
+    return <Tag color="red">{t("失败")}</Tag>;
   }
   return <Tag>{status}</Tag>;
 }
@@ -218,7 +219,7 @@ export function AiImagesPage() {
         ? updateAiImageConfig(editingConfig.key, values)
         : createAiImageConfig(values),
     onSuccess: () => {
-      message.success("配置已保存");
+      message.success(t("配置已保存"));
       setConfigOpen(false);
       setEditingConfig(null);
       queryClient.invalidateQueries({ queryKey: ["admin-ai-image-configs"] });
@@ -228,7 +229,7 @@ export function AiImagesPage() {
   const deleteConfigMutation = useMutation({
     mutationFn: deleteAiImageConfig,
     onSuccess: () => {
-      message.success("配置已删除");
+      message.success(t("配置已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-ai-image-configs"] });
     },
   });
@@ -236,7 +237,7 @@ export function AiImagesPage() {
   const generateMutation = useMutation({
     mutationFn: generateAiImages,
     onSuccess: (batch) => {
-      message.success(`已生成 ${batch.items.length} 张图片`);
+      message.success(t("已生成 {0} 张图片", batch.items.length));
       setLatestBatch(batch.items);
       queryClient.invalidateQueries({
         queryKey: ["admin-ai-image-generations"],
@@ -247,7 +248,7 @@ export function AiImagesPage() {
   const regenerateMutation = useMutation({
     mutationFn: generateAiImages,
     onSuccess: (batch) => {
-      message.success(`已重新生成 ${batch.items.length} 张图片`);
+      message.success(t("已重新生成 {0} 张图片", batch.items.length));
       setLatestBatch(batch.items);
       queryClient.invalidateQueries({
         queryKey: ["admin-ai-image-generations"],
@@ -257,20 +258,20 @@ export function AiImagesPage() {
   });
 
   const configColumns: ColumnsType<AiImageConfigRecord> = [
-    { title: "配置键", dataIndex: "key", width: 180 },
-    { title: "名称", dataIndex: "name", width: 180 },
+    { title: t("配置键"), dataIndex: "key", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     { title: "Base URL", dataIndex: "base_url", width: 260, ellipsis: true },
-    { title: "模型", dataIndex: "model", width: 140 },
-    { title: "尺寸", dataIndex: "size", width: 120 },
-    { title: "质量", dataIndex: "quality", width: 100 },
+    { title: t("模型"), dataIndex: "model", width: 140 },
+    { title: t("尺寸"), dataIndex: "size", width: 120 },
+    { title: t("质量"), dataIndex: "quality", width: 100 },
     {
-      title: "保存位置",
+      title: t("保存位置"),
       dataIndex: "save_mode",
       width: 120,
       render: (value) => saveModeTag(value),
@@ -281,12 +282,12 @@ export function AiImagesPage() {
       width: 90,
       render: (value) => (
         <Tag color={value ? "green" : "default"}>
-          {value ? "已配置" : "未配置"}
+          {value ? t("已配置") : t("未配置")}
         </Tag>
       ),
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       fixed: "right",
@@ -317,10 +318,10 @@ export function AiImagesPage() {
               setConfigOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除该配置？"
+            title={t("确认删除该配置？")}
             onConfirm={() => deleteConfigMutation.mutate(record.key)}
           >
             <PermissionButton
@@ -329,7 +330,7 @@ export function AiImagesPage() {
               icon={<DeleteOutlined />}
               permission="system:ai_image:config"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -339,15 +340,15 @@ export function AiImagesPage() {
 
   const generationColumns: ColumnsType<AiImageGenerationRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "配置", dataIndex: "config_name", width: 160 },
+    { title: t("配置"), dataIndex: "config_name", width: 160 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 90,
       render: (value) => statusTag(value),
     },
     {
-      title: "提示词",
+      title: t("提示词"),
       dataIndex: "prompt",
       width: 320,
       ellipsis: true,
@@ -355,37 +356,40 @@ export function AiImagesPage() {
         <Typography.Text
           copyable={{
             text: value,
-            tooltips: ["复制提示词", "已复制"],
+            tooltips: [t("复制提示词"), t("已复制")],
           }}
         >
           {value}
         </Typography.Text>
       ),
     },
-    { title: "模型", dataIndex: "model", width: 140 },
-    { title: "尺寸", dataIndex: "size", width: 120 },
+    { title: t("模型"), dataIndex: "model", width: 140 },
+    { title: t("尺寸"), dataIndex: "size", width: 120 },
     {
-      title: "保存方式",
+      title: t("保存方式"),
       dataIndex: "save_mode",
       width: 120,
       render: (value) => saveModeTag(value),
     },
     {
-      title: "参考图",
+      title: t("参考图"),
       key: "references",
       width: 120,
       render: (_, record) =>
-        record.reference_summary ?? `${record.reference_count} 张`,
+        record.reference_summary ?? t("{0} 张", record.reference_count),
     },
     {
-      title: "失败信息",
+      title: t("失败信息"),
       dataIndex: "error_message",
       width: 420,
       ellipsis: true,
       render: (value) =>
         value ? (
           <Typography.Text
-            copyable={{ text: value, tooltips: ["复制失败信息", "已复制"] }}
+            copyable={{
+              text: value,
+              tooltips: [t("复制失败信息"), t("已复制")],
+            }}
             ellipsis={{ tooltip: value }}
             style={{ maxWidth: 390 }}
           >
@@ -395,9 +399,9 @@ export function AiImagesPage() {
           "-"
         ),
     },
-    { title: "时间", dataIndex: "created_at", width: 220 },
+    { title: t("时间"), dataIndex: "created_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       fixed: "right",
@@ -416,14 +420,14 @@ export function AiImagesPage() {
                 setPreviewObjectUrl(URL.createObjectURL(blob));
               } catch (error) {
                 message.error(
-                  error instanceof Error ? error.message : "预览失败",
+                  error instanceof Error ? error.message : t("预览失败"),
                 );
               } finally {
                 setPreviewLoading(false);
               }
             }}
           >
-            预览
+            {t("预览")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -441,12 +445,12 @@ export function AiImagesPage() {
                 })
                 .catch((error) => {
                   message.error(
-                    error instanceof Error ? error.message : "下载失败",
+                    error instanceof Error ? error.message : t("下载失败"),
                   );
                 });
             }}
           >
-            下载
+            {t("下载")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -457,14 +461,16 @@ export function AiImagesPage() {
             }
             onClick={() => {
               if (record.reference_count > 0) {
-                message.info("已回填提示词和配置；参考图请重新选择后再生成。");
+                message.info(
+                  t("已回填提示词和配置；参考图请重新选择后再生成。"),
+                );
                 fillGenerateForm(record);
                 return;
               }
               regenerateRecord(record);
             }}
           >
-            重新生成
+            {t("重新生成")}
           </PermissionButton>
         </Space>
       ),
@@ -473,9 +479,14 @@ export function AiImagesPage() {
 
   const uploadPickerColumns: ColumnsType<UploadRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "original_name", width: 260, ellipsis: true },
-    { title: "类型", dataIndex: "mime_type", width: 180 },
-    { title: "目录", dataIndex: "prefix", width: 180, ellipsis: true },
+    {
+      title: t("名称"),
+      dataIndex: "original_name",
+      width: 260,
+      ellipsis: true,
+    },
+    { title: t("类型"), dataIndex: "mime_type", width: 180 },
+    { title: t("目录"), dataIndex: "prefix", width: 180, ellipsis: true },
   ];
 
   const uploadProps: UploadProps = {
@@ -521,18 +532,20 @@ export function AiImagesPage() {
 
   return (
     <CrudPage
-      title="AI 图片生成"
-      subtitle="维护生图配置、组合参考图并查看生成结果"
-      breadcrumb={["系统管理", "AI 图片生成"]}
+      title={t("AI 图片生成")}
+      subtitle={t("维护生图配置、组合参考图并查看生成结果")}
+      breadcrumb={[t("系统管理"), t("AI 图片生成")]}
       icon={<ExperimentOutlined />}
       toolbar={<CrudToolbar />}
-      notice="API Key 只在后端存储。参考图是可选的：未选择参考图时走普通文生图接口，选择参考图后自动走带参考图接口。生成失败时，历史记录会显示上游请求 URL、状态码和响应摘要。编辑现有配置时留空即表示不修改密钥。"
+      notice={t(
+        "API Key 只在后端存储。参考图是可选的：未选择参考图时走普通文生图接口，选择参考图后自动走带参考图接口。生成失败时，历史记录会显示上游请求 URL、状态码和响应摘要。编辑现有配置时留空即表示不修改密钥。",
+      )}
     >
       <Tabs
         items={[
           {
             key: "configs",
-            label: "配置管理",
+            label: t("配置管理"),
             children: (
               <DataTable
                 loading={configsQuery.isLoading}
@@ -542,7 +555,7 @@ export function AiImagesPage() {
                 title={() => (
                   <Space>
                     <Input.Search
-                      placeholder="筛选配置名称或 key"
+                      placeholder={t("筛选配置名称或 key")}
                       allowClear
                       onChange={(event) => setConfigKeyword(event.target.value)}
                       style={{ width: 260 }}
@@ -566,13 +579,13 @@ export function AiImagesPage() {
                         setConfigOpen(true);
                       }}
                     >
-                      新增配置
+                      {t("新增配置")}
                     </PermissionButton>
                     <Button
                       icon={<ReloadOutlined />}
                       onClick={() => configsQuery.refetch()}
                     >
-                      刷新
+                      {t("刷新")}
                     </Button>
                   </Space>
                 )}
@@ -581,10 +594,10 @@ export function AiImagesPage() {
           },
           {
             key: "generate",
-            label: "图片生成",
+            label: t("图片生成"),
             children: (
               <div className="ai-images-workbench">
-                <Card className="ai-panel" title="生成参数">
+                <Card className="ai-panel" title={t("生成参数")}>
                   <Form
                     form={generateForm}
                     layout="vertical"
@@ -603,11 +616,11 @@ export function AiImagesPage() {
                   >
                     <Form.Item
                       name="config_key"
-                      label="配置组"
-                      rules={[{ required: true, message: "请选择配置组" }]}
+                      label={t("配置组")}
+                      rules={[{ required: true, message: t("请选择配置组") }]}
                     >
                       <Select
-                        placeholder="选择一个启用的配置"
+                        placeholder={t("选择一个启用的配置")}
                         options={enabledConfigs.map((config) => ({
                           value: config.key,
                           label: `${config.name} (${config.model})`,
@@ -616,25 +629,27 @@ export function AiImagesPage() {
                     </Form.Item>
                     <Form.Item
                       name="prompt"
-                      label="提示词"
-                      rules={[{ required: true, message: "请输入提示词" }]}
+                      label={t("提示词")}
+                      rules={[{ required: true, message: t("请输入提示词") }]}
                     >
                       <Input.TextArea
                         rows={5}
-                        placeholder="描述你希望生成的画面、风格、构图和细节"
+                        placeholder={t(
+                          "描述你希望生成的画面、风格、构图和细节",
+                        )}
                       />
                     </Form.Item>
                     <div className="ai-images-grid">
-                      <Form.Item name="model" label="模型">
-                        <Input placeholder="默认使用配置中的模型" />
+                      <Form.Item name="model" label={t("模型")}>
+                        <Input placeholder={t("默认使用配置中的模型")} />
                       </Form.Item>
-                      <Form.Item name="size" label="尺寸">
+                      <Form.Item name="size" label={t("尺寸")}>
                         <Select allowClear options={sizeOptions} />
                       </Form.Item>
-                      <Form.Item name="quality" label="质量">
+                      <Form.Item name="quality" label={t("质量")}>
                         <Select allowClear options={qualityOptions} />
                       </Form.Item>
-                      <Form.Item name="n" label="数量">
+                      <Form.Item name="n" label={t("数量")}>
                         <InputNumber
                           min={1}
                           max={10}
@@ -645,29 +660,29 @@ export function AiImagesPage() {
                     <Space align="start" size={16} className="ai-reference-row">
                       <Card
                         size="small"
-                        title="本次上传参考图（可选）"
+                        title={t("本次上传参考图（可选）")}
                         className="ai-reference-card"
                       >
                         <Upload {...uploadProps} listType="picture-card">
                           <div>
                             <PictureOutlined />
-                            <div style={{ marginTop: 8 }}>添加图片</div>
+                            <div style={{ marginTop: 8 }}>{t("添加图片")}</div>
                           </div>
                         </Upload>
                       </Card>
                       <Card
                         size="small"
-                        title="从素材库选择（可选）"
+                        title={t("从素材库选择（可选）")}
                         className="ai-reference-card"
                       >
                         <Space direction="vertical" style={{ width: "100%" }}>
                           <Button onClick={() => setPickerOpen(true)}>
-                            选择素材
+                            {t("选择素材")}
                           </Button>
                           <List
                             size="small"
                             dataSource={selectedUploads}
-                            locale={{ emptyText: "未选择素材" }}
+                            locale={{ emptyText: t("未选择素材") }}
                             renderItem={(item) => (
                               <List.Item
                                 actions={[
@@ -686,7 +701,7 @@ export function AiImagesPage() {
                                       );
                                     }}
                                   >
-                                    移除
+                                    {t("移除")}
                                   </Button>,
                                 ]}
                               >
@@ -709,7 +724,7 @@ export function AiImagesPage() {
                         permission="system:ai_image:generate"
                         loading={generateMutation.isPending}
                       >
-                        开始生成
+                        {t("开始生成")}
                       </PermissionButton>
                       <Button
                         onClick={() => {
@@ -725,50 +740,50 @@ export function AiImagesPage() {
                           }
                         }}
                       >
-                        清空
+                        {t("清空")}
                       </Button>
                     </Space>
                   </Form>
                 </Card>
-                <Card className="ai-panel" title="当前配置摘要">
+                <Card className="ai-panel" title={t("当前配置摘要")}>
                   {selectedConfig ? (
                     <Descriptions column={1} size="small">
-                      <Descriptions.Item label="名称">
+                      <Descriptions.Item label={t("名称")}>
                         {selectedConfig.name}
                       </Descriptions.Item>
                       <Descriptions.Item label="Base URL">
                         {selectedConfig.base_url}
                       </Descriptions.Item>
-                      <Descriptions.Item label="模型">
+                      <Descriptions.Item label={t("模型")}>
                         {selectedConfig.model}
                       </Descriptions.Item>
-                      <Descriptions.Item label="尺寸">
+                      <Descriptions.Item label={t("尺寸")}>
                         {selectedConfig.size}
                       </Descriptions.Item>
-                      <Descriptions.Item label="质量">
+                      <Descriptions.Item label={t("质量")}>
                         {selectedConfig.quality}
                       </Descriptions.Item>
-                      <Descriptions.Item label="保存方式">
+                      <Descriptions.Item label={t("保存方式")}>
                         {selectedConfig.save_mode}
                       </Descriptions.Item>
-                      <Descriptions.Item label="输出位置">
+                      <Descriptions.Item label={t("输出位置")}>
                         {selectedConfig.save_mode === "local"
                           ? (selectedConfig.local_output_dir ?? "-")
                           : selectedBucket
-                            ? `${selectedBucket.name} / ${selectedConfig.storage_prefix ?? "根目录"}`
+                            ? `${selectedBucket.name} / ${selectedConfig.storage_prefix ?? t("根目录")}`
                             : (selectedConfig.storage_prefix ?? "-")}
                       </Descriptions.Item>
-                      <Descriptions.Item label="说明">
+                      <Descriptions.Item label={t("说明")}>
                         {selectedConfig.description || "-"}
                       </Descriptions.Item>
                     </Descriptions>
                   ) : (
                     <Typography.Text type="secondary">
-                      请选择启用的配置后再发起生成。
+                      {t("请选择启用的配置后再发起生成。")}
                     </Typography.Text>
                   )}
                 </Card>
-                <Card className="ai-panel" title="最近一次生成结果">
+                <Card className="ai-panel" title={t("最近一次生成结果")}>
                   {generateMutation.isPending ? (
                     <div className="ai-preview-loading">
                       <Spin />
@@ -793,7 +808,7 @@ export function AiImagesPage() {
                               message.error(
                                 error instanceof Error
                                   ? error.message
-                                  : "预览失败",
+                                  : t("预览失败"),
                               );
                             } finally {
                               setPreviewLoading(false);
@@ -812,7 +827,7 @@ export function AiImagesPage() {
                     </div>
                   ) : (
                     <Typography.Text type="secondary">
-                      生成完成后，这里会展示当前批次结果入口。
+                      {t("生成完成后，这里会展示当前批次结果入口。")}
                     </Typography.Text>
                   )}
                 </Card>
@@ -821,7 +836,7 @@ export function AiImagesPage() {
           },
           {
             key: "history",
-            label: "生成记录",
+            label: t("生成记录"),
             children: (
               <DataTable
                 columns={generationColumns}
@@ -836,7 +851,7 @@ export function AiImagesPage() {
                 title={() => (
                   <Space>
                     <Input.Search
-                      placeholder="搜索提示词、配置名、批次号"
+                      placeholder={t("搜索提示词、配置名、批次号")}
                       allowClear
                       onSearch={(value) => {
                         setKeyword(value.trim());
@@ -848,7 +863,7 @@ export function AiImagesPage() {
                       icon={<ReloadOutlined />}
                       onClick={() => generationsQuery.refetch()}
                     >
-                      刷新
+                      {t("刷新")}
                     </Button>
                   </Space>
                 )}
@@ -859,7 +874,7 @@ export function AiImagesPage() {
       />
 
       <Modal
-        title={editingConfig ? "编辑配置" : "新增配置"}
+        title={editingConfig ? t("编辑配置") : t("新增配置")}
         open={configOpen}
         onCancel={() => {
           setConfigOpen(false);
@@ -877,25 +892,25 @@ export function AiImagesPage() {
           <div className="ai-images-grid">
             <Form.Item
               name="key"
-              label="配置键"
-              rules={[{ required: true, message: "请输入配置键" }]}
+              label={t("配置键")}
+              rules={[{ required: true, message: t("请输入配置键") }]}
             >
               <Input disabled={Boolean(editingConfig)} />
             </Form.Item>
             <Form.Item
               name="name"
-              label="名称"
-              rules={[{ required: true, message: "请输入名称" }]}
+              label={t("名称")}
+              rules={[{ required: true, message: t("请输入名称") }]}
             >
               <Input />
             </Form.Item>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
               <Switch />
             </Form.Item>
             <Form.Item
               name="save_mode"
-              label="保存方式"
-              rules={[{ required: true, message: "请选择保存方式" }]}
+              label={t("保存方式")}
+              rules={[{ required: true, message: t("请选择保存方式") }]}
             >
               <Select options={saveModeOptions} />
             </Form.Item>
@@ -903,42 +918,44 @@ export function AiImagesPage() {
           <Form.Item
             name="base_url"
             label="Base URL"
-            rules={[{ required: true, message: "请输入 Base URL" }]}
+            rules={[{ required: true, message: t("请输入 Base URL") }]}
           >
             <Input placeholder="https://example.test/v1" />
           </Form.Item>
           <Form.Item
             name="api_key"
-            label={editingConfig ? "API Key（留空表示不修改）" : "API Key"}
+            label={editingConfig ? t("API Key（留空表示不修改）") : "API Key"}
             rules={
               editingConfig
                 ? []
-                : [{ required: true, message: "请输入 API Key" }]
+                : [{ required: true, message: t("请输入 API Key") }]
             }
           >
             <Input.Password
-              placeholder={editingConfig ? "留空则保留旧值" : "输入 API Key"}
+              placeholder={
+                editingConfig ? t("留空则保留旧值") : t("输入 API Key")
+              }
             />
           </Form.Item>
           <div className="ai-images-grid">
-            <Form.Item name="model" label="默认模型">
+            <Form.Item name="model" label={t("默认模型")}>
               <Input />
             </Form.Item>
-            <Form.Item name="size" label="默认尺寸">
+            <Form.Item name="size" label={t("默认尺寸")}>
               <Select options={sizeOptions} />
             </Form.Item>
-            <Form.Item name="quality" label="默认质量">
+            <Form.Item name="quality" label={t("默认质量")}>
               <Select options={qualityOptions} />
             </Form.Item>
-            <Form.Item name="n" label="默认数量">
+            <Form.Item name="n" label={t("默认数量")}>
               <InputNumber min={1} max={10} style={{ width: "100%" }} />
             </Form.Item>
           </div>
           {activeSaveMode === "local" ? (
             <Form.Item
               name="local_output_dir"
-              label="本地输出目录"
-              rules={[{ required: true, message: "请输入本地输出目录" }]}
+              label={t("本地输出目录")}
+              rules={[{ required: true, message: t("请输入本地输出目录") }]}
             >
               <Input placeholder="storage/ai-images/output" />
             </Form.Item>
@@ -946,8 +963,8 @@ export function AiImagesPage() {
             <div className="ai-images-grid">
               <Form.Item
                 name="storage_bucket_id"
-                label="存储桶"
-                rules={[{ required: true, message: "请选择存储桶" }]}
+                label={t("存储桶")}
+                rules={[{ required: true, message: t("请选择存储桶") }]}
               >
                 <Select
                   options={storageProfiles.flatMap((profile, index) =>
@@ -958,19 +975,19 @@ export function AiImagesPage() {
                   )}
                 />
               </Form.Item>
-              <Form.Item name="storage_prefix" label="对象前缀">
+              <Form.Item name="storage_prefix" label={t("对象前缀")}>
                 <Input placeholder="ai-images/generated" />
               </Form.Item>
             </div>
           )}
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="从素材库选择参考图"
+        title={t("从素材库选择参考图")}
         open={pickerOpen}
         onCancel={() => setPickerOpen(false)}
         onOk={() => {
@@ -990,7 +1007,7 @@ export function AiImagesPage() {
       >
         <Space direction="vertical" style={{ width: "100%" }}>
           <Input.Search
-            placeholder="搜索素材名称"
+            placeholder={t("搜索素材名称")}
             allowClear
             onSearch={setPickerKeyword}
           />
@@ -1005,14 +1022,18 @@ export function AiImagesPage() {
             pagination={false}
           />
           <Typography.Text type="secondary">
-            已选 {selectedUploadIds.length} 个素材，当前缓存{" "}
-            {selectedUploadMap.size} 项。
+            {t(
+              "已选 {0} 个素材，当前缓存{1}{2} 项。",
+              selectedUploadIds.length,
+              " ",
+              selectedUploadMap.size,
+            )}
           </Typography.Text>
         </Space>
       </Modal>
 
       <Drawer
-        title={previewing ? `预览 ${previewing.original_name}` : "预览"}
+        title={previewing ? t("预览 {0}", previewing.original_name) : t("预览")}
         open={Boolean(previewing)}
         onClose={() => {
           setPreviewing(null);
@@ -1024,38 +1045,38 @@ export function AiImagesPage() {
         {previewing ? (
           <Space direction="vertical" style={{ width: "100%" }} size={16}>
             <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="配置">
+              <Descriptions.Item label={t("配置")}>
                 {previewing.config_name}
               </Descriptions.Item>
-              <Descriptions.Item label="状态">
+              <Descriptions.Item label={t("状态")}>
                 {previewing.status}
               </Descriptions.Item>
-              <Descriptions.Item label="提示词">
+              <Descriptions.Item label={t("提示词")}>
                 <Typography.Text
                   copyable={{
                     text: previewing.prompt,
-                    tooltips: ["复制提示词", "已复制"],
+                    tooltips: [t("复制提示词"), t("已复制")],
                   }}
                 >
                   {previewing.prompt}
                 </Typography.Text>
               </Descriptions.Item>
-              <Descriptions.Item label="尺寸">
+              <Descriptions.Item label={t("尺寸")}>
                 {previewing.size}
               </Descriptions.Item>
-              <Descriptions.Item label="质量">
+              <Descriptions.Item label={t("质量")}>
                 {previewing.quality}
               </Descriptions.Item>
-              <Descriptions.Item label="参考图">
+              <Descriptions.Item label={t("参考图")}>
                 {previewing.reference_summary ??
-                  `${previewing.reference_count} 张`}
+                  t("{0} 张", previewing.reference_count)}
               </Descriptions.Item>
-              <Descriptions.Item label="失败信息">
+              <Descriptions.Item label={t("失败信息")}>
                 {previewing.error_message ? (
                   <Typography.Paragraph
                     copyable={{
                       text: previewing.error_message,
-                      tooltips: ["复制失败信息", "已复制"],
+                      tooltips: [t("复制失败信息"), t("已复制")],
                     }}
                     style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}
                   >
@@ -1073,7 +1094,7 @@ export function AiImagesPage() {
                 <Image src={previewObjectUrl} alt={previewing.original_name} />
               ) : (
                 <Typography.Text type="secondary">
-                  暂无可预览内容
+                  {t("暂无可预览内容")}
                 </Typography.Text>
               )}
             </div>

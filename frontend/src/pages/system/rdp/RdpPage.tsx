@@ -32,6 +32,7 @@ import {
   saveRdpTargets,
 } from "../../../api/admin/rdp";
 import { CrudPage } from "../../../components/admin/CrudPage";
+import { t as tr } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 import { createClientId } from "../../../utils/clientId";
 
@@ -41,7 +42,7 @@ function Desktop({ session, active }: { session: Session; active: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const clientRef = useRef<Guacamole.Client>();
   const keyboardRef = useRef<Guacamole.Keyboard>();
-  const [status, setStatus] = useState("连接中");
+  const [status, setStatus] = useState(tr("连接中"));
   const [error, setError] = useState("");
   const [stopped, setStopped] = useState(false);
 
@@ -86,15 +87,17 @@ function Desktop({ session, active }: { session: Session; active: boolean }) {
     container.addEventListener("blur", release);
     window.addEventListener("blur", release);
     client.onerror = (failure) => {
-      setError(failure.message ?? "RDP 连接失败");
+      setError(failure.message ?? tr("RDP 连接失败"));
       client.disconnect();
     };
     tunnel.onerror = (failure) => {
-      setError(failure.message ?? "RDP 网关连接失败");
+      setError(failure.message ?? tr("RDP 网关连接失败"));
       client.disconnect();
     };
     client.onstatechange = (state) => {
-      setStatus(state === 3 ? "已连接" : state === 5 ? "已断开" : "连接中");
+      setStatus(
+        state === 3 ? tr("已连接") : state === 5 ? tr("已断开") : tr("连接中"),
+      );
       if (state === 5) setStopped(true);
     };
     // React StrictMode may mount and clean up effects once before the real mount.
@@ -130,7 +133,9 @@ function Desktop({ session, active }: { session: Session; active: boolean }) {
   return (
     <div className="rdp-session">
       <Space wrap>
-        <Tag color={status === "已连接" ? "green" : "default"}>{status}</Tag>
+        <Tag color={status === tr("已连接") ? "green" : "default"}>
+          {status}
+        </Tag>
         <span>
           {session.target.host}:{session.target.port}
         </span>
@@ -141,23 +146,23 @@ function Desktop({ session, active }: { session: Session; active: boolean }) {
           Ctrl+Alt+Del
         </Button>
         <Button disabled={stopped} onClick={() => keys([0xffeb])}>
-          Windows 键
+          {tr("Windows 键")}
         </Button>
         <Button
           onClick={() => {
             host.current
               ?.requestFullscreen()
-              .catch(() => message.error("当前浏览器无法进入全屏"));
+              .catch(() => message.error(tr("当前浏览器无法进入全屏")));
           }}
         >
-          全屏
+          {tr("全屏")}
         </Button>
         <Button
           disabled={stopped}
           danger
           onClick={() => clientRef.current?.disconnect()}
         >
-          断开
+          {tr("断开")}
         </Button>
       </Space>
       {error && (
@@ -165,11 +170,13 @@ function Desktop({ session, active }: { session: Session; active: boolean }) {
           type="error"
           showIcon
           message={error}
-          description="检查目标电脑的远程桌面、账号密码、证书和 guacd 网关；重新连接请使用顶部的连接按钮。"
+          description={tr(
+            "检查目标电脑的远程桌面、账号密码、证书和 guacd 网关；重新连接请使用顶部的连接按钮。",
+          )}
         />
       )}
       {stopped && !error && (
-        <Alert type="info" message="连接已断开，可重新选择目标并登录。" />
+        <Alert type="info" message={tr("连接已断开，可重新选择目标并登录。")} />
       )}
       <div
         ref={host}
@@ -177,7 +184,10 @@ function Desktop({ session, active }: { session: Session; active: boolean }) {
         tabIndex={0}
         className="rdp-desktop"
         role="application"
-        aria-label={`${session.target.name} 远程桌面，点击后使用键盘和鼠标操作`}
+        aria-label={tr(
+          "{0} 远程桌面，点击后使用键盘和鼠标操作",
+          session.target.name,
+        )}
       />
     </div>
   );
@@ -219,11 +229,13 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
     (target) => target.key === selected,
   );
   const connectionBlocked = !canConnect
-    ? "当前账号没有 RDP 连接权限，请管理员分配 system:rdp:connect 权限后重新登录。"
+    ? tr(
+        "当前账号没有 RDP 连接权限，请管理员分配 system:rdp:connect 权限后重新登录。",
+      )
     : sessions.length >= 8
-      ? "最多同时打开 8 个连接标签，请先关闭一个标签。"
+      ? tr("最多同时打开 8 个连接标签，请先关闭一个标签。")
       : selectedTarget && !selectedTarget.enabled
-        ? "此电脑已停用，请在管理电脑中编辑并启用。"
+        ? tr("此电脑已停用，请在管理电脑中编辑并启用。")
         : undefined;
 
   useEffect(() => {
@@ -238,7 +250,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
 
   const openLogin = (target: RdpTarget) => {
     if (!target.enabled) {
-      message.warning("此电脑已停用，请先编辑并启用");
+      message.warning(tr("此电脑已停用，请先编辑并启用"));
       return;
     }
     if (!canConnect || sessions.length >= 8) {
@@ -257,7 +269,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
     const values = useSavedCredentials ? {} : await loginForm.validateFields();
     const target = targets.data?.find((t) => t.key === selected && t.enabled);
     if (!target) {
-      message.warning("所选电脑已被删除或停用，请重新选择");
+      message.warning(tr("所选电脑已被删除或停用，请重新选择"));
       return;
     }
     setBusy(true);
@@ -283,7 +295,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
       setLoginOpen(false);
       loginForm.resetFields();
     } catch {
-      message.error("创建 RDP 连接失败，请检查权限和目标配置");
+      message.error(tr("创建 RDP 连接失败，请检查权限和目标配置"));
     } finally {
       setBusy(false);
     }
@@ -299,9 +311,9 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
         setSelected(selectKey);
         setManageOpen(false);
       }
-      message.success("目标配置已保存");
+      message.success(tr("目标配置已保存"));
     } catch {
-      message.error("保存失败，请检查权限、主机和端口");
+      message.error(tr("保存失败，请检查权限、主机和端口"));
     } finally {
       setBusy(false);
     }
@@ -309,16 +321,16 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
 
   return (
     <CrudPage
-      title="RDP 远程桌面"
-      subtitle="通过 3389 连接 Windows，直接在浏览器操作桌面"
-      breadcrumb={["系统管理", "RDP 管理"]}
+      title={tr("RDP 远程桌面")}
+      subtitle={tr("通过 3389 连接 Windows，直接在浏览器操作桌面")}
+      breadcrumb={[tr("系统管理"), tr("RDP 管理")]}
       icon={<DesktopOutlined />}
       toolbar={
         <Space wrap>
           <Select
             style={{ minWidth: 220 }}
-            placeholder="选择远程电脑"
-            aria-label="选择远程电脑"
+            placeholder={tr("选择远程电脑")}
+            aria-label={tr("选择远程电脑")}
             showSearch
             optionFilterProp="label"
             loading={targets.isLoading}
@@ -326,7 +338,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
             onChange={setSelected}
             options={targets.data?.map((t) => ({
               value: t.key,
-              label: `${t.name} (${t.host}:${t.port})${t.enabled ? "" : " · 已停用"}`,
+              label: `${t.name} (${t.host}:${t.port})${t.enabled ? "" : tr(" · 已停用")}`,
               disabled: !t.enabled,
             }))}
           />
@@ -335,10 +347,12 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
             disabled={!selectedTarget?.enabled || !!connectionBlocked}
             onClick={() => selectedTarget && openLogin(selectedTarget)}
           >
-            连接桌面
+            {tr("连接桌面")}
           </Button>
           {canEdit && (
-            <Button onClick={() => setManageOpen(true)}>管理电脑</Button>
+            <Button onClick={() => setManageOpen(true)}>
+              {tr("管理电脑")}
+            </Button>
           )}
           <Button
             onClick={() => {
@@ -346,7 +360,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
               gateway.refetch();
             }}
           >
-            刷新
+            {tr("刷新")}
           </Button>
         </Space>
       }
@@ -356,13 +370,15 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
           type="warning"
           showIcon
           message={gateway.data.message}
-          description="本机部署：启动 Docker Desktop 后，在项目目录运行 docker compose -f docker-compose.rdp.yml up -d，再点击刷新。已保存的凭据不受网关状态影响。"
+          description={tr(
+            "本机部署：启动 Docker Desktop 后，在项目目录运行 docker compose -f docker-compose.rdp.yml up -d，再点击刷新。已保存的凭据不受网关状态影响。",
+          )}
           action={
             <Button
               loading={gateway.isFetching}
               onClick={() => gateway.refetch()}
             >
-              重新检测
+              {tr("重新检测")}
             </Button>
           }
         />
@@ -371,7 +387,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
         <Alert type="warning" showIcon message={connectionBlocked} />
       )}
       {targets.isError && (
-        <Alert type="error" message="读取 RDP 目标失败，请重试" />
+        <Alert type="error" message={tr("读取 RDP 目标失败，请重试")} />
       )}
       {sessions.length ? (
         <Tabs
@@ -399,13 +415,17 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
           }))}
         />
       ) : (
-        <Empty description="选择或添加一台已启用远程桌面的 Windows 电脑，登录后即可操作桌面。" />
+        <Empty
+          description={tr(
+            "选择或添加一台已启用远程桌面的 Windows 电脑，登录后即可操作桌面。",
+          )}
+        />
       )}
       <Modal
-        title="登录远程电脑"
+        title={tr("登录远程电脑")}
         open={loginOpen}
         confirmLoading={busy}
-        okText={useSavedCredentials ? "使用已保存凭据连接" : "连接"}
+        okText={useSavedCredentials ? tr("使用已保存凭据连接") : tr("连接")}
         okButtonProps={{
           disabled: credentials.isFetching || credentials.isError,
         }}
@@ -416,13 +436,17 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
         }}
       >
         {credentials.isFetching && (
-          <Alert type="info" message="正在检查已保存凭据…" />
+          <Alert type="info" message={tr("正在检查已保存凭据…")} />
         )}
         {credentials.isError && (
           <Alert
             type="error"
-            message="无法读取凭据状态，请确认后端已升级并运行数据库迁移"
-            action={<Button onClick={() => credentials.refetch()}>重试</Button>}
+            message={tr("无法读取凭据状态，请确认后端已升级并运行数据库迁移")}
+            action={
+              <Button onClick={() => credentials.refetch()}>
+                {tr("重试")}
+              </Button>
+            }
           />
         )}
         {credentials.data?.saved && (
@@ -433,16 +457,16 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
             <Alert
               type="success"
               showIcon
-              message="已保存此电脑的登录凭据，无需再次输入密码。"
+              message={tr("已保存此电脑的登录凭据，无需再次输入密码。")}
             />
             <Checkbox
               checked={useSavedCredentials}
               onChange={(event) => setManualLogin(!event.target.checked)}
             >
-              使用已保存的账号和密码
+              {tr("使用已保存的账号和密码")}
             </Checkbox>
             <Popconfirm
-              title="清除当前账号为此电脑保存的凭据？"
+              title={tr("清除当前账号为此电脑保存的凭据？")}
               onConfirm={async () => {
                 try {
                   await deleteRdpCredentials(selected as string);
@@ -451,13 +475,13 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
                   });
                   setManualLogin(true);
                   loginForm.resetFields();
-                  message.success("已清除保存的凭据");
+                  message.success(tr("已清除保存的凭据"));
                 } catch {
-                  message.error("清除失败，请重试");
+                  message.error(tr("清除失败，请重试"));
                 }
               }}
             >
-              <Button danger>清除已保存凭据</Button>
+              <Button danger>{tr("清除已保存凭据")}</Button>
             </Popconfirm>
           </Space>
         )}
@@ -469,34 +493,34 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
         >
           <Form.Item
             name="username"
-            label="Windows 用户名"
+            label={tr("Windows 用户名")}
             rules={[{ required: true }]}
           >
             <Input
-              placeholder="用户名或 MicrosoftAccount\邮箱"
+              placeholder={tr("用户名或 MicrosoftAccount\\邮箱")}
               autoComplete="off"
             />
           </Form.Item>
           <Form.Item
             name="password"
-            label="Windows 密码（不是 PIN）"
+            label={tr("Windows 密码（不是 PIN）")}
             rules={[{ required: true }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="domain" label="域（可选）">
+          <Form.Item name="domain" label={tr("域（可选）")}>
             <Input />
           </Form.Item>
           <Checkbox
             checked={rememberCredentials}
             onChange={(event) => setRememberCredentials(event.target.checked)}
           >
-            记住此电脑的账号和密码（加密保存，仅当前后台账号可用）
+            {tr("记住此电脑的账号和密码（加密保存，仅当前后台账号可用）")}
           </Checkbox>
         </Form>
       </Modal>
       <Modal
-        title="管理远程电脑"
+        title={tr("管理远程电脑")}
         open={manageOpen}
         width={850}
         footer={null}
@@ -506,7 +530,9 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
           <Alert
             type="warning"
             showIcon
-            message="当前账号只有管理权限，没有 RDP 连接权限。请管理员分配 system:rdp:connect 权限后重新登录。"
+            message={tr(
+              "当前账号只有管理权限，没有 RDP 连接权限。请管理员分配 system:rdp:connect 权限后重新登录。",
+            )}
           />
         )}
         <Button
@@ -521,7 +547,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
             });
           }}
         >
-          添加电脑
+          {tr("添加电脑")}
         </Button>
         <Table
           rowKey="key"
@@ -529,15 +555,16 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
           pagination={false}
           scroll={{ x: 650 }}
           columns={[
-            { title: "名称", dataIndex: "name" },
-            { title: "主机", dataIndex: "host" },
-            { title: "端口", dataIndex: "port" },
+            { title: tr("名称"), dataIndex: "name" },
+            { title: tr("主机"), dataIndex: "host" },
+            { title: tr("端口"), dataIndex: "port" },
             {
-              title: "状态",
-              render: (_, t: RdpTarget) => (t.enabled ? "启用" : "停用"),
+              title: tr("状态"),
+              render: (_, t: RdpTarget) =>
+                t.enabled ? tr("启用") : tr("停用"),
             },
             {
-              title: "操作",
+              title: tr("操作"),
               render: (_, t: RdpTarget) => (
                 <Space>
                   <Button
@@ -545,7 +572,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
                     disabled={!t.enabled || !canConnect || sessions.length >= 8}
                     onClick={() => openLogin(t)}
                   >
-                    连接
+                    {tr("连接")}
                   </Button>
                   <Button
                     onClick={() => {
@@ -553,16 +580,16 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
                       targetForm.setFieldsValue(t);
                     }}
                   >
-                    编辑
+                    {tr("编辑")}
                   </Button>
                   <Popconfirm
-                    title="删除此电脑？已连接桌面不会被关闭。"
+                    title={tr("删除此电脑？已连接桌面不会被关闭。")}
                     onConfirm={() =>
                       save((targets.data ?? []).filter((v) => v.key !== t.key))
                     }
                   >
                     <Button danger disabled={busy}>
-                      删除
+                      {tr("删除")}
                     </Button>
                   </Popconfirm>
                 </Space>
@@ -572,7 +599,7 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
         />
       </Modal>
       <Modal
-        title={editing ? "编辑电脑" : "添加电脑"}
+        title={editing ? tr("编辑电脑") : tr("添加电脑")}
         open={editing !== undefined}
         confirmLoading={busy}
         onCancel={() => setEditing(undefined)}
@@ -591,29 +618,33 @@ export function RdpPage({ visible = true }: { visible?: boolean }) {
         <Form form={targetForm} layout="vertical">
           <Form.Item
             name="name"
-            label="名称"
+            label={tr("名称")}
             rules={[{ required: true, whitespace: true, max: 200 }]}
           >
             <Input />
           </Form.Item>
           <Form.Item
             name="host"
-            label="主机 IP / 域名（从网关访问）"
+            label={tr("主机 IP / 域名（从网关访问）")}
             rules={[{ required: true, whitespace: true, max: 255 }]}
           >
             <Input placeholder="192.168.1.10" />
           </Form.Item>
-          <Form.Item name="port" label="端口" rules={[{ required: true }]}>
+          <Form.Item
+            name="port"
+            label={tr("端口")}
+            rules={[{ required: true }]}
+          >
             <InputNumber min={1} max={65535} precision={0} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={tr("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
           <Form.Item
             name="ignore_certificate"
-            label="允许自签名 / 不受信任证书"
+            label={tr("允许自签名 / 不受信任证书")}
             valuePropName="checked"
-            extra="仅在确认目标电脑可信时开启。"
+            extra={tr("仅在确认目标电脑可信时开启。")}
           >
             <Switch />
           </Form.Item>

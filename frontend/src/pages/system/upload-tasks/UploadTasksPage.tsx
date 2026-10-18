@@ -4,6 +4,7 @@ import { Alert, Button, Card, Space, Typography } from "antd";
 import { fetchUploadTasks } from "../../../api/admin/uploads";
 import { CrudPage } from "../../../components/admin/CrudPage";
 import { DataTable } from "../../../components/admin/DataTable";
+import { t } from "../../../i18n";
 import {
   createUploadTaskColumns,
   useUploadTaskManager,
@@ -21,9 +22,9 @@ export function UploadTasksPage() {
 
   return (
     <CrudPage
-      title="上传任务"
-      subtitle="管理分片上传、续传与入库状态"
-      breadcrumb={["系统管理", "上传任务"]}
+      title={t("上传任务")}
+      subtitle={t("管理分片上传、续传与入库状态")}
+      breadcrumb={[t("系统管理"), t("上传任务")]}
       icon={<CloudSyncOutlined />}
       toolbar={
         <Button
@@ -31,7 +32,7 @@ export function UploadTasksPage() {
           loading={uploadTasksQuery.isFetching}
           onClick={() => uploadTasksQuery.refetch()}
         >
-          刷新
+          {t("刷新")}
         </Button>
       }
     >
@@ -39,12 +40,17 @@ export function UploadTasksPage() {
         <Alert
           type="info"
           showIcon
-          message="刷新页面后，浏览器无法自动恢复本地文件对象；需要续传时请重新选择同一个文件。"
+          message={t(
+            "刷新页面后，浏览器无法自动恢复本地文件对象；需要续传时请重新选择同一个文件。",
+          )}
         />
         <Card className="admin-card upload-task-page-card">
           <Space direction="vertical" size="middle" className="full-width">
             <Typography.Text type="secondary">
-              当前共 {uploadTasks.length} 个上传任务，入库中任务会自动刷新状态。
+              {t(
+                "当前共 {0} 个上传任务，入库中任务会自动刷新状态。",
+                uploadTasks.length,
+              )}
             </Typography.Text>
             <DataTable
               columns={columns}

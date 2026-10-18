@@ -26,6 +26,8 @@ import { Fragment, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { current, logout, switchCurrentDepartment } from "../api/auth";
 import { defaultAdminMenus, mergeMenuItems } from "../app/menu";
+import { LanguageSwitch } from "../components/LanguageSwitch";
+import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 import { useUiStore } from "../stores/ui";
 import { findMenuTrail, menuLabel } from "./menuTrail";
@@ -77,9 +79,9 @@ export function HeaderBar({
         dataScopes: session.data_scopes,
         effectiveDataScope: session.effective_data_scope,
       });
-      message.success("当前部门已切换");
+      message.success(t("当前部门已切换"));
     } catch {
-      message.error("部门切换失败");
+      message.error(t("部门切换失败"));
     } finally {
       setSwitchingDepartment(false);
     }
@@ -89,26 +91,26 @@ export function HeaderBar({
     {
       key: "profile",
       icon: <UserOutlined />,
-      label: "个人资料",
+      label: t("个人资料"),
       disabled: true,
     },
     {
       key: "settings",
       icon: <SettingOutlined />,
-      label: "系统设置",
+      label: t("系统设置"),
       onClick: () => navigate("/admin/system/settings"),
     },
     ...(showDepartmentSwitch
       ? [
           {
             type: "group" as const,
-            label: "切换部门",
+            label: t("切换部门"),
             children: departments.map((department) => ({
               key: `department-${department.id}`,
               icon: <BranchesOutlined />,
               label:
                 department.id === currentDepartment?.id
-                  ? `${department.name}（当前）`
+                  ? t("{0}（当前）", department.name)
                   : department.name,
               disabled:
                 switchingDepartment || department.id === currentDepartment?.id,
@@ -123,7 +125,7 @@ export function HeaderBar({
     {
       key: "logout",
       icon: <LogoutOutlined />,
-      label: "退出登录",
+      label: t("退出登录"),
       onClick: async () => {
         await logout();
         signOut();
@@ -135,11 +137,11 @@ export function HeaderBar({
   return (
     <Header className="admin-header">
       <Space size={12} className="admin-header-leading">
-        <Tooltip title={collapsed ? "展开导航" : "收起导航"}>
+        <Tooltip title={collapsed ? t("展开导航") : t("收起导航")}>
           <Button
             type="text"
             className="admin-icon-button"
-            aria-label={collapsed ? "展开导航" : "收起导航"}
+            aria-label={collapsed ? t("展开导航") : t("收起导航")}
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={onToggle}
           />
@@ -147,11 +149,11 @@ export function HeaderBar({
         <PageTrail />
       </Space>
       <Space size={12} className="admin-header-actions">
-        <Tooltip title="搜索菜单">
+        <Tooltip title={t("搜索菜单")}>
           <Button
             type="text"
             className="admin-icon-button admin-menu-search-trigger"
-            aria-label="搜索菜单"
+            aria-label={t("搜索菜单")}
             icon={<SearchOutlined />}
             onClick={onOpenMenuSearch}
           />
@@ -159,14 +161,14 @@ export function HeaderBar({
         <Space.Compact className="admin-zoom-control">
           <Button
             type="text"
-            aria-label="缩小页面"
+            aria-label={t("缩小页面")}
             icon={<ZoomOutOutlined />}
             disabled={contentZoom <= 0.7}
             onClick={zoomOut}
           />
           <Button
             type="text"
-            aria-label="重置页面缩放"
+            aria-label={t("重置页面缩放")}
             icon={<FontSizeOutlined />}
             onClick={resetZoom}
           >
@@ -174,7 +176,7 @@ export function HeaderBar({
           </Button>
           <Button
             type="text"
-            aria-label="放大页面"
+            aria-label={t("放大页面")}
             icon={<ZoomInOutlined />}
             disabled={contentZoom >= 1}
             onClick={zoomIn}
@@ -185,7 +187,7 @@ export function HeaderBar({
             allowClear
             className="admin-department-select"
             loading={switchingDepartment}
-            placeholder="当前部门"
+            placeholder={t("当前部门")}
             value={currentDepartment?.id}
             suffixIcon={<BranchesOutlined />}
             options={departments.map((department) => ({
@@ -195,6 +197,7 @@ export function HeaderBar({
             onChange={handleDepartmentChange}
           />
         ) : null}
+        <LanguageSwitch />
         <Dropdown
           menu={{ items: menuItems }}
           placement="bottomRight"
@@ -203,11 +206,13 @@ export function HeaderBar({
           <Button
             type="text"
             className="admin-user-button"
-            aria-label="账户菜单"
+            aria-label={t("账户菜单")}
           >
             <Space>
               <Avatar size={30} icon={<UserOutlined />} />
-              <span className="admin-user-name">{user?.name ?? "管理员"}</span>
+              <span className="admin-user-name">
+                {user?.name ?? t("管理员")}
+              </span>
             </Space>
           </Button>
         </Dropdown>
@@ -232,13 +237,13 @@ function PageTrail() {
     return (
       <div className="admin-header-title-wrap">
         <Typography.Text strong className="admin-header-title">
-          后台管理
+          {t("后台管理")}
         </Typography.Text>
       </div>
     );
   }
   return (
-    <nav className="admin-page-trail" aria-label="当前位置">
+    <nav className="admin-page-trail" aria-label={t("当前位置")}>
       {trail.map((item, index) => {
         const last = index === trail.length - 1;
         return (

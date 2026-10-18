@@ -154,9 +154,26 @@
 }
 
 .admin-page-trail-current {
-	flex: 0 0 auto;
+	flex: 0 1 auto;
+	overflow: hidden;
 	color: #292622;
 	font-weight: 600;
+	text-overflow: ellipsis;
+}
+
+/* Let long (e.g. translated) trails shrink instead of running under the
+   actions: the actions keep their width and the trail takes what is left. */
+.admin-header .admin-header-leading {
+	flex: 1 1 auto;
+}
+
+.admin-header .admin-header-actions {
+	flex: 0 0 auto;
+}
+
+.admin-header-leading > .ant-space-item:last-child {
+	min-width: 0;
+	overflow: hidden;
 }
 
 @media (max-width: 767px) {

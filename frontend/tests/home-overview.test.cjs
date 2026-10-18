@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const ts = require("typescript");
+const { i18n, i18nRequire } = require("./support/i18n-stub.cjs");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 
@@ -16,6 +17,7 @@ function load(relativePath, modules = {}) {
   vm.runInNewContext(compiled, {
     exports: output.exports,
     require(name) {
+      if (/(^|\/)i18n$/.test(name)) return i18n;
       return modules[name] ?? require(name);
     },
   });

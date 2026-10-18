@@ -2,6 +2,7 @@ import { Tabs } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultAdminMenus, findMenuByPath, mergeMenuItems } from "../app/menu";
+import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 
 type AdminTab = {
@@ -11,7 +12,7 @@ type AdminTab = {
 };
 
 const homePath = "/admin/dashboard";
-const homeTab: AdminTab = { key: homePath, label: "首页", closable: false };
+const homeTab: AdminTab = { key: homePath, label: t("首页"), closable: false };
 
 function normalizeAdminPath(pathname: string) {
   return pathname === "/admin" ? homePath : pathname;
@@ -19,7 +20,8 @@ function normalizeAdminPath(pathname: string) {
 
 function fallbackLabel(pathname: string) {
   return (
-    pathname.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ") ?? "页面"
+    pathname.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ") ??
+    t("页面")
   );
 }
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 
 type ApiEnvelope<T> = {
@@ -42,7 +43,7 @@ function refreshSession(refreshToken: string) {
       .then((response) => {
         const data = response.data.data;
         if (!data || useAuthStore.getState().refreshToken !== refreshToken) {
-          throw new Error("登录状态已变化，请重新登录");
+          throw new Error(t("登录状态已变化，请重新登录"));
         }
         useAuthStore
           .getState()
@@ -113,10 +114,10 @@ apiClient.interceptors.response.use(
     const message =
       requestError.response?.data?.message ??
       (requestError.code === "ECONNABORTED"
-        ? "请求超时，请稍后重试"
+        ? t("请求超时，请稍后重试")
         : !requestError.response
-          ? "无法连接服务器，请检查网络后重试"
-          : "请求失败，请稍后重试");
+          ? t("无法连接服务器，请检查网络后重试")
+          : t("请求失败，请稍后重试"));
     return Promise.reject(
       new ApiRequestError(
         message,

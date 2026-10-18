@@ -71,6 +71,7 @@ import { StandardTablePagination } from "../../../components/admin/StandardTable
 import { useAuthStore } from "../../../stores/auth";
 import { fileIcon, formatBytes } from "../uploads/uploadTaskManager";
 import "./static-hosting.css";
+import { t } from "../../../i18n";
 import {
   accessRuleLabel,
   entersProtectedArea,
@@ -176,9 +177,9 @@ function formatTime(value?: string | null) {
 
 function fileTypeLabel(record: StaticFileRecord) {
   if (record.is_dir) {
-    return "文件夹";
+    return t("文件夹");
   }
-  return record.extension ? record.extension.toUpperCase() : "文件";
+  return record.extension ? record.extension.toUpperCase() : t("文件");
 }
 
 function fileFromEntry(entry: FileSystemFileEntry) {
@@ -298,10 +299,12 @@ function AccessRulesField({ savedPaths }: { savedPaths: string[] }) {
       <div className="sh-access-head">
         <div className="sh-option-copy">
           <span className="sh-option-title">
-            <LockOutlined /> 密码访问
+            <LockOutlined /> {t("密码访问")}
           </span>
           <span className="sh-option-description">
-            访问者打开这些目录时需要输入用户名和密码，子目录一并受保护；目录留空表示整个站点
+            {t(
+              "访问者打开这些目录时需要输入用户名和密码，子目录一并受保护；目录留空表示整个站点",
+            )}
           </span>
         </div>
       </div>
@@ -332,25 +335,25 @@ function AccessRulesField({ savedPaths }: { savedPaths: string[] }) {
                       >
                         <Input
                           prefix="/"
-                          placeholder="留空表示整个站点"
-                          aria-label="受保护目录"
+                          placeholder={t("留空表示整个站点")}
+                          aria-label={t("受保护目录")}
                         />
                       </Form.Item>
                       <Form.Item
                         name={[field.name, "username"]}
                         className="sh-access-user"
                         rules={[
-                          { required: true, message: "请输入用户名" },
+                          { required: true, message: t("请输入用户名") },
                           {
                             pattern: /^[^:]+$/,
-                            message: "用户名不能包含冒号",
+                            message: t("用户名不能包含冒号"),
                           },
                         ]}
                       >
                         <Input
-                          placeholder="用户名"
+                          placeholder={t("用户名")}
                           autoComplete="off"
-                          aria-label="访问用户名"
+                          aria-label={t("访问用户名")}
                         />
                       </Form.Item>
                       <Form.Item
@@ -359,22 +362,24 @@ function AccessRulesField({ savedPaths }: { savedPaths: string[] }) {
                         rules={[
                           {
                             required: !saved,
-                            message: "请设置访问密码",
+                            message: t("请设置访问密码"),
                           },
-                          { min: 4, message: "密码至少 4 位" },
+                          { min: 4, message: t("密码至少 4 位") },
                         ]}
                       >
                         <Input.Password
-                          placeholder={saved ? "留空保持原密码" : "访问密码"}
+                          placeholder={
+                            saved ? t("留空保持原密码") : t("访问密码")
+                          }
                           autoComplete="new-password"
-                          aria-label="访问密码"
+                          aria-label={t("访问密码")}
                         />
                       </Form.Item>
                       <Button
                         type="text"
                         icon={<MinusCircleOutlined />}
-                        aria-label="移除受保护目录"
-                        title="移除"
+                        aria-label={t("移除受保护目录")}
+                        title={t("移除")}
                         onClick={() => remove(field.name)}
                       />
                     </div>
@@ -388,7 +393,7 @@ function AccessRulesField({ savedPaths }: { savedPaths: string[] }) {
               icon={<PlusOutlined />}
               onClick={() => add({ path: "", username: "", password: "" })}
             >
-              添加受保护目录
+              {t("添加受保护目录")}
             </Button>
           </>
         )}
@@ -470,7 +475,7 @@ export function StaticHostingPage() {
         ? updateStaticSite(editingSite.key, values)
         : createStaticSite(values),
     onSuccess: (site) => {
-      message.success(editingSite ? "站点配置已更新" : "静态站点已创建");
+      message.success(editingSite ? t("站点配置已更新") : t("静态站点已创建"));
       setSelectedSiteKey(site.key);
       setCurrentPath("");
       setSiteModalOpen(false);
@@ -479,27 +484,27 @@ export function StaticHostingPage() {
       refresh();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "保存站点失败");
+      message.error(error instanceof Error ? error.message : t("保存站点失败"));
     },
   });
 
   const deleteSiteMutation = useMutation({
     mutationFn: (site: StaticSiteRecord) => deleteStaticSite(site.key),
     onSuccess: () => {
-      message.success("托管映射已删除，服务器文件已保留");
+      message.success(t("托管映射已删除，服务器文件已保留"));
       setSelectedSiteKey(undefined);
       setCurrentPath("");
       refresh();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "删除站点失败");
+      message.error(error instanceof Error ? error.message : t("删除站点失败"));
     },
   });
 
   const createFolderMutation = useMutation({
     mutationFn: (values: FolderFormValues) => {
       if (!selectedSiteKey) {
-        throw new Error("请先选择静态站点");
+        throw new Error(t("请先选择静态站点"));
       }
       return createStaticFolder({
         site_key: selectedSiteKey,
@@ -507,20 +512,20 @@ export function StaticHostingPage() {
       });
     },
     onSuccess: () => {
-      message.success("目录已创建");
+      message.success(t("目录已创建"));
       setFolderModalOpen(false);
       folderForm.resetFields();
       refresh();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "创建目录失败");
+      message.error(error instanceof Error ? error.message : t("创建目录失败"));
     },
   });
 
   const deleteFileMutation = useMutation({
     mutationFn: (record: StaticFileRecord) => {
       if (!selectedSiteKey) {
-        throw new Error("请先选择静态站点");
+        throw new Error(t("请先选择静态站点"));
       }
       return deleteStaticFile({
         site_key: selectedSiteKey,
@@ -528,11 +533,11 @@ export function StaticHostingPage() {
       });
     },
     onSuccess: (_, record) => {
-      message.success(record.is_dir ? "目录已删除" : "文件已删除");
+      message.success(record.is_dir ? t("目录已删除") : t("文件已删除"));
       refresh();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "删除失败");
+      message.error(error instanceof Error ? error.message : t("删除失败"));
     },
   });
 
@@ -575,23 +580,23 @@ export function StaticHostingPage() {
   const copyUrl = async (path: string) => {
     try {
       await navigator.clipboard.writeText(absoluteUrl(path));
-      message.success("链接已复制");
+      message.success(t("链接已复制"));
     } catch {
-      message.error("复制失败，请检查浏览器权限");
+      message.error(t("复制失败，请检查浏览器权限"));
     }
   };
 
   const uploadEntries = async (rawEntries: UploadEntry[]) => {
     if (!canUpload) {
-      message.error("当前账号没有上传静态托管文件的权限");
+      message.error(t("当前账号没有上传静态托管文件的权限"));
       return;
     }
     if (!selectedSiteKey) {
-      message.error("请先选择静态站点");
+      message.error(t("请先选择静态站点"));
       return;
     }
     if (uploadState.active) {
-      message.warning("已有上传任务正在进行");
+      message.warning(t("已有上传任务正在进行"));
       return;
     }
     const entries = uniqueUploadEntries(rawEntries);
@@ -599,7 +604,7 @@ export function StaticHostingPage() {
       return;
     }
     if (entries.length > MAX_UPLOAD_FILES) {
-      message.error(`单次最多上传 ${MAX_UPLOAD_FILES} 个文件`);
+      message.error(t("单次最多上传 {0} 个文件", MAX_UPLOAD_FILES));
       return;
     }
 
@@ -630,7 +635,7 @@ export function StaticHostingPage() {
           firstError ??=
             error instanceof Error
               ? error.message
-              : `${entry.relativePath} 上传失败`;
+              : t("{0} 上传失败", entry.relativePath);
         } finally {
           completed += 1;
           setUploadState({
@@ -650,10 +655,10 @@ export function StaticHostingPage() {
     refresh();
     if (failed > 0) {
       message.error(
-        `${failed} 个文件上传失败：${firstError ?? "请检查文件路径"}`,
+        t("{0} 个文件上传失败：{1}", failed, firstError ?? t("请检查文件路径")),
       );
     } else {
-      message.success(`${completed} 个托管文件上传完成`);
+      message.success(t("{0} 个托管文件上传完成", completed));
     }
   };
 
@@ -708,7 +713,7 @@ export function StaticHostingPage() {
       await uploadEntries(entries);
     } catch (error) {
       message.error(
-        error instanceof Error ? error.message : "读取拖拽文件夹失败",
+        error instanceof Error ? error.message : t("读取拖拽文件夹失败"),
       );
     }
   };
@@ -765,28 +770,28 @@ export function StaticHostingPage() {
           size="small"
           type="text"
           icon={<FolderOpenOutlined />}
-          title="打开目录"
+          title={t("打开目录")}
           onClick={() => openPath(record.path)}
         >
-          打开
+          {t("打开")}
         </Button>
       ) : (
         <Button
           size="small"
           type="text"
           icon={<ExportOutlined />}
-          title="在新标签页访问"
+          title={t("在新标签页访问")}
           onClick={() => openPublicUrl(record.url)}
         >
-          访问
+          {t("访问")}
         </Button>
       )}
       <Button
         size="small"
         type="text"
         icon={<CopyOutlined />}
-        title="复制公开链接"
-        aria-label="复制公开链接"
+        title={t("复制公开链接")}
+        aria-label={t("复制公开链接")}
         onClick={() => void copyUrl(record.url)}
       />
       {record.is_dir && selectedSite ? (
@@ -796,18 +801,20 @@ export function StaticHostingPage() {
           icon={<LockOutlined />}
           title={
             hasRuleAt(accessRules, record.path)
-              ? "修改目录访问密码"
-              : "为该目录设置访问密码"
+              ? t("修改目录访问密码")
+              : t("为该目录设置访问密码")
           }
-          aria-label="设置目录访问密码"
+          aria-label={t("设置目录访问密码")}
           permission="system:static_host:update"
           onClick={() => openSiteModal(selectedSite, record.path)}
         />
       ) : null}
       <Popconfirm
-        title={record.is_dir ? "删除该目录及其全部内容？" : "删除该文件？"}
+        title={
+          record.is_dir ? t("删除该目录及其全部内容？") : t("删除该文件？")
+        }
         okButtonProps={{ danger: true }}
-        okText="删除"
+        okText={t("删除")}
         onConfirm={() => deleteFileMutation.mutate(record)}
       >
         <PermissionButton
@@ -815,8 +822,8 @@ export function StaticHostingPage() {
           type="text"
           danger
           icon={<DeleteOutlined />}
-          title="删除"
-          aria-label="删除"
+          title={t("删除")}
+          aria-label={t("删除")}
           permission="system:static_host:delete"
         />
       </Popconfirm>
@@ -825,7 +832,7 @@ export function StaticHostingPage() {
 
   const columns: ColumnsType<StaticFileRecord> = [
     {
-      title: "名称",
+      title: t("名称"),
       dataIndex: "name",
       ellipsis: true,
       render: (value: string, record) => (
@@ -833,7 +840,7 @@ export function StaticHostingPage() {
           type="button"
           className="sh-name-cell"
           onClick={() => openRecord(record)}
-          title={record.is_dir ? `打开 ${value}` : `访问 ${value}`}
+          title={record.is_dir ? t("打开 {0}", value) : t("访问 {0}", value)}
         >
           <span
             className={`sh-name-icon${record.is_dir ? " is-folder" : ""}`}
@@ -843,13 +850,13 @@ export function StaticHostingPage() {
           </span>
           <span className="sh-name-text">{value}</span>
           {isLockedEntry(record) ? (
-            <LockOutlined className="sh-lock" aria-label="需要密码访问" />
+            <LockOutlined className="sh-lock" aria-label={t("需要密码访问")} />
           ) : null}
         </button>
       ),
     },
     {
-      title: "类型",
+      title: t("类型"),
       key: "type",
       width: 96,
       render: (_, record) => (
@@ -859,7 +866,7 @@ export function StaticHostingPage() {
       ),
     },
     {
-      title: "大小",
+      title: t("大小"),
       key: "size",
       width: 100,
       align: "right",
@@ -870,7 +877,7 @@ export function StaticHostingPage() {
       ),
     },
     {
-      title: "修改时间",
+      title: t("修改时间"),
       dataIndex: "updated_at",
       width: 160,
       render: (value?: string | null) => (
@@ -878,7 +885,7 @@ export function StaticHostingPage() {
       ),
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 196,
       render: (_, record) => renderActions(record),
@@ -890,19 +897,19 @@ export function StaticHostingPage() {
       ? Math.round((uploadState.completed / uploadState.total) * 100)
       : 0;
   const segments = pathSegments(currentPath);
-  const currentLocation = currentPath ? `/${currentPath}` : "根目录";
+  const currentLocation = currentPath ? `/${currentPath}` : t("根目录");
 
   const uploadMenu: MenuProps = {
     items: [
       {
         key: "files",
         icon: <FileAddOutlined />,
-        label: "上传文件",
+        label: t("上传文件"),
       },
       {
         key: "directory",
         icon: <FolderOpenOutlined />,
-        label: "上传文件夹",
+        label: t("上传文件夹"),
       },
       { type: "divider" },
       {
@@ -912,7 +919,7 @@ export function StaticHostingPage() {
         ) : (
           <span className="sh-menu-check-placeholder" />
         ),
-        label: "覆盖同名文件",
+        label: t("覆盖同名文件"),
       },
     ],
     onClick: ({ key }) => {
@@ -937,12 +944,12 @@ export function StaticHostingPage() {
     if (sites.length === 0) {
       return (
         <div className="sh-sites-placeholder">
-          <Typography.Text type="secondary">暂无站点</Typography.Text>
+          <Typography.Text type="secondary">{t("暂无站点")}</Typography.Text>
         </div>
       );
     }
     return (
-      <nav className="sh-site-list" aria-label="托管站点">
+      <nav className="sh-site-list" aria-label={t("托管站点")}>
         {sites.map((site) => (
           <button
             key={site.key}
@@ -955,7 +962,7 @@ export function StaticHostingPage() {
               <span className="sh-site-item-name">{site.name}</span>
               <span
                 className={`sh-status-dot${site.enabled ? " is-on" : ""}`}
-                title={site.enabled ? "已启用" : "已停用"}
+                title={site.enabled ? t("已启用") : t("已停用")}
               />
             </span>
             <span className="sh-site-item-path">{site.url_path}</span>
@@ -974,7 +981,7 @@ export function StaticHostingPage() {
             description={
               browserQuery.error instanceof Error
                 ? browserQuery.error.message
-                : "读取目录失败"
+                : t("读取目录失败")
             }
           />
         </div>
@@ -986,7 +993,9 @@ export function StaticHostingPage() {
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
-              keyword ? "没有匹配的文件" : "此目录为空，拖放文件到这里即可上传"
+              keyword
+                ? t("没有匹配的文件")
+                : t("此目录为空，拖放文件到这里即可上传")
             }
           />
         </div>
@@ -1019,7 +1028,7 @@ export function StaticHostingPage() {
                 type="button"
                 className="sh-tile-preview"
                 onClick={() => openRecord(record)}
-                title={record.is_dir ? "打开目录" : "访问文件"}
+                title={record.is_dir ? t("打开目录") : t("访问文件")}
               >
                 <span
                   className={`sh-tile-icon${record.is_dir ? " is-folder" : ""}`}
@@ -1030,14 +1039,14 @@ export function StaticHostingPage() {
                   {isLockedEntry(record) ? (
                     <LockOutlined
                       className="sh-lock"
-                      aria-label="需要密码访问"
+                      aria-label={t("需要密码访问")}
                     />
                   ) : null}
                   {record.name}
                 </span>
                 <span className="sh-tile-meta">
                   {record.is_dir
-                    ? "文件夹"
+                    ? t("文件夹")
                     : `${fileTypeLabel(record)} · ${formatBytes(record.size_bytes)}`}
                 </span>
               </button>
@@ -1052,9 +1061,9 @@ export function StaticHostingPage() {
   return (
     <CrudPage
       className="static-host-page"
-      title="静态托管"
-      subtitle="把服务器目录映射到公开 URL 路径"
-      breadcrumb={["系统管理", "静态托管"]}
+      title={t("静态托管")}
+      subtitle={t("把服务器目录映射到公开 URL 路径")}
+      breadcrumb={[t("系统管理"), t("静态托管")]}
       icon={<GlobalOutlined />}
       extra={
         <PermissionButton
@@ -1063,19 +1072,19 @@ export function StaticHostingPage() {
           permission="system:static_host:create"
           onClick={() => openSiteModal()}
         >
-          新建站点
+          {t("新建站点")}
         </PermissionButton>
       }
       toolbar={
         <Button icon={<ReloadOutlined />} onClick={refresh}>
-          刷新
+          {t("刷新")}
         </Button>
       }
     >
       <div className="sh-layout">
         <aside className="sh-panel sh-sites">
           <div className="sh-sites-heading">
-            <span>站点</span>
+            <span>{t("站点")}</span>
             <span className="sh-count">{sites.length}</span>
           </div>
           {renderSiteList()}
@@ -1096,23 +1105,27 @@ export function StaticHostingPage() {
                         <span
                           className={`sh-pill${selectedSite.enabled ? " is-success" : ""}`}
                         >
-                          {selectedSite.enabled ? "运行中" : "已停用"}
+                          {selectedSite.enabled ? t("运行中") : t("已停用")}
                         </span>
                         {selectedSite.directory_listing ? (
                           <span className="sh-pill">
                             {selectedSite.listing_overrides_index
-                              ? "目录列表 · 优先"
-                              : "目录列表"}
+                              ? t("目录列表 · 优先")
+                              : t("目录列表")}
                           </span>
                         ) : null}
                         {selectedSite.access_rules?.length ? (
                           <span className="sh-pill is-locked">
-                            <LockOutlined /> 密码保护{" "}
-                            {selectedSite.access_rules.length}
+                            <LockOutlined />{" "}
+                            {t(
+                              "密码保护{0}{1}",
+                              " ",
+                              selectedSite.access_rules.length,
+                            )}
                           </span>
                         ) : null}
                         {selectedSite.spa_fallback ? (
-                          <span className="sh-pill">SPA 回退</span>
+                          <span className="sh-pill">{t("SPA 回退")}</span>
                         ) : null}
                         <span className="sh-pill is-quiet">
                           {selectedSite.key}
@@ -1126,46 +1139,48 @@ export function StaticHostingPage() {
                       disabled={!selectedSite.enabled}
                       onClick={() => openPublicUrl(selectedSite.url_path)}
                     >
-                      打开站点
+                      {t("打开站点")}
                     </Button>
                     <PermissionButton
                       icon={<EditOutlined />}
                       permission="system:static_host:update"
                       onClick={() => openSiteModal(selectedSite)}
                     >
-                      编辑
+                      {t("编辑")}
                     </PermissionButton>
                     <Popconfirm
-                      title="删除这个托管映射？"
-                      description="只移除 URL 映射，服务器上的目录和文件会保留。"
+                      title={t("删除这个托管映射？")}
+                      description={t(
+                        "只移除 URL 映射，服务器上的目录和文件会保留。",
+                      )}
                       okButtonProps={{ danger: true }}
-                      okText="删除映射"
+                      okText={t("删除映射")}
                       onConfirm={() => deleteSiteMutation.mutate(selectedSite)}
                     >
                       <PermissionButton
                         danger
                         icon={<DeleteOutlined />}
-                        aria-label="删除映射"
-                        title="删除映射"
+                        aria-label={t("删除映射")}
+                        title={t("删除映射")}
                         permission="system:static_host:delete"
                       />
                     </Popconfirm>
                   </div>
                 </div>
                 <div className="sh-facts">
-                  <SiteFact label="访问地址">
+                  <SiteFact label={t("访问地址")}>
                     <Typography.Text
                       className="sh-mono"
                       ellipsis
                       copyable={{
                         text: absoluteUrl(selectedSite.url_path),
-                        tooltips: ["复制完整链接", "已复制"],
+                        tooltips: [t("复制完整链接"), t("已复制")],
                       }}
                     >
                       {selectedSite.url_path}
                     </Typography.Text>
                   </SiteFact>
-                  <SiteFact label="服务器目录">
+                  <SiteFact label={t("服务器目录")}>
                     <Typography.Text
                       className="sh-mono"
                       ellipsis={{ tooltip: selectedSite.local_root }}
@@ -1173,12 +1188,12 @@ export function StaticHostingPage() {
                       {selectedSite.local_root}
                     </Typography.Text>
                   </SiteFact>
-                  <SiteFact label="默认首页">
+                  <SiteFact label={t("默认首页")}>
                     <span className="sh-mono">{selectedSite.index_file}</span>
                   </SiteFact>
-                  <SiteFact label="资源缓存">
+                  <SiteFact label={t("资源缓存")}>
                     <span className="sh-num">
-                      {selectedSite.cache_seconds} 秒
+                      {t("{0} 秒", selectedSite.cache_seconds)}
                     </span>
                   </SiteFact>
                 </div>
@@ -1186,7 +1201,7 @@ export function StaticHostingPage() {
 
               <section
                 className={`sh-panel sh-browser${dragActive ? " is-dragging" : ""}`}
-                aria-label="站点文件"
+                aria-label={t("站点文件")}
                 onDragEnter={handleDragEnter}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -1204,7 +1219,7 @@ export function StaticHostingPage() {
                             onClick={() => openPath("")}
                           >
                             <HomeOutlined />
-                            <span>根目录</span>
+                            <span>{t("根目录")}</span>
                           </button>
                         ),
                       },
@@ -1231,7 +1246,7 @@ export function StaticHostingPage() {
                       allowClear
                       value={keyword}
                       prefix={<SearchOutlined />}
-                      placeholder="筛选当前目录"
+                      placeholder={t("筛选当前目录")}
                       className="sh-filter"
                       onChange={(event) => {
                         setKeyword(event.target.value);
@@ -1245,12 +1260,12 @@ export function StaticHostingPage() {
                         options={[
                           {
                             value: "table",
-                            title: "列表视图",
+                            title: t("列表视图"),
                             icon: <TableOutlined />,
                           },
                           {
                             value: "card",
-                            title: "图标视图",
+                            title: t("图标视图"),
                             icon: <AppstoreOutlined />,
                           },
                         ]}
@@ -1261,7 +1276,7 @@ export function StaticHostingPage() {
                       permission="system:static_host:upload"
                       onClick={() => setFolderModalOpen(true)}
                     >
-                      新建目录
+                      {t("新建目录")}
                     </PermissionButton>
                     {canUpload ? (
                       <Dropdown
@@ -1275,7 +1290,7 @@ export function StaticHostingPage() {
                           icon={<CloudUploadOutlined />}
                           loading={uploadState.active}
                         >
-                          上传 <DownOutlined className="sh-caret" />
+                          {t("上传")} <DownOutlined className="sh-caret" />
                         </Button>
                       </Dropdown>
                     ) : null}
@@ -1285,9 +1300,12 @@ export function StaticHostingPage() {
                   <div className="sh-access-notice" role="note">
                     <LockOutlined />
                     <span>
-                      公开访问此目录需要密码（保护范围：
-                      {accessRuleLabel(currentRule.path)}，用户名{" "}
-                      {currentRule.username}）
+                      {t(
+                        "公开访问此目录需要密码（保护范围：{0}，用户名{1}{2}）",
+                        accessRuleLabel(currentRule.path),
+                        " ",
+                        currentRule.username,
+                      )}
                     </span>
                   </div>
                 ) : null}
@@ -1311,12 +1329,12 @@ export function StaticHostingPage() {
                 {uploadState.total > 0 ? (
                   <div className="sh-upload-status">
                     <span>
-                      {uploadState.active ? "正在上传" : "上传完成"}{" "}
+                      {uploadState.active ? t("正在上传") : t("上传完成")}{" "}
                       <span className="sh-num">
                         {uploadState.completed}/{uploadState.total}
                       </span>
                       {uploadState.failed > 0
-                        ? ` · ${uploadState.failed} 个失败`
+                        ? t(" · {0} 个失败", uploadState.failed)
                         : ""}
                     </span>
                     <Progress
@@ -1338,12 +1356,14 @@ export function StaticHostingPage() {
 
                 <footer className="sh-browser-footer">
                   <span className="sh-browser-summary">
-                    {directoryCount} 个文件夹 · {fileCount} 个文件
+                    {t("{0} 个文件夹 · {1} 个文件", directoryCount, fileCount)}
                     {canUpload ? (
                       <span className="sh-drop-hint">
-                        {" "}
-                        · 拖放文件或文件夹到此处上传
-                        {overwrite ? "（覆盖同名）" : ""}
+                        {t(
+                          "{0}· 拖放文件或文件夹到此处上传{1}",
+                          " ",
+                          overwrite ? t("（覆盖同名）") : "",
+                        )}
                       </span>
                     ) : null}
                   </span>
@@ -1364,8 +1384,8 @@ export function StaticHostingPage() {
                 {dragActive ? (
                   <div className="sh-drop-overlay" aria-hidden>
                     <CloudUploadOutlined />
-                    <strong>松开即可上传</strong>
-                    <span>上传到 {currentLocation}</span>
+                    <strong>{t("松开即可上传")}</strong>
+                    <span>{t("上传到 {0}", currentLocation)}</span>
                   </div>
                 ) : null}
               </section>
@@ -1376,11 +1396,14 @@ export function StaticHostingPage() {
                 <GlobalOutlined />
               </span>
               <h3>
-                {sitesQuery.isLoading ? "正在加载站点…" : "还没有托管站点"}
+                {sitesQuery.isLoading
+                  ? t("正在加载站点…")
+                  : t("还没有托管站点")}
               </h3>
               <p>
-                新建一个站点，把服务器上的目录发布到指定 URL
-                路径，之后可以在这里上传和管理文件。
+                {t(
+                  "新建一个站点，把服务器上的目录发布到指定 URL 路径，之后可以在这里上传和管理文件。",
+                )}
               </p>
               {sitesQuery.isLoading ? null : (
                 <PermissionButton
@@ -1389,7 +1412,7 @@ export function StaticHostingPage() {
                   permission="system:static_host:create"
                   onClick={() => openSiteModal()}
                 >
-                  新建站点
+                  {t("新建站点")}
                 </PermissionButton>
               )}
             </section>
@@ -1398,14 +1421,14 @@ export function StaticHostingPage() {
       </div>
 
       <Modal
-        title={editingSite ? "编辑静态站点" : "新建静态站点"}
+        title={editingSite ? t("编辑静态站点") : t("新建静态站点")}
         open={siteModalOpen}
         onCancel={() => {
           setSiteModalOpen(false);
           setEditingSite(null);
         }}
         onOk={() => siteForm.submit()}
-        okText={editingSite ? "保存" : "创建"}
+        okText={editingSite ? t("保存") : t("创建")}
         confirmLoading={saveSiteMutation.isPending}
         width="min(640px, 96vw)"
         className="sh-site-modal"
@@ -1421,19 +1444,19 @@ export function StaticHostingPage() {
           <div className="sh-form-grid">
             <Form.Item
               name="name"
-              label="站点名称"
-              rules={[{ required: true, message: "请输入站点名称" }]}
+              label={t("站点名称")}
+              rules={[{ required: true, message: t("请输入站点名称") }]}
             >
-              <Input placeholder="例如 产品文档" />
+              <Input placeholder={t("例如 产品文档")} />
             </Form.Item>
             <Form.Item
               name="key"
-              label="站点标识"
+              label={t("站点标识")}
               rules={[
-                { required: true, message: "请输入站点标识" },
+                { required: true, message: t("请输入站点标识") },
                 {
                   pattern: /^[a-z0-9_-]+$/,
-                  message: "仅支持小写字母、数字、短横线和下划线",
+                  message: t("仅支持小写字母、数字、短横线和下划线"),
                 },
               ]}
             >
@@ -1442,8 +1465,8 @@ export function StaticHostingPage() {
           </div>
           <Form.Item
             name="url_path"
-            label="URL 路径"
-            rules={[{ required: true, message: "请输入 URL 路径" }]}
+            label={t("URL 路径")}
+            rules={[{ required: true, message: t("请输入 URL 路径") }]}
           >
             <Input
               prefix={
@@ -1454,34 +1477,36 @@ export function StaticHostingPage() {
           </Form.Item>
           <Form.Item
             name="local_root"
-            label="服务器目录"
-            rules={[{ required: true, message: "请输入服务器目录" }]}
-            extra="目录中的文件会通过公开 URL 访问，请勿指向包含密钥或配置文件的目录。"
+            label={t("服务器目录")}
+            rules={[{ required: true, message: t("请输入服务器目录") }]}
+            extra={t(
+              "目录中的文件会通过公开 URL 访问，请勿指向包含密钥或配置文件的目录。",
+            )}
           >
             <Input placeholder="storage/static-hosting/docs" />
           </Form.Item>
           <div className="sh-form-grid">
             <Form.Item
               name="index_file"
-              label="默认首页"
-              rules={[{ required: true, message: "请输入默认首页文件" }]}
+              label={t("默认首页")}
+              rules={[{ required: true, message: t("请输入默认首页文件") }]}
             >
               <Input placeholder="index.html" />
             </Form.Item>
-            <Form.Item name="cache_seconds" label="资源缓存（秒）">
+            <Form.Item name="cache_seconds" label={t("资源缓存（秒）")}>
               <InputNumber min={0} max={31_536_000} className="full-width" />
             </Form.Item>
           </div>
           <div className="sh-options">
             <SiteOption
               name="enabled"
-              title="启用托管"
-              description="关闭后该 URL 路径不再对外提供访问"
+              title={t("启用托管")}
+              description={t("关闭后该 URL 路径不再对外提供访问")}
             />
             <SiteOption
               name="directory_listing"
-              title="目录列表"
-              description="目录中没有默认首页时，列出其中的文件和子目录"
+              title={t("目录列表")}
+              description={t("目录中没有默认首页时，列出其中的文件和子目录")}
             />
             <Form.Item
               noStyle
@@ -1493,16 +1518,20 @@ export function StaticHostingPage() {
                 <SiteOption
                   nested
                   name="listing_overrides_index"
-                  title="有首页也显示列表"
-                  description="目录中存在默认首页时仍先显示文件列表，首页可从列表中打开"
+                  title={t("有首页也显示列表")}
+                  description={t(
+                    "目录中存在默认首页时仍先显示文件列表，首页可从列表中打开",
+                  )}
                   disabled={!getFieldValue("directory_listing")}
                 />
               )}
             </Form.Item>
             <SiteOption
               name="spa_fallback"
-              title="SPA 回退"
-              description="找不到的页面路径统一返回默认首页，适合前端路由应用"
+              title={t("SPA 回退")}
+              description={t(
+                "找不到的页面路径统一返回默认首页，适合前端路由应用",
+              )}
             />
           </div>
           <AccessRulesField
@@ -1514,11 +1543,11 @@ export function StaticHostingPage() {
       </Modal>
 
       <Modal
-        title="新建目录"
+        title={t("新建目录")}
         open={folderModalOpen}
         onCancel={() => setFolderModalOpen(false)}
         onOk={() => folderForm.submit()}
-        okText="创建"
+        okText={t("创建")}
         confirmLoading={createFolderMutation.isPending}
       >
         <Form
@@ -1529,8 +1558,8 @@ export function StaticHostingPage() {
         >
           <Form.Item
             name="name"
-            label={`在 ${currentLocation} 下新建`}
-            rules={[{ required: true, message: "请输入目录名称" }]}
+            label={t("在 {0} 下新建", currentLocation)}
+            rules={[{ required: true, message: t("请输入目录名称") }]}
           >
             <Input placeholder="assets" />
           </Form.Item>

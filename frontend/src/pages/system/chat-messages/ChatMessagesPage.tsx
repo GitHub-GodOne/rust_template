@@ -55,6 +55,7 @@ import { downloadUpload, uploadMaterial } from "../../../api/admin/uploads";
 import { CrudPage } from "../../../components/admin/CrudPage";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 import { formatBytes } from "../uploads/uploadTaskManager";
 
 type ChatFormValues = {
@@ -71,16 +72,16 @@ type DraftAttachment = ChatAttachmentParams & {
 };
 
 const statusOptions = [
-  { label: "草稿", value: "draft" },
-  { label: "已发送", value: "sent" },
-  { label: "已归档", value: "archived" },
+  { label: t("草稿"), value: "draft" },
+  { label: t("已发送"), value: "sent" },
+  { label: t("已归档"), value: "archived" },
 ];
 
 function statusTag(status: string) {
   const map: Record<string, { color: string; text: string }> = {
-    draft: { color: "default", text: "草稿" },
-    sent: { color: "green", text: "已发送" },
-    archived: { color: "blue", text: "已归档" },
+    draft: { color: "default", text: t("草稿") },
+    sent: { color: "green", text: t("已发送") },
+    archived: { color: "blue", text: t("已归档") },
   };
   const item = map[status] ?? { color: "default", text: status };
   return <Tag color={item.color}>{item.text}</Tag>;
@@ -100,7 +101,7 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 function attachmentSourceText(source: string) {
-  return source === "material" ? "素材库" : "本地文件";
+  return source === "material" ? t("素材库") : t("本地文件");
 }
 
 export function ChatMessagesPage() {
@@ -205,34 +206,34 @@ export function ChatMessagesPage() {
       return createChatMessage(payload);
     },
     onSuccess: () => {
-      message.success(editing ? "聊天内容已更新" : "聊天内容已创建");
+      message.success(editing ? t("聊天内容已更新") : t("聊天内容已创建"));
       closeModal();
       queryClient.invalidateQueries({ queryKey: ["admin-chat-messages"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "保存失败");
+      message.error(error instanceof Error ? error.message : t("保存失败"));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteChatMessage,
     onSuccess: () => {
-      message.success("聊天内容已删除");
+      message.success(t("聊天内容已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-chat-messages"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "删除失败");
+      message.error(error instanceof Error ? error.message : t("删除失败"));
     },
   });
 
   const markSentMutation = useMutation({
     mutationFn: markChatMessageSent,
     onSuccess: () => {
-      message.success("已标记发送");
+      message.success(t("已标记发送"));
       queryClient.invalidateQueries({ queryKey: ["admin-chat-messages"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "标记失败");
+      message.error(error instanceof Error ? error.message : t("标记失败"));
     },
   });
 
@@ -240,14 +241,14 @@ export function ChatMessagesPage() {
     mutationFn: copyChatMessage,
     onSuccess: async (record) => {
       await navigator.clipboard.writeText(record.content);
-      message.success("内容已复制");
+      message.success(t("内容已复制"));
       queryClient.invalidateQueries({ queryKey: ["admin-chat-messages"] });
       queryClient.invalidateQueries({
         queryKey: ["admin-chat-message", record.id],
       });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "复制失败");
+      message.error(error instanceof Error ? error.message : t("复制失败"));
     },
   });
 
@@ -255,13 +256,13 @@ export function ChatMessagesPage() {
     mutationFn: async (attachment: ChatAttachmentRecord | DraftAttachment) => {
       if (attachment.source_type === "material") {
         if (!attachment.upload_file_id) {
-          throw new Error("素材附件缺少文件 ID");
+          throw new Error(t("素材附件缺少文件 ID"));
         }
         const blob = await downloadUpload(attachment.upload_file_id);
         return { blob, filename: attachment.display_name };
       }
       if (!attachment.file_root_key || !attachment.file_path) {
-        throw new Error("本地文件附件缺少路径");
+        throw new Error(t("本地文件附件缺少路径"));
       }
       const blob = await downloadManagedFile({
         root_key: attachment.file_root_key,
@@ -273,7 +274,7 @@ export function ChatMessagesPage() {
       triggerDownload(blob, filename);
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "下载失败");
+      message.error(error instanceof Error ? error.message : t("下载失败"));
     },
   });
 
@@ -320,13 +321,13 @@ export function ChatMessagesPage() {
           setAttachments((current) => [...current, attachment]);
           setUploadingName(undefined);
           setUploadPercent(100);
-          message.success("附件已上传");
+          message.success(t("附件已上传"));
           onSuccess?.("ok");
         })
         .catch((error) => {
           setUploadingName(undefined);
           setUploadPercent(0);
-          message.error(error instanceof Error ? error.message : "上传失败");
+          message.error(error instanceof Error ? error.message : t("上传失败"));
           onError?.(error as Error);
         });
     },
@@ -363,7 +364,7 @@ export function ChatMessagesPage() {
       });
       setModalOpen(true);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "加载失败");
+      message.error(error instanceof Error ? error.message : t("加载失败"));
     }
   };
 
@@ -383,7 +384,7 @@ export function ChatMessagesPage() {
   const columns: ColumnsType<ChatMessageRecord> = [
     { title: "ID", dataIndex: "id", width: 72 },
     {
-      title: "标题",
+      title: t("标题"),
       dataIndex: "title",
       width: 180,
       render: (value: string) => (
@@ -391,7 +392,7 @@ export function ChatMessagesPage() {
       ),
     },
     {
-      title: "内容",
+      title: t("内容"),
       dataIndex: "content",
       width: 320,
       render: (value: string) => (
@@ -405,32 +406,32 @@ export function ChatMessagesPage() {
       ),
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       render: statusTag,
     },
-    { title: "附件", dataIndex: "attachment_count", width: 90 },
-    { title: "复制", dataIndex: "copy_count", width: 90 },
+    { title: t("附件"), dataIndex: "attachment_count", width: 90 },
+    { title: t("复制"), dataIndex: "copy_count", width: 90 },
     {
-      title: "发送时间",
+      title: t("发送时间"),
       dataIndex: "sent_at",
       width: 180,
       render: (value?: string | null) => value ?? "-",
     },
     {
-      title: "更新时间",
+      title: t("更新时间"),
       dataIndex: "updated_at",
       width: 180,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 280,
       render: (_, record) => (
         <Space size={6} wrap>
-          <Tooltip title="详情">
+          <Tooltip title={t("详情")}>
             <PermissionButton
               size="small"
               icon={<EyeOutlined />}
@@ -438,7 +439,7 @@ export function ChatMessagesPage() {
               onClick={() => setDetailId(record.id)}
             />
           </Tooltip>
-          <Tooltip title="复制发送内容">
+          <Tooltip title={t("复制发送内容")}>
             <PermissionButton
               size="small"
               icon={<CopyOutlined />}
@@ -448,7 +449,7 @@ export function ChatMessagesPage() {
             />
           </Tooltip>
           {record.status !== "sent" ? (
-            <Tooltip title="标记发送">
+            <Tooltip title={t("标记发送")}>
               <PermissionButton
                 size="small"
                 icon={<CheckCircleOutlined />}
@@ -458,7 +459,7 @@ export function ChatMessagesPage() {
               />
             </Tooltip>
           ) : null}
-          <Tooltip title="编辑">
+          <Tooltip title={t("编辑")}>
             <PermissionButton
               size="small"
               icon={<EditOutlined />}
@@ -467,7 +468,7 @@ export function ChatMessagesPage() {
             />
           </Tooltip>
           <Popconfirm
-            title="确认删除这条聊天内容？"
+            title={t("确认删除这条聊天内容？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -486,15 +487,15 @@ export function ChatMessagesPage() {
 
   return (
     <CrudPage
-      title="聊天管理"
-      subtitle="保存待发送内容并管理附件"
-      breadcrumb={["系统管理", "聊天管理"]}
+      title={t("聊天管理")}
+      subtitle={t("保存待发送内容并管理附件")}
+      breadcrumb={[t("系统管理"), t("聊天管理")]}
       icon={<MessageOutlined />}
       toolbar={
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="搜索标题、内容或备注"
+            placeholder={t("搜索标题、内容或备注")}
             style={{ width: 260 }}
             onSearch={(value) => {
               setKeyword(value.trim());
@@ -503,7 +504,7 @@ export function ChatMessagesPage() {
           />
           <Select
             allowClear
-            placeholder="状态"
+            placeholder={t("状态")}
             style={{ width: 140 }}
             options={statusOptions}
             value={status}
@@ -518,7 +519,7 @@ export function ChatMessagesPage() {
             permission="system:chat:create"
             onClick={openCreate}
           >
-            新增
+            {t("新增")}
           </PermissionButton>
         </Space>
       }
@@ -536,7 +537,7 @@ export function ChatMessagesPage() {
       />
 
       <Modal
-        title={editing ? "编辑聊天内容" : "新增聊天内容"}
+        title={editing ? t("编辑聊天内容") : t("新增聊天内容")}
         open={modalOpen}
         onCancel={closeModal}
         onOk={() => form.submit()}
@@ -551,25 +552,25 @@ export function ChatMessagesPage() {
           onFinish={(values) => saveMutation.mutate(values)}
         >
           <Form.Item
-            label="标题"
+            label={t("标题")}
             name="title"
-            rules={[{ required: true, message: "请输入标题" }]}
+            rules={[{ required: true, message: t("请输入标题") }]}
           >
-            <Input placeholder="例如：客户跟进话术" />
+            <Input placeholder={t("例如：客户跟进话术")} />
           </Form.Item>
           <Form.Item
-            label="发送内容"
+            label={t("发送内容")}
             name="content"
-            rules={[{ required: true, message: "请输入发送内容" }]}
+            rules={[{ required: true, message: t("请输入发送内容") }]}
           >
-            <Input.TextArea rows={8} placeholder="粘贴要发送的完整内容" />
+            <Input.TextArea rows={8} placeholder={t("粘贴要发送的完整内容")} />
           </Form.Item>
           <Space align="start" wrap style={{ width: "100%" }}>
-            <Form.Item label="状态" name="status" style={{ width: 180 }}>
+            <Form.Item label={t("状态")} name="status" style={{ width: 180 }}>
               <Select options={statusOptions} />
             </Form.Item>
-            <Form.Item label="备注" name="remark" style={{ width: 360 }}>
-              <Input placeholder="可选" />
+            <Form.Item label={t("备注")} name="remark" style={{ width: 360 }}>
+              <Input placeholder={t("可选")} />
             </Form.Item>
           </Space>
         </Form>
@@ -580,15 +581,15 @@ export function ChatMessagesPage() {
               value={attachmentSource}
               style={{ width: 140 }}
               options={[
-                { label: "素材库", value: "material" },
-                { label: "本地文件", value: "local_file" },
+                { label: t("素材库"), value: "material" },
+                { label: t("本地文件"), value: "local_file" },
               ]}
               onChange={setAttachmentSource}
             />
             {attachmentSource === "material" ? (
               <>
                 <Select
-                  placeholder="存储配置"
+                  placeholder={t("存储配置")}
                   style={{ width: 180 }}
                   value={storageProfileId}
                   options={profiles.map((profile) => ({
@@ -598,7 +599,7 @@ export function ChatMessagesPage() {
                   onChange={setStorageProfileId}
                 />
                 <Select
-                  placeholder="存储桶"
+                  placeholder={t("存储桶")}
                   style={{ width: 180 }}
                   value={storageBucketId}
                   options={buckets.map((bucket) => ({
@@ -608,7 +609,7 @@ export function ChatMessagesPage() {
                   onChange={setStorageBucketId}
                 />
                 <Input
-                  placeholder="前缀"
+                  placeholder={t("前缀")}
                   style={{ width: 160 }}
                   value={materialPrefix}
                   onChange={(event) => setMaterialPrefix(event.target.value)}
@@ -617,7 +618,7 @@ export function ChatMessagesPage() {
             ) : (
               <>
                 <Select
-                  placeholder="文件根目录"
+                  placeholder={t("文件根目录")}
                   style={{ width: 180 }}
                   value={fileRootKey}
                   options={roots.map((root) => ({
@@ -627,7 +628,7 @@ export function ChatMessagesPage() {
                   onChange={setFileRootKey}
                 />
                 <Input
-                  placeholder="上传目录，如 chat"
+                  placeholder={t("上传目录，如 chat")}
                   style={{ width: 220 }}
                   value={filePath}
                   onChange={(event) => setFilePath(event.target.value)}
@@ -643,7 +644,7 @@ export function ChatMessagesPage() {
                     : "system:file:create"
                 }
               >
-                上传附件
+                {t("上传附件")}
               </PermissionButton>
             </Upload>
           </Space>
@@ -662,24 +663,24 @@ export function ChatMessagesPage() {
             size="small"
             columns={[
               {
-                title: "来源",
+                title: t("来源"),
                 dataIndex: "source_type",
                 width: 100,
                 render: attachmentSourceText,
               },
-              { title: "文件名", dataIndex: "display_name" },
+              { title: t("文件名"), dataIndex: "display_name" },
               {
-                title: "大小",
+                title: t("大小"),
                 dataIndex: "size_bytes",
                 width: 120,
                 render: (value: number) => formatBytes(value),
               },
               {
-                title: "操作",
+                title: t("操作"),
                 width: 120,
                 render: (_, record) => (
                   <Space>
-                    <Tooltip title="下载">
+                    <Tooltip title={t("下载")}>
                       <PermissionButton
                         size="small"
                         icon={<DownloadOutlined />}
@@ -709,7 +710,7 @@ export function ChatMessagesPage() {
       </Modal>
 
       <Drawer
-        title="聊天内容详情"
+        title={t("聊天内容详情")}
         open={Boolean(detailId)}
         onClose={() => setDetailId(undefined)}
         width="min(720px, 94vw)"
@@ -734,30 +735,30 @@ export function ChatMessagesPage() {
                 permission="system:chat:copy"
                 onClick={() => copyMutation.mutate(detail.id)}
               >
-                复制内容
+                {t("复制内容")}
               </PermissionButton>
               <Typography.Text type="secondary">
-                已复制 {detail.copy_count} 次
+                {t("已复制 {0} 次", detail.copy_count)}
               </Typography.Text>
             </Space>
             <DataTable<ChatAttachmentRecord>
               rowKey="id"
               columns={[
                 {
-                  title: "来源",
+                  title: t("来源"),
                   dataIndex: "source_type",
                   width: 100,
                   render: attachmentSourceText,
                 },
-                { title: "文件名", dataIndex: "display_name" },
+                { title: t("文件名"), dataIndex: "display_name" },
                 {
-                  title: "大小",
+                  title: t("大小"),
                   dataIndex: "size_bytes",
                   width: 120,
                   render: (value: number) => formatBytes(value),
                 },
                 {
-                  title: "操作",
+                  title: t("操作"),
                   width: 100,
                   render: (_, record) => (
                     <PermissionButton
@@ -770,7 +771,7 @@ export function ChatMessagesPage() {
                       }
                       onClick={() => downloadMutation.mutate(record)}
                     >
-                      下载
+                      {t("下载")}
                     </PermissionButton>
                   ),
                 },

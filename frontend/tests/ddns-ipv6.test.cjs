@@ -4,13 +4,14 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const ts = require("typescript");
+const { i18n, i18nRequire } = require("./support/i18n-stub.cjs");
 
 const source = fs.readFileSync(path.join(__dirname, "../src/pages/system/ddns/ipv6.ts"), "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const output = { exports: {} };
-vm.runInNewContext(compiled, { exports: output.exports, URL });
+vm.runInNewContext(compiled, { require: i18nRequire, exports: output.exports, URL });
 const { normalizeIpv6, isValidManualIpv6 } = output.exports;
 
 test("normalizes valid IPv6 text and rejects everything else", () => {

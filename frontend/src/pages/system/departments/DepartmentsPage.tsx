@@ -32,6 +32,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t, tData } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 
 export function DepartmentsPage() {
@@ -63,7 +64,7 @@ export function DepartmentsPage() {
     mutationFn: (values: SaveDepartmentParams) =>
       editing ? updateDepartment(editing.id, values) : createDepartment(values),
     onSuccess: () => {
-      message.success("部门已保存");
+      message.success(t("部门已保存"));
       setFormOpen(false);
       setEditing(null);
       form.resetFields();
@@ -74,7 +75,7 @@ export function DepartmentsPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteDepartment,
     onSuccess: () => {
-      message.success("部门已删除");
+      message.success(t("部门已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-departments"] });
     },
   });
@@ -87,40 +88,45 @@ export function DepartmentsPage() {
       ? ((allDepartmentsQuery.data?.items ?? []).find(
           (department) => department.id === departmentId,
         )?.name ?? departmentId)
-      : "顶级部门";
+      : t("顶级部门");
 
   const columns: ColumnsType<DepartmentRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "部门名称", dataIndex: "name", width: 180 },
-    { title: "部门编码", dataIndex: "code", width: 180 },
     {
-      title: "租户",
+      title: t("部门名称"),
+      dataIndex: "name",
+      width: 180,
+      render: (value: string) => tData(value),
+    },
+    { title: t("部门编码"), dataIndex: "code", width: 180 },
+    {
+      title: t("租户"),
       dataIndex: "tenant_id",
       width: 150,
       render: tenantName,
     },
     {
-      title: "上级部门",
+      title: t("上级部门"),
       dataIndex: "parent_id",
       width: 150,
       render: departmentName,
     },
-    { title: "排序", dataIndex: "sort_order", width: 90 },
+    { title: t("排序"), dataIndex: "sort_order", width: 90 },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (enabled) => <StatusTag active={enabled} />,
     },
     {
-      title: "系统部门",
+      title: t("系统部门"),
       dataIndex: "is_system",
       width: 110,
       render: (isSystem) => <StatusTag active={isSystem} />,
     },
-    { title: "创建时间", dataIndex: "created_at", width: 210 },
+    { title: t("创建时间"), dataIndex: "created_at", width: 210 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       render: (_, record) => (
@@ -143,10 +149,10 @@ export function DepartmentsPage() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除部门？"
+            title={t("确认删除部门？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -156,7 +162,7 @@ export function DepartmentsPage() {
               icon={<DeleteOutlined />}
               permission="system:department:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -166,15 +172,15 @@ export function DepartmentsPage() {
 
   return (
     <CrudPage
-      title="部门管理"
-      subtitle="维护租户组织结构，为用户多部门归属和部门数据范围提供基础"
-      breadcrumb={["系统管理", "部门管理"]}
+      title={t("部门管理")}
+      subtitle={t("维护租户组织结构，为用户多部门归属和部门数据范围提供基础")}
+      breadcrumb={[t("系统管理"), t("部门管理")]}
       icon={<BranchesOutlined />}
       toolbar={
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="搜索部门名称、编码"
+            placeholder={t("搜索部门名称、编码")}
             className="admin-search-input"
             onSearch={(value) => {
               setPage(1);
@@ -185,7 +191,7 @@ export function DepartmentsPage() {
             actions={[
               {
                 key: "create",
-                label: "新增",
+                label: t("新增"),
                 icon: <PlusOutlined />,
                 primary: true,
                 permission: "system:department:create",
@@ -212,7 +218,7 @@ export function DepartmentsPage() {
         }}
       />
       <Modal
-        title={editing ? "编辑部门" : "新增部门"}
+        title={editing ? t("编辑部门") : t("新增部门")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -226,11 +232,11 @@ export function DepartmentsPage() {
           {showTenantSelect ? (
             <Form.Item
               name="tenant_id"
-              label="租户"
+              label={t("租户")}
               rules={[{ required: true }]}
             >
               <Select
-                placeholder="请选择租户"
+                placeholder={t("请选择租户")}
                 options={(tenantsQuery.data?.items ?? []).map((tenant) => ({
                   value: tenant.id,
                   label: `${tenant.name}（${tenant.code}）`,
@@ -238,10 +244,10 @@ export function DepartmentsPage() {
               />
             </Form.Item>
           ) : null}
-          <Form.Item name="parent_id" label="上级部门">
+          <Form.Item name="parent_id" label={t("上级部门")}>
             <Select
               allowClear
-              placeholder="不选择则为顶级部门"
+              placeholder={t("不选择则为顶级部门")}
               options={(allDepartmentsQuery.data?.items ?? [])
                 .filter((department) => department.id !== editing?.id)
                 .map((department) => ({
@@ -250,19 +256,27 @@ export function DepartmentsPage() {
                 }))}
             />
           </Form.Item>
-          <Form.Item name="name" label="部门名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t("部门名称")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="部门编码" rules={[{ required: true }]}>
+          <Form.Item
+            name="code"
+            label={t("部门编码")}
+            rules={[{ required: true }]}
+          >
             <Input disabled={editing?.is_system} />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="sort_order" label="排序">
+          <Form.Item name="sort_order" label={t("排序")}>
             <InputNumber className="admin-full-width" />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

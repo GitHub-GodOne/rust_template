@@ -11,6 +11,7 @@ import type { MenuProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultAdminMenus, mergeMenuItems } from "../app/menu";
+import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 import { useDockStore } from "../stores/dock";
 import { useUiStore } from "../stores/ui";
@@ -141,11 +142,11 @@ export function AdminDock() {
 
   if (!visible) {
     return (
-      <Tooltip title="显示快捷 Dock" placement="top">
+      <Tooltip title={t("显示快捷 Dock")} placement="top">
         <Button
           type="text"
           className="admin-dock-reveal"
-          aria-label="显示快捷 Dock"
+          aria-label={t("显示快捷 Dock")}
           icon={<UpOutlined />}
           onClick={toggleVisible}
         />
@@ -158,7 +159,7 @@ export function AdminDock() {
       await saveDock(withPageRule(config, location.pathname, patch));
       message.success(done);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "保存失败");
+      message.error(error instanceof Error ? error.message : t("保存失败"));
     }
   };
   const check = (active: boolean) =>
@@ -166,14 +167,20 @@ export function AdminDock() {
   const pageMenu: MenuProps["items"] = [
     {
       type: "group",
-      label: "显示方式",
+      label: t("显示方式"),
       children: [
         {
           key: "page-default",
           icon: check(!pageRule?.mode),
-          label: `跟随默认（${config.autoHide ? "自动隐藏" : "常驻显示"}）`,
+          label: t(
+            "跟随默认（{0}）",
+            config.autoHide ? t("自动隐藏") : t("常驻显示"),
+          ),
           onClick: () =>
-            void updatePageRule({ mode: null }, "此页面的显示方式已恢复为默认"),
+            void updatePageRule(
+              { mode: null },
+              t("此页面的显示方式已恢复为默认"),
+            ),
         },
         ...(["show", "autoHide", "hide"] as const).map((mode) => ({
           key: `page-${mode}`,
@@ -182,40 +189,46 @@ export function AdminDock() {
           onClick: () =>
             void updatePageRule(
               { mode },
-              `此页面的 Dock 已设为「${DOCK_PAGE_MODE_LABELS[mode]}」`,
+              t("此页面的 Dock 已设为「{0}」", DOCK_PAGE_MODE_LABELS[mode]),
             ),
         })),
       ],
     },
     {
       type: "group",
-      label: "预留空间（仅常驻显示时生效）",
+      label: t("预留空间（仅常驻显示时生效）"),
       children: [
         {
           key: "reserve-default",
           icon: check(pageRule?.reserve === undefined),
-          label: `跟随默认（${config.reserveSpace ? "预留" : "不预留"}）`,
+          label: t(
+            "跟随默认（{0}）",
+            config.reserveSpace ? t("预留") : t("不预留"),
+          ),
           onClick: () =>
             void updatePageRule(
               { reserve: null },
-              "此页面的预留空间已恢复为默认",
+              t("此页面的预留空间已恢复为默认"),
             ),
         },
         {
           key: "reserve-on",
           icon: check(pageRule?.reserve === true),
-          label: "为 Dock 预留空白",
+          label: t("为 Dock 预留空白"),
           onClick: () =>
-            void updatePageRule({ reserve: true }, "此页面会为 Dock 预留空白"),
+            void updatePageRule(
+              { reserve: true },
+              t("此页面会为 Dock 预留空白"),
+            ),
         },
         {
           key: "reserve-off",
           icon: check(pageRule?.reserve === false),
-          label: "不预留，Dock 浮在内容上",
+          label: t("不预留，Dock 浮在内容上"),
           onClick: () =>
             void updatePageRule(
               { reserve: false },
-              "此页面不再为 Dock 预留空白",
+              t("此页面不再为 Dock 预留空白"),
             ),
         },
       ],
@@ -251,20 +264,20 @@ export function AdminDock() {
           items: [
             {
               key: "page",
-              label: "当前页面",
+              label: t("当前页面"),
               children: pageMenu,
             },
             { type: "divider" },
             {
               key: "settings",
               icon: <SettingOutlined />,
-              label: "自定义 Dock…",
+              label: t("自定义 Dock…"),
               onClick: () => navigate(DOCK_SETTINGS_PATH),
             },
             {
               key: "hide",
               icon: <EyeInvisibleOutlined />,
-              label: "收起 Dock（所有页面）",
+              label: t("收起 Dock（所有页面）"),
               onClick: toggleVisible,
             },
           ],
@@ -282,31 +295,31 @@ export function AdminDock() {
             trailing={
               <>
                 {items.length === 0 ? (
-                  <Tooltip title="添加页面到 Dock">
+                  <Tooltip title={t("添加页面到 Dock")}>
                     <Button
                       type="text"
                       className="admin-dock-hide"
-                      aria-label="添加页面到 Dock"
+                      aria-label={t("添加页面到 Dock")}
                       icon={<PlusOutlined />}
                       onClick={() => navigate(DOCK_SETTINGS_PATH)}
                     />
                   </Tooltip>
                 ) : null}
                 <span className="admin-dock-divider" />
-                <Tooltip title="自定义 Dock">
+                <Tooltip title={t("自定义 Dock")}>
                   <Button
                     type="text"
                     className="admin-dock-hide admin-dock-settings"
-                    aria-label="自定义 Dock"
+                    aria-label={t("自定义 Dock")}
                     icon={<SettingOutlined />}
                     onClick={() => navigate(DOCK_SETTINGS_PATH)}
                   />
                 </Tooltip>
-                <Tooltip title="收起快捷 Dock">
+                <Tooltip title={t("收起快捷 Dock")}>
                   <Button
                     type="text"
                     className="admin-dock-hide"
-                    aria-label="收起快捷 Dock"
+                    aria-label={t("收起快捷 Dock")}
                     icon={<DownOutlined />}
                     onClick={toggleVisible}
                   />

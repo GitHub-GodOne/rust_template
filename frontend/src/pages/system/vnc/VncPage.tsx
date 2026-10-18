@@ -58,6 +58,7 @@ import {
 } from "../../../api/admin/vnc";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import "./vnc.css";
+import { t } from "../../../i18n";
 import { createClientId } from "../../../utils/clientId";
 import { VncQuickBar, VncShortcutsDrawer } from "./VncQuickBar";
 import { useVncPointerModes } from "./useVncPointerModes";
@@ -162,8 +163,9 @@ function prefersTrackpad() {
     Boolean(window.matchMedia?.("(pointer: coarse)").matches)
   );
 }
-const insecureVncContextMessage =
-  "VNC 需要 HTTPS 安全环境，请使用 HTTPS 域名访问，或在服务器本机通过 localhost 打开";
+const insecureVncContextMessage = t(
+  "VNC 需要 HTTPS 安全环境，请使用 HTTPS 域名访问，或在服务器本机通过 localhost 打开",
+);
 
 function requireSecureVncContext() {
   if (!window.isSecureContext) {
@@ -177,21 +179,21 @@ function sessionId() {
 
 function statusLabel(status: VncStatus) {
   if (status === "connected") {
-    return "已连接";
+    return t("已连接");
   }
   if (status === "connecting") {
-    return "连接中";
+    return t("连接中");
   }
   if (status === "disconnected") {
-    return "已断开";
+    return t("已断开");
   }
   if (status === "closed") {
-    return "已关闭";
+    return t("已关闭");
   }
   if (status === "error") {
-    return "异常";
+    return t("异常");
   }
-  return "未连接";
+  return t("未连接");
 }
 
 function loadPersistedSessions(): VncSession[] {
@@ -362,16 +364,16 @@ const VncViewerHost = memo(function VncViewerHost({
           <DesktopOutlined />
           <strong>
             {status === "connecting"
-              ? "正在建立 VNC 连接"
+              ? t("正在建立 VNC 连接")
               : status === "error"
-                ? "VNC 连接失败"
-                : "VNC 尚未连接"}
+                ? t("VNC 连接失败")
+                : t("VNC 尚未连接")}
           </strong>
           <span>
             {errorMessage ??
               (status === "connecting"
-                ? "正在等待目标响应或登录凭据"
-                : "请选择目标后连接当前会话")}
+                ? t("正在等待目标响应或登录凭据")
+                : t("请选择目标后连接当前会话"))}
           </span>
           {status !== "connecting" ? (
             <PermissionButton
@@ -381,7 +383,7 @@ const VncViewerHost = memo(function VncViewerHost({
               className="vnc-viewer-connect"
               onClick={onConnect}
             >
-              {status === "error" ? "重试" : "连接"}
+              {status === "error" ? t("重试") : t("连接")}
             </PermissionButton>
           ) : null}
         </div>
@@ -481,7 +483,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
       (targetsQuery.data ?? []).map((target) => ({
         value: target.key,
         label: `${target.name} (${target.host}:${target.port})${
-          target.credentials_saved ? " · 已保存凭据" : ""
+          target.credentials_saved ? t(" · 已保存凭据") : ""
         }`,
       })),
     [targetsQuery.data],
@@ -546,13 +548,13 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         requestAnimationFrame(() => resolve()),
       );
     }
-    throw new Error("VNC 画布初始化超时，请切换标签后重试");
+    throw new Error(t("VNC 画布初始化超时，请切换标签后重试"));
   }, []);
 
   const attachSession = useCallback(
     async (session: VncSession): Promise<AttachSessionResult> => {
       if (!session.serverSessionId) {
-        message.warning("请先创建 VNC 会话");
+        message.warning(t("请先创建 VNC 会话"));
         return "failed";
       }
       disconnectRuntime(session.id);
@@ -609,11 +611,13 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                 await queryClient.invalidateQueries({
                   queryKey: ["vnc-targets"],
                 });
-                message.success("VNC 登录凭据已保存");
+                message.success(t("VNC 登录凭据已保存"));
               })
               .catch((error: unknown) => {
                 message.warning(
-                  error instanceof Error ? error.message : "VNC 凭据保存失败",
+                  error instanceof Error
+                    ? error.message
+                    : t("VNC 凭据保存失败"),
                 );
               });
           }
@@ -625,7 +629,9 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
             errorMessage: detail?.clean
               ? undefined
               : (securityFailureMessage ??
-                "VNC 握手失败；security type 262/X509Plain 不受支持，请调整目标 VNC 的认证配置"),
+                t(
+                  "VNC 握手失败；security type 262/X509Plain 不受支持，请调整目标 VNC 的认证配置",
+                )),
           });
           setCredentialRequest((current) =>
             current?.sessionId === session.id ? null : current,
@@ -667,10 +673,10 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
             event as CustomEvent<{ reason?: string; status?: number }>
           ).detail;
           securityFailureMessage = detail?.reason
-            ? `VNC 身份验证失败：${detail.reason}`
-            : "VNC 身份验证失败，请检查用户名和密码";
+            ? t("VNC 身份验证失败：{0}", detail.reason)
+            : t("VNC 身份验证失败，请检查用户名和密码");
           if (ticket.credentials_saved) {
-            securityFailureMessage += "；已清除失效的已保存凭据，请重新连接";
+            securityFailureMessage += t("；已清除失效的已保存凭据，请重新连接");
             void deleteVncCredentials(session.targetKey)
               .then(() =>
                 queryClient.invalidateQueries({ queryKey: ["vnc-targets"] }),
@@ -693,7 +699,8 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         runtimesRef.current.set(session.id, runtime);
         return "attached";
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "连接 VNC 失败";
+        const reason =
+          error instanceof Error ? error.message : t("连接 VNC 失败");
         const staleSession = reason
           .toLocaleLowerCase()
           .includes("vnc session not found");
@@ -745,7 +752,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "创建 VNC 会话失败",
+        error instanceof Error ? error.message : t("创建 VNC 会话失败"),
       );
     },
   });
@@ -761,11 +768,11 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
     mutationFn: deleteVncCredentials,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["vnc-targets"] });
-      message.success("已清除当前 VNC 目标的保存凭据");
+      message.success(t("已清除当前 VNC 目标的保存凭据"));
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "清除 VNC 凭据失败",
+        error instanceof Error ? error.message : t("清除 VNC 凭据失败"),
       );
     },
   });
@@ -938,7 +945,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
       disconnectRuntime(credentialRequest.sessionId);
       updateSession(credentialRequest.sessionId, {
         status: "disconnected",
-        errorMessage: "未提供 VNC 登录凭据",
+        errorMessage: t("未提供 VNC 登录凭据"),
       });
     }
     setCredentialRequest(null);
@@ -960,12 +967,12 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
       (needsPassword && !credentialPassword) ||
       (needsTarget && !credentialTarget.trim())
     ) {
-      message.warning("请填写 VNC 要求的登录凭据");
+      message.warning(t("请填写 VNC 要求的登录凭据"));
       return;
     }
     const rfb = runtimesRef.current.get(credentialRequest.sessionId)?.rfb;
     if (!rfb) {
-      message.error("VNC 连接已经断开，请重新连接");
+      message.error(t("VNC 连接已经断开，请重新连接"));
       closeCredentialPrompt();
       return;
     }
@@ -1003,7 +1010,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         )
         .catch((error: unknown) => {
           message.warning(
-            error instanceof Error ? error.message : "VNC 凭据清除失败",
+            error instanceof Error ? error.message : t("VNC 凭据清除失败"),
           );
         });
     }
@@ -1024,7 +1031,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
 
   const activeRfb = useCallback(() => {
     if (!activeSession || activeSession.status !== "connected") {
-      message.warning("请先连接 VNC 会话");
+      message.warning(t("请先连接 VNC 会话"));
       return null;
     }
     return runtimesRef.current.get(activeSession.id)?.rfb ?? null;
@@ -1084,8 +1091,8 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
       storeFlag(vncTrackpadStorageKey, next);
       message.info(
         next
-          ? "触控板模式：拖动移动光标，轻点单击，双指轻点右键，长按拖拽"
-          : "触摸模式：点哪里就点击哪里",
+          ? t("触控板模式：拖动移动光标，轻点单击，双指轻点右键，长按拖拽")
+          : t("触摸模式：点哪里就点击哪里"),
       );
       return next;
     });
@@ -1138,7 +1145,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
 
   const openMobileKeyboard = useCallback(() => {
     if (!activeSession || activeSession.status !== "connected") {
-      message.warning("请先连接 VNC 会话");
+      message.warning(t("请先连接 VNC 会话"));
       return;
     }
     mobileKeyboardRef.current?.focus({ preventScroll: true });
@@ -1202,7 +1209,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
               <Button
                 type="text"
                 icon={<ArrowLeftOutlined />}
-                aria-label="退出 VNC"
+                aria-label={t("退出 VNC")}
                 onClick={() => navigate("/admin/dashboard")}
               />
               <div className="vnc-mobile-title">
@@ -1210,28 +1217,30 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                   {selectedTarget?.name ?? activeSession?.targetName ?? "VNC"}
                 </Typography.Text>
                 <Typography.Text type="secondary">
-                  {activeSession ? statusLabel(activeSession.status) : "无会话"}
+                  {activeSession
+                    ? statusLabel(activeSession.status)
+                    : t("无会话")}
                 </Typography.Text>
               </div>
               <Space size={2}>
                 <Button
                   type="text"
                   icon={<DesktopOutlined />}
-                  aria-label="连接当前 VNC"
+                  aria-label={t("连接当前 VNC")}
                   loading={createSessionMutation.isPending}
                   onClick={connectActiveSession}
                 />
                 <Button
                   type="text"
                   icon={<FontSizeOutlined />}
-                  aria-label="打开键盘"
+                  aria-label={t("打开键盘")}
                   disabled={activeSession?.status !== "connected"}
                   onClick={openMobileKeyboard}
                 />
                 <Button
                   type="text"
                   icon={<MoreOutlined />}
-                  aria-label="VNC 控制"
+                  aria-label={t("VNC 控制")}
                   onPointerDown={(event) => event.stopPropagation()}
                   onPointerUp={(event) => {
                     event.stopPropagation();
@@ -1252,7 +1261,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
               <div
                 className="vnc-tabstrip"
                 role="tablist"
-                aria-label="VNC 会话"
+                aria-label={t("VNC 会话")}
               >
                 {state.sessions.map((session, index) => {
                   const active = session.id === state.activeSessionId;
@@ -1285,7 +1294,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                         <button
                           type="button"
                           className="vnc-tab-close"
-                          aria-label="关闭标签"
+                          aria-label={t("关闭标签")}
                           onClick={() => removeLocalTab(session.id)}
                         >
                           <CloseOutlined />
@@ -1294,13 +1303,13 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                     </div>
                   );
                 })}
-                <Tooltip title="新建标签">
+                <Tooltip title={t("新建标签")}>
                   <Button
                     type="text"
                     size="small"
                     className="vnc-tab-add"
                     icon={<PlusOutlined />}
-                    aria-label="新建标签"
+                    aria-label={t("新建标签")}
                     onClick={addBlankSession}
                   />
                 </Tooltip>
@@ -1316,24 +1325,26 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                   loading={targetsQuery.isLoading}
                   onChange={setSelectedTargetKey}
                 />
-                <Tooltip title={activeConnected ? "重新连接" : "连接当前标签"}>
+                <Tooltip
+                  title={activeConnected ? t("重新连接") : t("连接当前标签")}
+                >
                   <PermissionButton
                     permission="system:vnc:connect"
                     type="text"
                     size="small"
                     icon={<LinkOutlined />}
-                    aria-label="连接当前标签"
+                    aria-label={t("连接当前标签")}
                     loading={createSessionMutation.isPending}
                     onClick={connectActiveSession}
                   />
                 </Tooltip>
-                <Tooltip title="在新标签中连接所选目标">
+                <Tooltip title={t("在新标签中连接所选目标")}>
                   <PermissionButton
                     permission="system:vnc:connect"
                     type="text"
                     size="small"
                     icon={<DesktopOutlined />}
-                    aria-label="新建连接"
+                    aria-label={t("新建连接")}
                     onClick={() =>
                       createSessionMutation.mutate({
                         target_key: selectedTargetKey,
@@ -1341,58 +1352,60 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                     }
                   />
                 </Tooltip>
-                <Tooltip title="刷新会话">
+                <Tooltip title={t("刷新会话")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<ReloadOutlined />}
-                    aria-label="刷新会话"
+                    aria-label={t("刷新会话")}
                     onClick={() => void sessionsQuery.refetch()}
                   />
                 </Tooltip>
                 {selectedCredentialTarget?.credentials_saved ? (
                   <Popconfirm
-                    title="清除已保存的 VNC 凭据？"
-                    okText="清除"
-                    cancelText="取消"
+                    title={t("清除已保存的 VNC 凭据？")}
+                    okText={t("清除")}
+                    cancelText={t("取消")}
                     onConfirm={() =>
                       deleteCredentialsMutation.mutate(selectedTargetKey)
                     }
                   >
-                    <Tooltip title="清除已保存凭据">
+                    <Tooltip title={t("清除已保存凭据")}>
                       <Button
                         type="text"
                         size="small"
                         icon={<KeyOutlined />}
-                        aria-label="清除已保存的 VNC 凭据"
+                        aria-label={t("清除已保存的 VNC 凭据")}
                         loading={deleteCredentialsMutation.isPending}
                       />
                     </Tooltip>
                   </Popconfirm>
                 ) : null}
-                <Tooltip title="快捷键与文本发送">
+                <Tooltip title={t("快捷键与文本发送")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<AppstoreOutlined />}
-                    aria-label="快捷键与文本发送"
+                    aria-label={t("快捷键与文本发送")}
                     onClick={() => setShortcutsOpen(true)}
                   />
                 </Tooltip>
                 <Tooltip
-                  title={showQuickBar ? "隐藏快捷操作栏" : "显示快捷操作栏"}
+                  title={
+                    showQuickBar ? t("隐藏快捷操作栏") : t("显示快捷操作栏")
+                  }
                 >
                   <Button
                     type="text"
                     size="small"
                     className={showQuickBar ? "is-active" : undefined}
                     icon={<ThunderboltOutlined />}
-                    aria-label="快捷操作栏"
+                    aria-label={t("快捷操作栏")}
                     aria-pressed={showQuickBar}
                     onClick={toggleQuickBar}
                   />
                 </Tooltip>
-                <Tooltip title={viewerExpanded ? "退出全屏" : "全屏显示"}>
+                <Tooltip title={viewerExpanded ? t("退出全屏") : t("全屏显示")}>
                   <Button
                     type="text"
                     size="small"
@@ -1403,27 +1416,27 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                         <FullscreenOutlined />
                       )
                     }
-                    aria-label={viewerExpanded ? "退出全屏" : "全屏显示"}
+                    aria-label={viewerExpanded ? t("退出全屏") : t("全屏显示")}
                     onClick={() => setViewerExpanded((current) => !current)}
                   />
                 </Tooltip>
                 <Popconfirm
-                  title="关闭共享会话？"
-                  description="其他设备上打开的这个会话也会断开"
-                  okText="关闭"
-                  cancelText="取消"
+                  title={t("关闭共享会话？")}
+                  description={t("其他设备上打开的这个会话也会断开")}
+                  okText={t("关闭")}
+                  cancelText={t("取消")}
                   disabled={!activeSession?.serverSessionId}
                   onConfirm={() =>
                     activeSession && void closeServerSession(activeSession)
                   }
                 >
-                  <Tooltip title="关闭共享会话">
+                  <Tooltip title={t("关闭共享会话")}>
                     <Button
                       type="text"
                       size="small"
                       danger
                       icon={<DisconnectOutlined />}
-                      aria-label="关闭共享会话"
+                      aria-label={t("关闭共享会话")}
                       disabled={!activeSession?.serverSessionId}
                       loading={closeSessionMutation.isPending}
                     />
@@ -1449,7 +1462,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                   />
                 ))
               ) : (
-                <Empty description="暂无 VNC 会话" />
+                <Empty description={t("暂无 VNC 会话")} />
               )}
             </div>
             {activeConnected ? (
@@ -1504,7 +1517,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         autoCapitalize="none"
         autoCorrect="off"
         autoComplete="off"
-        aria-label="VNC 远程键盘输入"
+        aria-label={t("VNC 远程键盘输入")}
         onBeforeInput={handleMobileKeyboardInput}
         onKeyDown={handleMobileKeyboardKeyDown}
         onChange={(event) => {
@@ -1512,7 +1525,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         }}
       />
       <Drawer
-        title="VNC 控制"
+        title={t("VNC 控制")}
         open={mobileControlsOpen}
         placement="bottom"
         height="auto"
@@ -1539,7 +1552,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                 connectActiveSession();
               }}
             >
-              连接当前
+              {t("连接当前")}
             </Button>
             <PermissionButton
               permission="system:vnc:connect"
@@ -1552,16 +1565,16 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                 });
               }}
             >
-              新建连接
+              {t("新建连接")}
             </PermissionButton>
             <Button icon={<LinkOutlined />} onClick={addBlankSession}>
-              新建标签
+              {t("新建标签")}
             </Button>
             <Button
               icon={<ReloadOutlined />}
               onClick={() => void sessionsQuery.refetch()}
             >
-              刷新会话
+              {t("刷新会话")}
             </Button>
             {selectedCredentialTarget?.credentials_saved ? (
               <Button
@@ -1573,7 +1586,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                   setMobileControlsOpen(false);
                 }}
               >
-                清除保存凭据
+                {t("清除保存凭据")}
               </Button>
             ) : null}
             <Button
@@ -1588,7 +1601,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                 setMobileControlsOpen(false);
               }}
             >
-              关闭共享会话
+              {t("关闭共享会话")}
             </Button>
             <Button
               icon={<CloseOutlined />}
@@ -1600,7 +1613,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                 setMobileControlsOpen(false);
               }}
             >
-              关闭标签
+              {t("关闭标签")}
             </Button>
           </div>
         </Space>
@@ -1624,14 +1637,14 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         title={
           <Space size={8}>
             <KeyOutlined />
-            <span>VNC 登录</span>
+            <span>{t("VNC 登录")}</span>
           </Space>
         }
         open={Boolean(credentialRequest)}
         zIndex={1700}
         rootClassName="vnc-credential-modal-root"
-        okText="连接"
-        cancelText="取消"
+        okText={t("连接")}
+        cancelText={t("取消")}
         onOk={submitCredentials}
         onCancel={closeCredentialPrompt}
         destroyOnClose
@@ -1644,7 +1657,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
               autoComplete="off"
               data-1p-ignore="true"
               data-lpignore="true"
-              placeholder="用户名"
+              placeholder={t("用户名")}
               value={credentialUsername}
               onChange={(event) => setCredentialUsername(event.target.value)}
               onPressEnter={submitCredentials}
@@ -1657,7 +1670,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
               autoComplete="new-password"
               data-1p-ignore="true"
               data-lpignore="true"
-              placeholder="VNC 密码"
+              placeholder={t("VNC 密码")}
               value={credentialPassword}
               onChange={(event) => setCredentialPassword(event.target.value)}
               onPressEnter={submitCredentials}
@@ -1665,7 +1678,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
           ) : null}
           {credentialRequest?.types.includes("target") ? (
             <Input
-              placeholder="目标"
+              placeholder={t("目标")}
               value={credentialTarget}
               onChange={(event) => setCredentialTarget(event.target.value)}
               onPressEnter={submitCredentials}
@@ -1675,7 +1688,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
             checked={rememberCredentials}
             onChange={(event) => setRememberCredentials(event.target.checked)}
           >
-            记住此 VNC 目标的凭据
+            {t("记住此 VNC 目标的凭据")}
           </Checkbox>
         </Space>
       </Modal>

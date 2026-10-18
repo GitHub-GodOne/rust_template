@@ -44,17 +44,18 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const statusOptions = [
-  { value: "draft", label: "草稿" },
-  { value: "published", label: "已发布" },
-  { value: "archived", label: "已归档" },
+  { value: "draft", label: t("草稿") },
+  { value: "published", label: t("已发布") },
+  { value: "archived", label: t("已归档") },
 ];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  draft: { label: "草稿", color: "default" },
-  published: { label: "已发布", color: "green" },
-  archived: { label: "已归档", color: "orange" },
+  draft: { label: t("草稿"), color: "default" },
+  published: { label: t("已发布"), color: "green" },
+  archived: { label: t("已归档"), color: "orange" },
 };
 
 type ArticleFormValues = Omit<SaveContentArticleParams, "published_at"> & {
@@ -66,9 +67,9 @@ export function ContentPage() {
 
   return (
     <CrudPage
-      title="内容管理"
-      subtitle="维护后台模板的内容栏目、文章草稿、发布状态与 SEO 信息"
-      breadcrumb={["系统管理", "内容管理"]}
+      title={t("内容管理")}
+      subtitle={t("维护后台模板的内容栏目、文章草稿、发布状态与 SEO 信息")}
+      breadcrumb={[t("系统管理"), t("内容管理")]}
       icon={<BookOutlined />}
     >
       <Tabs
@@ -77,12 +78,12 @@ export function ContentPage() {
         items={[
           {
             key: "categories",
-            label: "栏目管理",
+            label: t("栏目管理"),
             children: <ContentCategoriesTab />,
           },
           {
             key: "articles",
-            label: "文章管理",
+            label: t("文章管理"),
             children: <ContentArticlesTab />,
           },
         ]}
@@ -117,7 +118,7 @@ function ContentCategoriesTab() {
         ? updateContentCategory(editing.id, values)
         : createContentCategory(values),
     onSuccess: () => {
-      message.success("栏目已保存");
+      message.success(t("栏目已保存"));
       setFormOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ["admin-content-categories"] });
@@ -127,24 +128,24 @@ function ContentCategoriesTab() {
   const deleteMutation = useMutation({
     mutationFn: deleteContentCategory,
     onSuccess: () => {
-      message.success("栏目已删除");
+      message.success(t("栏目已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-content-categories"] });
     },
   });
 
   const columns: ColumnsType<ContentCategoryRecord> = [
-    { title: "名称", dataIndex: "name", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
     { title: "Slug", dataIndex: "slug", width: 180 },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
-    { title: "排序", dataIndex: "sort_order", width: 90 },
-    { title: "更新时间", dataIndex: "updated_at", width: 220 },
+    { title: t("排序"), dataIndex: "sort_order", width: 90 },
+    { title: t("更新时间"), dataIndex: "updated_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       render: (_, record) => (
@@ -159,10 +160,10 @@ function ContentCategoriesTab() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除栏目？"
+            title={t("确认删除栏目？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -171,7 +172,7 @@ function ContentCategoriesTab() {
               icon={<DeleteOutlined />}
               permission="system:content_category:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -185,7 +186,7 @@ function ContentCategoriesTab() {
         actions={[
           {
             key: "create",
-            label: "新增栏目",
+            label: t("新增栏目"),
             icon: <PlusOutlined />,
             primary: true,
             permission: "system:content_category:create",
@@ -201,7 +202,7 @@ function ContentCategoriesTab() {
       <Space wrap>
         <Input.Search
           allowClear
-          placeholder="搜索栏目名称、Slug"
+          placeholder={t("搜索栏目名称、Slug")}
           onSearch={(value) => {
             setPage(1);
             setKeyword(value);
@@ -210,15 +211,15 @@ function ContentCategoriesTab() {
         />
         <Select
           allowClear
-          placeholder="启用状态"
+          placeholder={t("启用状态")}
           value={enabled}
           onChange={(value) => {
             setPage(1);
             setEnabled(value);
           }}
           options={[
-            { value: true, label: "启用" },
-            { value: false, label: "停用" },
+            { value: true, label: t("启用") },
+            { value: false, label: t("停用") },
           ]}
           className="admin-filter-select"
         />
@@ -235,7 +236,7 @@ function ContentCategoriesTab() {
       />
 
       <Modal
-        title={editing ? "编辑栏目" : "新增栏目"}
+        title={editing ? t("编辑栏目") : t("新增栏目")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -248,7 +249,11 @@ function ContentCategoriesTab() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="name" label="栏目名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t("栏目名称")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item
@@ -258,19 +263,19 @@ function ContentCategoriesTab() {
               { required: true },
               {
                 pattern: /^[a-z0-9-]+$/,
-                message: "仅支持小写字母、数字和短横线",
+                message: t("仅支持小写字母、数字和短横线"),
               },
             ]}
           >
             <Input placeholder="product-news" />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t("描述")}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="sort_order" label="排序">
+          <Form.Item name="sort_order" label={t("排序")}>
             <InputNumber className="full-width" />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
@@ -335,7 +340,7 @@ function ContentArticlesTab() {
         : createContentArticle(payload);
     },
     onSuccess: () => {
-      message.success("文章已保存");
+      message.success(t("文章已保存"));
       setFormOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ["admin-content-articles"] });
@@ -345,7 +350,7 @@ function ContentArticlesTab() {
   const publishMutation = useMutation({
     mutationFn: publishContentArticle,
     onSuccess: () => {
-      message.success("文章已发布");
+      message.success(t("文章已发布"));
       queryClient.invalidateQueries({ queryKey: ["admin-content-articles"] });
     },
   });
@@ -353,7 +358,7 @@ function ContentArticlesTab() {
   const archiveMutation = useMutation({
     mutationFn: archiveContentArticle,
     onSuccess: () => {
-      message.success("文章已归档");
+      message.success(t("文章已归档"));
       queryClient.invalidateQueries({ queryKey: ["admin-content-articles"] });
     },
   });
@@ -361,15 +366,15 @@ function ContentArticlesTab() {
   const deleteMutation = useMutation({
     mutationFn: deleteContentArticle,
     onSuccess: () => {
-      message.success("文章已删除");
+      message.success(t("文章已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-content-articles"] });
     },
   });
 
   const columns: ColumnsType<ContentArticleRecord> = [
-    { title: "标题", dataIndex: "title", width: 220, ellipsis: true },
+    { title: t("标题"), dataIndex: "title", width: 220, ellipsis: true },
     {
-      title: "栏目",
+      title: t("栏目"),
       dataIndex: "category_id",
       width: 150,
       render: (value) =>
@@ -377,7 +382,7 @@ function ContentArticlesTab() {
     },
     { title: "Slug", dataIndex: "slug", width: 180 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       render: (value) => {
@@ -389,15 +394,15 @@ function ContentArticlesTab() {
       },
     },
     {
-      title: "置顶",
+      title: t("置顶"),
       dataIndex: "is_featured",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
-    { title: "发布时间", dataIndex: "published_at", width: 220 },
-    { title: "更新时间", dataIndex: "updated_at", width: 220 },
+    { title: t("发布时间"), dataIndex: "published_at", width: 220 },
+    { title: t("更新时间"), dataIndex: "updated_at", width: 220 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 300,
       render: (_, record) => (
@@ -417,7 +422,7 @@ function ContentArticlesTab() {
               setFormOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -426,7 +431,7 @@ function ContentArticlesTab() {
             disabled={record.status === "published"}
             onClick={() => publishMutation.mutate(record.id)}
           >
-            发布
+            {t("发布")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -435,10 +440,10 @@ function ContentArticlesTab() {
             disabled={record.status === "archived"}
             onClick={() => archiveMutation.mutate(record.id)}
           >
-            归档
+            {t("归档")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除文章？"
+            title={t("确认删除文章？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -447,7 +452,7 @@ function ContentArticlesTab() {
               icon={<DeleteOutlined />}
               permission="system:content_article:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -461,7 +466,7 @@ function ContentArticlesTab() {
         actions={[
           {
             key: "create",
-            label: "新增文章",
+            label: t("新增文章"),
             icon: <PlusOutlined />,
             primary: true,
             permission: "system:content_article:create",
@@ -481,7 +486,7 @@ function ContentArticlesTab() {
       <Space wrap>
         <Input.Search
           allowClear
-          placeholder="搜索标题、Slug"
+          placeholder={t("搜索标题、Slug")}
           onSearch={(value) => {
             setPage(1);
             setKeyword(value);
@@ -490,7 +495,7 @@ function ContentArticlesTab() {
         />
         <Select
           allowClear
-          placeholder="栏目"
+          placeholder={t("栏目")}
           value={categoryId}
           onChange={(value) => {
             setPage(1);
@@ -501,7 +506,7 @@ function ContentArticlesTab() {
         />
         <Select
           allowClear
-          placeholder="状态"
+          placeholder={t("状态")}
           value={status}
           onChange={(value) => {
             setPage(1);
@@ -512,15 +517,15 @@ function ContentArticlesTab() {
         />
         <Select
           allowClear
-          placeholder="置顶"
+          placeholder={t("置顶")}
           value={isFeatured}
           onChange={(value) => {
             setPage(1);
             setIsFeatured(value);
           }}
           options={[
-            { value: true, label: "置顶" },
-            { value: false, label: "普通" },
+            { value: true, label: t("置顶") },
+            { value: false, label: t("普通") },
           ]}
           className="admin-filter-select"
         />
@@ -537,7 +542,7 @@ function ContentArticlesTab() {
       />
 
       <Modal
-        title={editing ? "编辑文章" : "新增文章"}
+        title={editing ? t("编辑文章") : t("新增文章")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -552,12 +557,16 @@ function ContentArticlesTab() {
         >
           <Form.Item
             name="category_id"
-            label="栏目"
+            label={t("栏目")}
             rules={[{ required: true }]}
           >
             <Select options={categoryOptions} />
           </Form.Item>
-          <Form.Item name="title" label="标题" rules={[{ required: true }]}>
+          <Form.Item
+            name="title"
+            label={t("标题")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item
@@ -567,36 +576,48 @@ function ContentArticlesTab() {
               { required: true },
               {
                 pattern: /^[a-z0-9-]+$/,
-                message: "仅支持小写字母、数字和短横线",
+                message: t("仅支持小写字母、数字和短横线"),
               },
             ]}
           >
             <Input placeholder="release-notes" />
           </Form.Item>
-          <Form.Item name="summary" label="摘要">
+          <Form.Item name="summary" label={t("摘要")}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="content" label="正文" rules={[{ required: true }]}>
+          <Form.Item
+            name="content"
+            label={t("正文")}
+            rules={[{ required: true }]}
+          >
             <Input.TextArea rows={10} />
           </Form.Item>
-          <Form.Item name="cover_image_url" label="封面 URL">
+          <Form.Item name="cover_image_url" label={t("封面 URL")}>
             <Input />
           </Form.Item>
           <Space wrap>
-            <Form.Item name="status" label="状态" rules={[{ required: true }]}>
+            <Form.Item
+              name="status"
+              label={t("状态")}
+              rules={[{ required: true }]}
+            >
               <Select options={statusOptions} className="admin-filter-select" />
             </Form.Item>
-            <Form.Item name="published_at" label="发布时间">
+            <Form.Item name="published_at" label={t("发布时间")}>
               <DatePicker showTime className="admin-filter-select" />
             </Form.Item>
-            <Form.Item name="is_featured" label="置顶" valuePropName="checked">
+            <Form.Item
+              name="is_featured"
+              label={t("置顶")}
+              valuePropName="checked"
+            >
               <Switch />
             </Form.Item>
           </Space>
-          <Form.Item name="seo_title" label="SEO 标题">
+          <Form.Item name="seo_title" label={t("SEO 标题")}>
             <Input />
           </Form.Item>
-          <Form.Item name="seo_description" label="SEO 描述">
+          <Form.Item name="seo_description" label={t("SEO 描述")}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

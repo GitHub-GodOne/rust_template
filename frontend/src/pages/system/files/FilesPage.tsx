@@ -78,6 +78,7 @@ import {
   useFinderHistory,
   useFinderView,
 } from "../../../components/admin/finder/useFinderHistory";
+import { t } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 import { decodeTextBlob } from "../../../utils/textEncoding";
 import { fileKind, formatBytes } from "../uploads/uploadTaskManager";
@@ -343,7 +344,7 @@ export function FilesPage() {
         setTreeData([
           {
             key: "",
-            title: "根目录",
+            title: t("根目录"),
             icon: <FolderOpenOutlined />,
             children: browser.directories.map(folderTreeNode),
           },
@@ -353,7 +354,7 @@ export function FilesPage() {
       .catch((error) => {
         if (!cancelled) {
           message.error(
-            error instanceof Error ? error.message : "目录树加载失败",
+            error instanceof Error ? error.message : t("目录树加载失败"),
           );
         }
       });
@@ -386,34 +387,36 @@ export function FilesPage() {
   const createFolderMutation = useMutation({
     mutationFn: (values: FolderFormValues) => {
       if (!rootKey) {
-        throw new Error("请先选择文件根目录");
+        throw new Error(t("请先选择文件根目录"));
       }
       const path = joinRelativePath(currentPath, values.name);
       if (!path) {
-        throw new Error("请输入文件夹名称");
+        throw new Error(t("请输入文件夹名称"));
       }
       return createFileFolder({ root_key: rootKey, path });
     },
     onSuccess: () => {
-      message.success("文件夹已创建");
+      message.success(t("文件夹已创建"));
       setFolderModalOpen(false);
       folderForm.resetFields();
       refreshFiles();
       loadTreeChildren(currentPath);
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "创建文件夹失败");
+      message.error(
+        error instanceof Error ? error.message : t("创建文件夹失败"),
+      );
     },
   });
 
   const createFileMutation = useMutation({
     mutationFn: (values: FileFormValues) => {
       if (!rootKey) {
-        throw new Error("请先选择文件根目录");
+        throw new Error(t("请先选择文件根目录"));
       }
       const path = joinRelativePath(currentPath, values.name);
       if (!path) {
-        throw new Error("请输入文件名称");
+        throw new Error(t("请输入文件名称"));
       }
       return createManagedFile({
         root_key: rootKey,
@@ -423,7 +426,7 @@ export function FilesPage() {
     },
     onSuccess: (record, values) => {
       const content = values.content ?? "";
-      message.success("文件已创建");
+      message.success(t("文件已创建"));
       setFileModalOpen(false);
       fileForm.resetFields();
       refreshFiles();
@@ -437,14 +440,14 @@ export function FilesPage() {
       }
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "创建文件失败");
+      message.error(error instanceof Error ? error.message : t("创建文件失败"));
     },
   });
 
   const renameMutation = useMutation({
     mutationFn: (values: RenameFormValues) => {
       if (!rootKey || !renaming) {
-        throw new Error("请选择文件");
+        throw new Error(t("请选择文件"));
       }
       return renameManagedFile({
         root_key: rootKey,
@@ -453,7 +456,7 @@ export function FilesPage() {
       });
     },
     onSuccess: () => {
-      message.success("文件已重命名");
+      message.success(t("文件已重命名"));
       setRenaming(null);
       renameForm.resetFields();
       refreshFiles();
@@ -463,14 +466,14 @@ export function FilesPage() {
       }
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "重命名失败");
+      message.error(error instanceof Error ? error.message : t("重命名失败"));
     },
   });
 
   const accessMutation = useMutation({
     mutationFn: (values: AccessFormValues) => {
       if (!rootKey || !accessEditing) {
-        throw new Error("请选择文件");
+        throw new Error(t("请选择文件"));
       }
       return updateManagedFileAccess({
         root_key: rootKey,
@@ -489,7 +492,7 @@ export function FilesPage() {
       });
     },
     onSuccess: (record) => {
-      message.success("访问设置已保存");
+      message.success(t("访问设置已保存"));
       setAccessEditing(null);
       accessForm.resetFields();
       refreshFiles();
@@ -499,7 +502,7 @@ export function FilesPage() {
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "访问设置保存失败",
+        error instanceof Error ? error.message : t("访问设置保存失败"),
       );
     },
   });
@@ -516,7 +519,7 @@ export function FilesPage() {
         content: variables.content,
       }),
     onSuccess: (record, variables) => {
-      message.success("文件内容已保存");
+      message.success(t("文件内容已保存"));
       setContentEditing(record);
       setEditorOriginalContent(variables.content);
       setEditorUpdatedAt(record.updated_at ?? undefined);
@@ -527,7 +530,7 @@ export function FilesPage() {
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "文件内容保存失败",
+        error instanceof Error ? error.message : t("文件内容保存失败"),
       );
     },
   });
@@ -535,12 +538,12 @@ export function FilesPage() {
   const deleteMutation = useMutation({
     mutationFn: (record: ManagedFileRecord) => {
       if (!rootKey) {
-        throw new Error("请先选择文件根目录");
+        throw new Error(t("请先选择文件根目录"));
       }
       return deleteManagedFile({ root_key: rootKey, path: record.path });
     },
     onSuccess: (_, record) => {
-      message.success(record.is_dir ? "文件夹已删除" : "文件已删除");
+      message.success(record.is_dir ? t("文件夹已删除") : t("文件已删除"));
       refreshFiles();
       loadTreeChildren(parentPath(record.path));
       if (previewing?.path === record.path) {
@@ -548,14 +551,14 @@ export function FilesPage() {
       }
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "删除失败");
+      message.error(error instanceof Error ? error.message : t("删除失败"));
     },
   });
 
   const downloadMutation = useMutation({
     mutationFn: (record: ManagedFileRecord) => {
       if (!rootKey) {
-        throw new Error("请先选择文件根目录");
+        throw new Error(t("请先选择文件根目录"));
       }
       return downloadManagedFile({ root_key: rootKey, path: record.path });
     },
@@ -568,14 +571,14 @@ export function FilesPage() {
       URL.revokeObjectURL(url);
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "下载失败");
+      message.error(error instanceof Error ? error.message : t("下载失败"));
     },
   });
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
       if (!rootKey) {
-        throw new Error("请先选择文件根目录");
+        throw new Error(t("请先选择文件根目录"));
       }
       return uploadManagedFile(file, {
         root_key: rootKey,
@@ -584,7 +587,7 @@ export function FilesPage() {
       });
     },
     onSuccess: () => {
-      message.success("文件已上传");
+      message.success(t("文件已上传"));
       setUploadingName(undefined);
       setUploadPercent(100);
       refreshFiles();
@@ -592,7 +595,7 @@ export function FilesPage() {
     onError: (error) => {
       setUploadingName(undefined);
       setUploadPercent(0);
-      message.error(error instanceof Error ? error.message : "上传失败");
+      message.error(error instanceof Error ? error.message : t("上传失败"));
     },
   });
 
@@ -636,11 +639,11 @@ export function FilesPage() {
       return;
     }
     Modal.confirm({
-      title: "放弃未保存的修改？",
-      content: "关闭编辑器后，本次修改将不会保留。",
-      okText: "放弃修改",
+      title: t("放弃未保存的修改？"),
+      content: t("关闭编辑器后，本次修改将不会保留。"),
+      okText: t("放弃修改"),
       okButtonProps: { danger: true },
-      cancelText: "继续编辑",
+      cancelText: t("继续编辑"),
       onOk: dismissContentEditor,
     });
   };
@@ -673,7 +676,7 @@ export function FilesPage() {
       }
       setContentEditing(null);
       const reason =
-        error instanceof Error ? error.message : "文件内容加载失败";
+        error instanceof Error ? error.message : t("文件内容加载失败");
       message.error(reason);
     } finally {
       if (editorRequestId.current === requestId) {
@@ -684,11 +687,11 @@ export function FilesPage() {
 
   const saveContent = () => {
     if (!rootKey || !contentEditing) {
-      message.error("请选择要编辑的文件");
+      message.error(t("请选择要编辑的文件"));
       return;
     }
     if (editorOverLimit) {
-      message.error("文件超过 1 MiB，无法保存");
+      message.error(t("文件超过 1 MiB，无法保存"));
       return;
     }
     updateContentMutation.mutate({
@@ -748,7 +751,7 @@ export function FilesPage() {
       }
     } catch (error) {
       const reason =
-        error instanceof Error ? error.message : "文件预览加载失败";
+        error instanceof Error ? error.message : t("文件预览加载失败");
       setPreviewError(reason);
       message.error(reason);
     } finally {
@@ -782,9 +785,9 @@ export function FilesPage() {
       await navigator.clipboard.writeText(
         new URL(url, window.location.origin).toString(),
       );
-      message.success("URL 已复制");
+      message.success(t("URL 已复制"));
     } catch {
-      message.error("复制失败，请检查浏览器权限");
+      message.error(t("复制失败，请检查浏览器权限"));
     }
   };
 
@@ -810,21 +813,21 @@ export function FilesPage() {
         ? {
             key: "open",
             icon: <FolderOpenOutlined />,
-            label: "打开",
+            label: t("打开"),
             onClick: () => openPath(record.path),
           }
         : isEditableTextFile(record) && hasPermission("system:file:update")
           ? {
               key: "edit",
               icon: <FileTextOutlined />,
-              label: "编辑文本",
+              label: t("编辑文本"),
               onClick: () => openContentEditor(record),
             }
           : hasPermission("system:file:download")
             ? {
                 key: "open-preview",
                 icon: <EyeOutlined />,
-                label: "预览",
+                label: t("预览"),
                 onClick: () => openPreview(record),
               }
             : null,
@@ -835,21 +838,21 @@ export function FilesPage() {
         ? {
             key: "preview",
             icon: <EyeOutlined />,
-            label: "预览",
+            label: t("预览"),
             onClick: () => openPreview(record),
           }
         : null,
       {
         key: "copy-url",
         icon: <LinkOutlined />,
-        label: "复制 URL",
+        label: t("复制 URL"),
         onClick: () => copyUrl(record),
       },
       !record.is_dir && hasPermission("system:file:download")
         ? {
             key: "download",
             icon: <CloudDownloadOutlined />,
-            label: "下载",
+            label: t("下载"),
             onClick: () => downloadMutation.mutate(record),
           }
         : null,
@@ -857,7 +860,7 @@ export function FilesPage() {
         ? {
             key: "access",
             icon: <LinkOutlined />,
-            label: "访问设置",
+            label: t("访问设置"),
             onClick: () => openAccessEditor(record),
           }
         : null,
@@ -865,7 +868,7 @@ export function FilesPage() {
         ? {
             key: "rename",
             icon: <EditOutlined />,
-            label: "重命名",
+            label: t("重命名"),
             onClick: () => openRename(record),
           }
         : null,
@@ -874,14 +877,16 @@ export function FilesPage() {
         ? {
             key: "delete",
             icon: <DeleteOutlined />,
-            label: "删除",
+            label: t("删除"),
             danger: true,
             onClick: () =>
               Modal.confirm({
-                title: record.is_dir ? "确认删除空文件夹？" : "确认删除文件？",
-                okText: "删除",
+                title: record.is_dir
+                  ? t("确认删除空文件夹？")
+                  : t("确认删除文件？"),
+                okText: t("删除"),
                 okButtonProps: { danger: true },
-                cancelText: "取消",
+                cancelText: t("取消"),
                 onOk: () => deleteMutation.mutateAsync(record),
               }),
           }
@@ -911,12 +916,12 @@ export function FilesPage() {
     if (previewLoading) {
       return (
         <div className="material-preview-empty">
-          <Spin tip="正在加载预览" />
+          <Spin tip={t("正在加载预览")} />
         </div>
       );
     }
     if (!previewing) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     if (previewError) {
       return (
@@ -930,7 +935,7 @@ export function FilesPage() {
       return <pre className="material-preview-text">{previewText}</pre>;
     }
     if (!previewObjectUrl) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     const kind = fileKind(previewing);
     if (kind === "image") {
@@ -978,14 +983,14 @@ export function FilesPage() {
     return (
       <div className="material-preview-empty">
         <Typography.Text type="secondary">
-          该文件类型暂不支持在线预览，请下载后查看。
+          {t("该文件类型暂不支持在线预览，请下载后查看。")}
         </Typography.Text>
         <PermissionButton
           icon={<CloudDownloadOutlined />}
           permission="system:file:download"
           onClick={() => downloadMutation.mutate(previewing)}
         >
-          下载
+          {t("下载")}
         </PermissionButton>
       </div>
     );
@@ -1006,7 +1011,7 @@ export function FilesPage() {
     badge:
       !row.is_dir && row.visibility === "public"
         ? {
-            label: row.requires_password ? "公开·需密码" : "公开",
+            label: row.requires_password ? t("公开·需密码") : t("公开"),
             tone: row.requires_password ? "orange" : "green",
           }
         : undefined,
@@ -1022,7 +1027,7 @@ export function FilesPage() {
       icon: <CloudUploadOutlined />,
       label: (
         <Upload {...uploadProps} disabled={uploadMutation.isPending}>
-          <span className="finder-menu-upload">上传文件</span>
+          <span className="finder-menu-upload">{t("上传文件")}</span>
         </Upload>
       ),
     },
@@ -1030,15 +1035,15 @@ export function FilesPage() {
     {
       key: "folder",
       icon: <FolderOutlined />,
-      label: "新建文件夹",
+      label: t("新建文件夹"),
       onClick: () => setFolderModalOpen(true),
     },
     {
       key: "file",
       icon: <FileAddOutlined />,
-      label: "新建文本文件",
+      label: t("新建文本文件"),
       onClick: () => {
-        fileForm.setFieldsValue({ name: "新建文件.txt", content: "" });
+        fileForm.setFieldsValue({ name: t("新建文件.txt"), content: "" });
         setFileModalOpen(true);
       },
     },
@@ -1062,8 +1067,8 @@ export function FilesPage() {
   return (
     <div className="finder-page-shell">
       <FinderShell
-        label="文件管理"
-        rootLabel={selectedRoot?.name ?? "文件管理"}
+        label={t("文件管理")}
+        rootLabel={selectedRoot?.name ?? t("文件管理")}
         crumbs={currentPathSegments.map((segment) => ({
           key: segment.path,
           label: segment.name,
@@ -1081,7 +1086,7 @@ export function FilesPage() {
         onViewChange={setView}
         search={{
           value: keyword,
-          placeholder: "搜索当前文件夹",
+          placeholder: t("搜索当前文件夹"),
           onChange: setKeyword,
         }}
         actions={
@@ -1096,18 +1101,18 @@ export function FilesPage() {
                   type="primary"
                   size="small"
                   icon={<PlusOutlined />}
-                  aria-label="新建"
+                  aria-label={t("新建")}
                 >
-                  <span className="finder-action-label">新建</span>
+                  <span className="finder-action-label">{t("新建")}</span>
                 </Button>
               </Dropdown>
             ) : null}
-            <Tooltip title="刷新">
+            <Tooltip title={t("刷新")}>
               <Button
                 type="text"
                 size="small"
                 icon={<ReloadOutlined spin={browserQuery.isFetching} />}
-                aria-label="刷新"
+                aria-label={t("刷新")}
                 onClick={refreshFiles}
               />
             </Tooltip>
@@ -1115,13 +1120,13 @@ export function FilesPage() {
         }
         sidebar={
           <>
-            <FinderSidebarSection title="位置">
+            <FinderSidebarSection title={t("位置")}>
               {roots.length === 0 && !rootsQuery.isLoading ? (
                 <Typography.Text
                   type="secondary"
                   className="finder-sidebar-hint"
                 >
-                  尚未在系统设置中配置文件根目录
+                  {t("尚未在系统设置中配置文件根目录")}
                 </Typography.Text>
               ) : null}
               {roots.map((root) => (
@@ -1139,7 +1144,7 @@ export function FilesPage() {
               ))}
             </FinderSidebarSection>
             {selectedRoot ? (
-              <FinderSidebarSection title="文件夹">
+              <FinderSidebarSection title={t("文件夹")}>
                 <FinderTree
                   selectedKeys={[currentPath]}
                   expandedKeys={expandedTreeKeys}
@@ -1154,8 +1159,12 @@ export function FilesPage() {
         }
         status={
           selectedRecord
-            ? `已选择“${selectedRecord.name}”，共 ${rows.length} 项`
-            : `${folderCount} 个文件夹，${rows.length - folderCount} 个文件`
+            ? t("已选择“{0}”，共 {1} 项", selectedRecord.name, rows.length)
+            : t(
+                "{0} 个文件夹，{1} 个文件",
+                folderCount,
+                rows.length - folderCount,
+              )
         }
         statusAside={
           selectedRoot ? (
@@ -1166,7 +1175,7 @@ export function FilesPage() {
                   selectedRoot.url_path,
                   window.location.origin,
                 ).toString(),
-                tooltips: ["复制根 URL", "已复制"],
+                tooltips: [t("复制根 URL"), t("已复制")],
               }}
             >
               {selectedRoot.url_path}
@@ -1201,12 +1210,12 @@ export function FilesPage() {
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
                     !rootKey
-                      ? "请选择左侧的位置"
+                      ? t("请选择左侧的位置")
                       : keyword
-                        ? "没有匹配的文件"
+                        ? t("没有匹配的文件")
                         : canCreate
-                          ? "空文件夹，可拖拽文件到这里上传"
-                          : "空文件夹"
+                          ? t("空文件夹，可拖拽文件到这里上传")
+                          : t("空文件夹")
                   }
                 />
               }
@@ -1215,7 +1224,7 @@ export function FilesPage() {
         </div>
       </FinderShell>
       <Modal
-        title="新建文件"
+        title={t("新建文件")}
         open={fileModalOpen}
         onCancel={() => {
           setFileModalOpen(false);
@@ -1229,33 +1238,33 @@ export function FilesPage() {
           layout="vertical"
           onFinish={(values) => createFileMutation.mutate(values)}
         >
-          <Form.Item label="当前目录">
-            <Typography.Text>{currentPath || "根目录"}</Typography.Text>
+          <Form.Item label={t("当前目录")}>
+            <Typography.Text>{currentPath || t("根目录")}</Typography.Text>
           </Form.Item>
           <Form.Item
             name="name"
-            label="文件名称"
+            label={t("文件名称")}
             rules={[
-              { required: true, message: "请输入文件名称" },
+              { required: true, message: t("请输入文件名称") },
               {
                 pattern: /^[^/\\]+$/,
-                message: "文件名称不能包含 / 或 \\",
+                message: t("文件名称不能包含 / 或 \\"),
               },
             ]}
           >
-            <Input placeholder="例如 notes.txt" autoFocus />
+            <Input placeholder={t("例如 notes.txt")} autoFocus />
           </Form.Item>
-          <Form.Item name="content" label="初始内容（可选）">
+          <Form.Item name="content" label={t("初始内容（可选）")}>
             <Input.TextArea
               rows={8}
-              placeholder="可留空，创建后可以继续编辑"
+              placeholder={t("可留空，创建后可以继续编辑")}
               spellCheck={false}
             />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="新建文件夹"
+        title={t("新建文件夹")}
         open={folderModalOpen}
         onCancel={() => setFolderModalOpen(false)}
         onOk={() => folderForm.submit()}
@@ -1266,20 +1275,20 @@ export function FilesPage() {
           layout="vertical"
           onFinish={(values) => createFolderMutation.mutate(values)}
         >
-          <Form.Item label="当前目录">
-            <Typography.Text>{currentPath || "根目录"}</Typography.Text>
+          <Form.Item label={t("当前目录")}>
+            <Typography.Text>{currentPath || t("根目录")}</Typography.Text>
           </Form.Item>
           <Form.Item
             name="name"
-            label="文件夹名称"
-            rules={[{ required: true, message: "请输入文件夹名称" }]}
+            label={t("文件夹名称")}
+            rules={[{ required: true, message: t("请输入文件夹名称") }]}
           >
-            <Input placeholder="例如 images" />
+            <Input placeholder={t("例如 images")} />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="重命名"
+        title={t("重命名")}
         open={Boolean(renaming)}
         onCancel={() => setRenaming(null)}
         onOk={() => renameForm.submit()}
@@ -1290,20 +1299,20 @@ export function FilesPage() {
           layout="vertical"
           onFinish={(values) => renameMutation.mutate(values)}
         >
-          <Form.Item label="当前路径">
+          <Form.Item label={t("当前路径")}>
             <Typography.Text>{renaming?.path ?? "-"}</Typography.Text>
           </Form.Item>
           <Form.Item
             name="name"
-            label="新名称"
-            rules={[{ required: true, message: "请输入新名称" }]}
+            label={t("新名称")}
+            rules={[{ required: true, message: t("请输入新名称") }]}
           >
             <Input />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="访问设置"
+        title={t("访问设置")}
         open={Boolean(accessEditing)}
         onCancel={() => setAccessEditing(null)}
         onOk={() => accessForm.submit()}
@@ -1315,52 +1324,57 @@ export function FilesPage() {
           initialValues={{ visibility: "private", password_enabled: false }}
           onFinish={(values) => accessMutation.mutate(values)}
         >
-          <Form.Item label="文件路径">
+          <Form.Item label={t("文件路径")}>
             <Typography.Text>{accessEditing?.path ?? "-"}</Typography.Text>
           </Form.Item>
-          <Form.Item name="visibility" label="访问方式">
+          <Form.Item name="visibility" label={t("访问方式")}>
             <Segmented
               options={[
-                { label: "私有", value: "private" },
-                { label: "公开", value: "public" },
+                { label: t("私有"), value: "private" },
+                { label: t("公开"), value: "public" },
               ]}
             />
           </Form.Item>
           {accessVisibility === "public" ? (
             <Form.Item
               name="password_enabled"
-              label="访问密码"
+              label={t("访问密码")}
               valuePropName="checked"
             >
-              <Switch checkedChildren="启用" unCheckedChildren="关闭" />
+              <Switch
+                checkedChildren={t("启用")}
+                unCheckedChildren={t("关闭")}
+              />
             </Form.Item>
           ) : null}
           {accessVisibility === "public" && accessPasswordEnabled ? (
             <Form.Item
               name="password"
               label={
-                accessEditing?.requires_password ? "新访问密码" : "访问密码"
+                accessEditing?.requires_password
+                  ? t("新访问密码")
+                  : t("访问密码")
               }
               rules={[
                 {
                   required: !accessEditing?.requires_password,
-                  message: "请输入访问密码",
+                  message: t("请输入访问密码"),
                 },
               ]}
             >
-              <Input.Password placeholder="留空则保留原密码" />
+              <Input.Password placeholder={t("留空则保留原密码")} />
             </Form.Item>
           ) : null}
           {accessEditing?.requires_password ? (
             <Form.Item name="clear_password" valuePropName="checked">
               <Switch
-                checkedChildren="清除原密码"
-                unCheckedChildren="保留原密码"
+                checkedChildren={t("清除原密码")}
+                unCheckedChildren={t("保留原密码")}
               />
             </Form.Item>
           ) : null}
           {accessEditing?.public_url ? (
-            <Form.Item label="公开链接">
+            <Form.Item label={t("公开链接")}>
               <Typography.Text copyable>
                 {new URL(
                   accessEditing.public_url,
@@ -1372,7 +1386,11 @@ export function FilesPage() {
         </Form>
       </Modal>
       <Modal
-        title={contentEditing ? `编辑文本：${contentEditing.name}` : "编辑文本"}
+        title={
+          contentEditing
+            ? t("编辑文本：{0}", contentEditing.name)
+            : t("编辑文本")
+        }
         open={Boolean(contentEditing)}
         onCancel={closeContentEditor}
         maskClosable={false}
@@ -1387,7 +1405,7 @@ export function FilesPage() {
               {formatBytes(editorByteSize)} / 1 MiB
             </Typography.Text>
             <Space>
-              <Button onClick={closeContentEditor}>关闭</Button>
+              <Button onClick={closeContentEditor}>{t("关闭")}</Button>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
@@ -1400,13 +1418,13 @@ export function FilesPage() {
                 }
                 onClick={saveContent}
               >
-                保存
+                {t("保存")}
               </Button>
             </Space>
           </div>
         }
       >
-        <Spin spinning={editorLoading} tip="正在读取文件">
+        <Spin spinning={editorLoading} tip={t("正在读取文件")}>
           <div className="managed-file-editor-shell">
             <div className="managed-file-editor-meta">
               <Space wrap size={6}>
@@ -1417,31 +1435,34 @@ export function FilesPage() {
               </Space>
               <Typography.Text type="secondary">
                 {editorUpdatedAt
-                  ? `更新于 ${new Date(editorUpdatedAt).toLocaleString("zh-CN")}`
-                  : "尚无更新时间"}
+                  ? t(
+                      "更新于 {0}",
+                      new Date(editorUpdatedAt).toLocaleString("zh-CN"),
+                    )
+                  : t("尚无更新时间")}
               </Typography.Text>
             </div>
             <Input.TextArea
-              aria-label="文件内容编辑器"
+              aria-label={t("文件内容编辑器")}
               className="managed-file-editor-textarea"
               value={editorContent}
               disabled={editorLoading || updateContentMutation.isPending}
               autoSize={false}
               spellCheck={false}
-              placeholder="输入文件内容"
+              placeholder={t("输入文件内容")}
               onChange={(event) => setEditorContent(event.target.value)}
               onKeyDown={handleEditorKeyDown}
             />
             {editorOverLimit ? (
               <Typography.Text type="danger">
-                当前内容超过 1 MiB，请缩减后再保存。
+                {t("当前内容超过 1 MiB，请缩减后再保存。")}
               </Typography.Text>
             ) : null}
           </div>
         </Spin>
       </Modal>
       <Modal
-        title={previewing ? `预览：${previewing.name}` : "文件预览"}
+        title={previewing ? t("预览：{0}", previewing.name) : t("文件预览")}
         open={Boolean(previewing)}
         onCancel={closePreview}
         footer={
@@ -1451,7 +1472,7 @@ export function FilesPage() {
                 icon={<LinkOutlined />}
                 onClick={() => copyUrl(previewing)}
               >
-                复制URL
+                {t("复制URL")}
               </Button>
               <PermissionButton
                 icon={<CloudDownloadOutlined />}
@@ -1459,7 +1480,7 @@ export function FilesPage() {
                 loading={downloadMutation.isPending}
                 onClick={() => downloadMutation.mutate(previewing)}
               >
-                下载
+                {t("下载")}
               </PermissionButton>
               {isEditableTextFile(previewing) ? (
                 <PermissionButton
@@ -1471,10 +1492,10 @@ export function FilesPage() {
                     openContentEditor(record);
                   }}
                 >
-                  编辑文本
+                  {t("编辑文本")}
                 </PermissionButton>
               ) : null}
-              <Button onClick={closePreview}>关闭</Button>
+              <Button onClick={closePreview}>{t("关闭")}</Button>
             </Space>
           ) : null
         }

@@ -19,15 +19,16 @@ import {
   fetchTemperatureHistory,
 } from "../../../api/admin/monitoring";
 import { DataTable } from "../../../components/admin/DataTable";
+import { t } from "../../../i18n";
 
 function formatTemperature(value: number | null | undefined) {
-  return value == null ? "不可用" : `${value.toFixed(1)} ℃`;
+  return value == null ? t("不可用") : `${value.toFixed(1)} ℃`;
 }
 
 const sensorColumns: ColumnsType<TemperatureReading> = [
-  { title: "传感器", dataIndex: "sensor", width: 260 },
+  { title: t("传感器"), dataIndex: "sensor", width: 260 },
   {
-    title: "温度",
+    title: t("温度"),
     dataIndex: "temperature_celsius",
     width: 150,
     render: (value: number | null, sensor) =>
@@ -40,11 +41,11 @@ const sensorColumns: ColumnsType<TemperatureReading> = [
       ),
   },
   {
-    title: "传感器临界温度",
+    title: t("传感器临界温度"),
     dataIndex: "critical_celsius",
     width: 180,
     render: (value: number | null) =>
-      value == null ? "未提供" : formatTemperature(value),
+      value == null ? t("未提供") : formatTemperature(value),
   },
 ];
 
@@ -77,39 +78,47 @@ export function TemperatureCard({
     undefined,
   );
   return (
-    <Card title="主机温度" className="admin-card">
+    <Card title={t("主机温度")} className="admin-card">
       <Space direction="vertical" className="full-width" size="middle">
         <Space wrap size="large">
           <div>
-            <Typography.Text type="secondary">当前最高读数</Typography.Text>
+            <Typography.Text type="secondary">
+              {t("当前最高读数")}
+            </Typography.Text>
             <Typography.Title level={3} style={{ margin: "4px 0" }}>
               {formatTemperature(peak?.temperature_celsius)}
             </Typography.Title>
             <Typography.Text type="secondary">
-              {peak?.sensor ?? "等待有效读数"}
+              {peak?.sensor ?? t("等待有效读数")}
             </Typography.Text>
           </div>
           <Typography.Text type="secondary">
-            可读取 {readable.length} / {snapshot?.sensors.length ?? 0} 个传感器
+            {t(
+              "可读取 {0} / {1} 个传感器",
+              readable.length,
+              snapshot?.sensors.length ?? 0,
+            )}
             <br />
-            温度采样：
-            {snapshot?.captured_at
-              ? new Date(snapshot.captured_at).toLocaleString()
-              : "等待采样"}
+            {t(
+              "温度采样：{0}",
+              snapshot?.captured_at
+                ? new Date(snapshot.captured_at).toLocaleString()
+                : t("等待采样"),
+            )}
           </Typography.Text>
         </Space>
         {snapshot?.available ? null : (
           <Alert
             type="info"
             showIcon
-            message={snapshot?.message ?? "正在读取主机温度传感器"}
+            message={snapshot?.message ?? t("正在读取主机温度传感器")}
           />
         )}
         {snapshot?.sensors.length ? (
           <SensorTable sensors={snapshot.sensors} />
         ) : null}
         <Typography.Text type="secondary">
-          每 15 秒刷新温度，每分钟保存一条历史记录，保留最近 7 天。
+          {t("每 15 秒刷新温度，每分钟保存一条历史记录，保留最近 7 天。")}
         </Typography.Text>
       </Space>
     </Card>
@@ -126,20 +135,20 @@ export function TemperatureHistory() {
   });
   const columns: ColumnsType<TemperatureRecord> = [
     {
-      title: "采样时间",
+      title: t("采样时间"),
       dataIndex: "captured_at",
       width: 220,
       render: (value: string) => new Date(value).toLocaleString(),
     },
-    { title: "主机", dataIndex: "hostname", width: 180 },
+    { title: t("主机"), dataIndex: "hostname", width: 180 },
     {
-      title: "最高温度",
+      title: t("最高温度"),
       dataIndex: "max_temperature_celsius",
       width: 130,
       render: (value: number) => formatTemperature(value),
     },
-    { title: "最高读数传感器", dataIndex: "peak_sensor", width: 240 },
-    { title: "有效传感器数", dataIndex: "sensor_count", width: 140 },
+    { title: t("最高读数传感器"), dataIndex: "peak_sensor", width: 240 },
+    { title: t("有效传感器数"), dataIndex: "sensor_count", width: 140 },
   ];
   return (
     <Space direction="vertical" className="full-width" size="middle">
@@ -152,10 +161,10 @@ export function TemperatureHistory() {
             setPage(1);
           }}
           options={[
-            { value: 1, label: "最近 1 小时" },
-            { value: 6, label: "最近 6 小时" },
-            { value: 24, label: "最近 24 小时" },
-            { value: 168, label: "最近 7 天" },
+            { value: 1, label: t("最近 1 小时") },
+            { value: 6, label: t("最近 6 小时") },
+            { value: 24, label: t("最近 24 小时") },
+            { value: 168, label: t("最近 7 天") },
           ]}
         />
         <Button
@@ -163,10 +172,10 @@ export function TemperatureHistory() {
           loading={history.isFetching}
           onClick={() => history.refetch()}
         >
-          刷新
+          {t("刷新")}
         </Button>
         <Typography.Text type="secondary">
-          展开记录可查看该次采样的全部传感器读数。
+          {t("展开记录可查看该次采样的全部传感器读数。")}
         </Typography.Text>
       </Space>
       {history.isError ? (
@@ -184,7 +193,9 @@ export function TemperatureHistory() {
           ),
         }}
         locale={{
-          emptyText: <Empty description="暂无温度记录，等待首次有效采样" />,
+          emptyText: (
+            <Empty description={t("暂无温度记录，等待首次有效采样")} />
+          ),
         }}
         pagination={{
           current: page,

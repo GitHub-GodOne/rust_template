@@ -55,6 +55,7 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t } from "../../../i18n";
 
 const defaultConfig: HttpClientRuntimeConfig = {
   enabled: true,
@@ -78,7 +79,7 @@ const methodOptions = [
 ].map((method) => ({ value: method, label: method }));
 
 const bodyTypeOptions = [
-  { value: "none", label: "无" },
+  { value: "none", label: t("无") },
   { value: "json", label: "JSON" },
   { value: "form", label: "Form" },
   { value: "raw", label: "Raw" },
@@ -138,7 +139,7 @@ function draftToFormValues(
   draft: HttpRequestDraft,
 ): Partial<RequestFormValues> {
   return {
-    name: draft.name ?? "导入请求",
+    name: draft.name ?? t("导入请求"),
     code: `request_${Date.now()}`,
     method: draft.method,
     url: draft.url,
@@ -195,7 +196,7 @@ export function HttpClientPage() {
   const saveConfigMutation = useMutation({
     mutationFn: updateHttpClientConfig,
     onSuccess: (config) => {
-      message.success("HTTP 客户端配置已保存");
+      message.success(t("HTTP 客户端配置已保存"));
       configForm.setFieldsValue({
         ...config,
         proxy_url: config.proxy_url ?? "",
@@ -204,7 +205,7 @@ export function HttpClientPage() {
       queryClient.setQueryData(["admin-http-client-config"], config);
     },
     onError: (error) =>
-      message.error(error.message || "HTTP 客户端配置保存失败"),
+      message.error(error.message || t("HTTP 客户端配置保存失败")),
   });
   const testMutation = useMutation({ mutationFn: testHttpClientRequest });
   const savePresetMutation = useMutation({
@@ -213,58 +214,58 @@ export function HttpClientPage() {
         ? updateHttpRequestPreset(editing.id, requestPayload(values))
         : createHttpRequestPreset(requestPayload(values)),
     onSuccess: () => {
-      message.success("请求已保存");
+      message.success(t("请求已保存"));
       setRequestOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({
         queryKey: ["admin-http-request-presets"],
       });
     },
-    onError: (error) => message.error(error.message || "请求保存失败"),
+    onError: (error) => message.error(error.message || t("请求保存失败")),
   });
   const deletePresetMutation = useMutation({
     mutationFn: deleteHttpRequestPreset,
     onSuccess: () => {
-      message.success("请求已删除");
+      message.success(t("请求已删除"));
       queryClient.invalidateQueries({
         queryKey: ["admin-http-request-presets"],
       });
     },
-    onError: (error) => message.error(error.message || "请求删除失败"),
+    onError: (error) => message.error(error.message || t("请求删除失败")),
   });
   const sendPresetMutation = useMutation({
     mutationFn: sendHttpRequestPreset,
     onSuccess: (run) => {
-      message.success("请求已发送");
+      message.success(t("请求已发送"));
       setDetailRunId(run.id);
       queryClient.invalidateQueries({ queryKey: ["admin-http-request-runs"] });
       queryClient.invalidateQueries({
         queryKey: ["admin-http-request-presets"],
       });
     },
-    onError: (error) => message.error(error.message || "请求发送失败"),
+    onError: (error) => message.error(error.message || t("请求发送失败")),
   });
   const sendAdHocMutation = useMutation({
     mutationFn: (values: RequestFormValues) =>
       sendAdHocHttpRequest(executePayload(values)),
     onSuccess: (run) => {
-      message.success("请求已发送");
+      message.success(t("请求已发送"));
       setDetailRunId(run.id);
       queryClient.invalidateQueries({ queryKey: ["admin-http-request-runs"] });
     },
-    onError: (error) => message.error(error.message || "请求发送失败"),
+    onError: (error) => message.error(error.message || t("请求发送失败")),
   });
   const importMutation = useMutation({
     mutationFn: parseHttpRequestImport,
     onSuccess: (draft) => {
       requestForm.setFieldsValue(draftToFormValues(draft));
-      message.success("请求已解析到编辑器");
+      message.success(t("请求已解析到编辑器"));
     },
-    onError: (error) => message.error(error.message || "请求解析失败"),
+    onError: (error) => message.error(error.message || t("请求解析失败")),
   });
   const downloadMutation = useMutation({
     mutationFn: downloadHttpRequestRunResult,
-    onError: (error) => message.error(error.message || "结果下载失败"),
+    onError: (error) => message.error(error.message || t("结果下载失败")),
   });
 
   const openRequestEditor = (record?: HttpRequestPresetRecord) => {
@@ -283,23 +284,23 @@ export function HttpClientPage() {
 
   const requestColumns: ColumnsType<HttpRequestPresetRecord> = [
     { title: "ID", dataIndex: "id", width: 70 },
-    { title: "名称", dataIndex: "name", width: 180 },
-    { title: "编码", dataIndex: "code", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
+    { title: t("编码"), dataIndex: "code", width: 180 },
     {
-      title: "方法",
+      title: t("方法"),
       dataIndex: "method",
       width: 90,
       render: (value) => <Tag>{value}</Tag>,
     },
     { title: "URL", dataIndex: "url", width: 360, ellipsis: true },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 300,
       fixed: "right",
@@ -312,7 +313,7 @@ export function HttpClientPage() {
             loading={sendPresetMutation.isPending}
             onClick={() => sendPresetMutation.mutate(record.id)}
           >
-            发送
+            {t("发送")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -320,10 +321,10 @@ export function HttpClientPage() {
             permission="system:http_client:request:update"
             onClick={() => openRequestEditor(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除请求？"
+            title={t("确认删除请求？")}
             onConfirm={() => deletePresetMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -332,7 +333,7 @@ export function HttpClientPage() {
               icon={<DeleteOutlined />}
               permission="system:http_client:request:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -342,16 +343,16 @@ export function HttpClientPage() {
 
   const runColumns: ColumnsType<HttpRequestRunRecord> = [
     { title: "ID", dataIndex: "id", width: 70 },
-    { title: "名称", dataIndex: "name", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
     {
-      title: "方法",
+      title: t("方法"),
       dataIndex: "method",
       width: 90,
       render: (value) => <Tag>{value}</Tag>,
     },
     { title: "URL", dataIndex: "url", width: 360, ellipsis: true },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 120,
       render: (value) => (
@@ -365,21 +366,21 @@ export function HttpClientPage() {
       render: (value) => value ?? "-",
     },
     {
-      title: "耗时",
+      title: t("耗时"),
       dataIndex: "duration_ms",
       width: 100,
       render: (value) => `${value} ms`,
     },
-    { title: "时间", dataIndex: "created_at", width: 210 },
+    { title: t("时间"), dataIndex: "created_at", width: 210 },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       fixed: "right",
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => setDetailRunId(record.id)}>
-            详情
+            {t("详情")}
           </Button>
           {record.has_response_body ? (
             <PermissionButton
@@ -389,7 +390,7 @@ export function HttpClientPage() {
               loading={downloadMutation.isPending}
               onClick={() => downloadMutation.mutate(record)}
             >
-              下载
+              {t("下载")}
             </PermissionButton>
           ) : null}
         </Space>
@@ -408,57 +409,57 @@ export function HttpClientPage() {
         <Space wrap className="full-width">
           <Form.Item
             name="name"
-            label="名称"
-            rules={[{ required: true, message: "请输入名称" }]}
+            label={t("名称")}
+            rules={[{ required: true, message: t("请输入名称") }]}
           >
-            <Input placeholder="例如 查询用户接口" />
+            <Input placeholder={t("例如 查询用户接口")} />
           </Form.Item>
           <Form.Item
             name="code"
-            label="编码"
-            rules={[{ required: true, message: "请输入编码" }]}
+            label={t("编码")}
+            rules={[{ required: true, message: t("请输入编码") }]}
           >
-            <Input placeholder="例如 get_users" />
+            <Input placeholder={t("例如 get_users")} />
           </Form.Item>
           <Form.Item
             name="method"
-            label="方法"
-            rules={[{ required: true, message: "请选择方法" }]}
+            label={t("方法")}
+            rules={[{ required: true, message: t("请选择方法") }]}
           >
             <Select options={methodOptions} style={{ width: 120 }} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Space>
         <Form.Item
           name="url"
           label="URL"
-          rules={[{ required: true, message: "请输入 URL" }]}
+          rules={[{ required: true, message: t("请输入 URL") }]}
         >
           <Input placeholder="https://api.example.com/users" />
         </Form.Item>
-        <Form.Item name="description" label="描述">
+        <Form.Item name="description" label={t("描述")}>
           <Input.TextArea rows={2} />
         </Form.Item>
-        <Form.Item name="headers_json" label="请求头 JSON">
+        <Form.Item name="headers_json" label={t("请求头 JSON")}>
           <Input.TextArea
             rows={3}
             placeholder='{"Authorization":"Bearer token"}'
           />
         </Form.Item>
-        <Form.Item name="query_json" label="查询参数 JSON">
+        <Form.Item name="query_json" label={t("查询参数 JSON")}>
           <Input.TextArea rows={2} placeholder='{"page":"1"}' />
         </Form.Item>
         <Space wrap className="full-width">
-          <Form.Item name="body_type" label="Body 类型">
+          <Form.Item name="body_type" label={t("Body 类型")}>
             <Select options={bodyTypeOptions} style={{ width: 140 }} />
           </Form.Item>
           <Form.Item name="content_type" label="Content-Type">
             <Input placeholder="application/json" style={{ width: 260 }} />
           </Form.Item>
         </Space>
-        <Form.Item name="body_text" label="Body 内容">
+        <Form.Item name="body_text" label={t("Body 内容")}>
           <Input.TextArea rows={6} placeholder='{"name":"demo"}' />
         </Form.Item>
         <Space wrap>
@@ -472,7 +473,7 @@ export function HttpClientPage() {
             loading={savePresetMutation.isPending}
             onClick={() => requestForm.submit()}
           >
-            保存请求
+            {t("保存请求")}
           </PermissionButton>
           <PermissionButton
             icon={<PlayCircleOutlined />}
@@ -484,7 +485,7 @@ export function HttpClientPage() {
                 .then((values) => sendAdHocMutation.mutate(values))
             }
           >
-            仅发送
+            {t("仅发送")}
           </PermissionButton>
         </Space>
       </Form>
@@ -494,11 +495,13 @@ export function HttpClientPage() {
 
   return (
     <CrudPage
-      title="HTTP 客户端"
-      subtitle="统一管理项目对外请求配置、请求模板与执行结果"
-      breadcrumb={["系统管理", "HTTP 客户端"]}
+      title={t("HTTP 客户端")}
+      subtitle={t("统一管理项目对外请求配置、请求模板与执行结果")}
+      breadcrumb={[t("系统管理"), t("HTTP 客户端")]}
       icon={<ApiOutlined />}
-      notice="可配置后端外部 HTTP 请求参数，也可以保存常用请求、发送请求并下载响应结果。"
+      notice={t(
+        "可配置后端外部 HTTP 请求参数，也可以保存常用请求、发送请求并下载响应结果。",
+      )}
       toolbar={
         <Space wrap>
           <Button
@@ -509,7 +512,7 @@ export function HttpClientPage() {
               runsQuery.refetch();
             }}
           >
-            刷新
+            {t("刷新")}
           </Button>
           <PermissionButton
             type="primary"
@@ -517,7 +520,7 @@ export function HttpClientPage() {
             permission="system:http_client:request:create"
             onClick={() => openRequestEditor()}
           >
-            新增请求
+            {t("新增请求")}
           </PermissionButton>
         </Space>
       }
@@ -526,10 +529,10 @@ export function HttpClientPage() {
         items={[
           {
             key: "config",
-            label: "运行时配置",
+            label: t("运行时配置"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
-                <Card title="运行时参数" className="admin-card">
+                <Card title={t("运行时参数")} className="admin-card">
                   <Form
                     form={configForm}
                     layout="vertical"
@@ -545,38 +548,41 @@ export function HttpClientPage() {
                     <Space wrap size={24}>
                       <Form.Item
                         name="enabled"
-                        label="启用全局配置"
+                        label={t("启用全局配置")}
                         valuePropName="checked"
                       >
                         <Switch
-                          checkedChildren="启用"
-                          unCheckedChildren="默认"
+                          checkedChildren={t("启用")}
+                          unCheckedChildren={t("默认")}
                         />
                       </Form.Item>
                       <Form.Item
                         name="danger_accept_invalid_certs"
-                        label="接受无效证书"
-                        valuePropName="checked"
-                      >
-                        <Switch checkedChildren="是" unCheckedChildren="否" />
-                      </Form.Item>
-                      <Form.Item
-                        name="proxy_enabled"
-                        label="启用代理"
+                        label={t("接受无效证书")}
                         valuePropName="checked"
                       >
                         <Switch
-                          checkedChildren="开启"
-                          unCheckedChildren="关闭"
+                          checkedChildren={t("是")}
+                          unCheckedChildren={t("否")}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="proxy_enabled"
+                        label={t("启用代理")}
+                        valuePropName="checked"
+                      >
+                        <Switch
+                          checkedChildren={t("开启")}
+                          unCheckedChildren={t("关闭")}
                         />
                       </Form.Item>
                     </Space>
                     <div className="http-client-grid">
                       <Form.Item
                         name="request_timeout_seconds"
-                        label="整体请求超时（秒）"
+                        label={t("整体请求超时（秒）")}
                         rules={[
-                          { required: true, message: "请输入整体请求超时" },
+                          { required: true, message: t("请输入整体请求超时") },
                         ]}
                       >
                         <InputNumber
@@ -587,8 +593,10 @@ export function HttpClientPage() {
                       </Form.Item>
                       <Form.Item
                         name="connect_timeout_seconds"
-                        label="连接超时（秒）"
-                        rules={[{ required: true, message: "请输入连接超时" }]}
+                        label={t("连接超时（秒）")}
+                        rules={[
+                          { required: true, message: t("请输入连接超时") },
+                        ]}
                       >
                         <InputNumber
                           min={1}
@@ -598,9 +606,12 @@ export function HttpClientPage() {
                       </Form.Item>
                       <Form.Item
                         name="pool_idle_timeout_seconds"
-                        label="连接池空闲超时（秒）"
+                        label={t("连接池空闲超时（秒）")}
                         rules={[
-                          { required: true, message: "请输入连接池空闲超时" },
+                          {
+                            required: true,
+                            message: t("请输入连接池空闲超时"),
+                          },
                         ]}
                       >
                         <InputNumber
@@ -609,25 +620,29 @@ export function HttpClientPage() {
                           style={{ width: "100%" }}
                         />
                       </Form.Item>
-                      <Form.Item name="user_agent" label="全局 User-Agent">
-                        <Input placeholder="留空则使用 reqwest 默认值" />
+                      <Form.Item name="user_agent" label={t("全局 User-Agent")}>
+                        <Input placeholder={t("留空则使用 reqwest 默认值")} />
                       </Form.Item>
                     </div>
                     <Form.Item
                       name="proxy_url"
-                      label="代理地址"
+                      label={t("代理地址")}
                       rules={
                         proxyEnabled
                           ? [
                               {
                                 required: true,
-                                message: "启用代理后必须填写代理地址",
+                                message: t("启用代理后必须填写代理地址"),
                               },
                             ]
                           : []
                       }
                     >
-                      <Input placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080" />
+                      <Input
+                        placeholder={t(
+                          "http://127.0.0.1:7890 或 socks5://127.0.0.1:1080",
+                        )}
+                      />
                     </Form.Item>
                   </Form>
                   <PermissionButton
@@ -637,10 +652,10 @@ export function HttpClientPage() {
                     loading={saveConfigMutation.isPending}
                     onClick={() => configForm.submit()}
                   >
-                    保存配置
+                    {t("保存配置")}
                   </PermissionButton>
                 </Card>
-                <Card title="测试请求" className="admin-card">
+                <Card title={t("测试请求")} className="admin-card">
                   <Form
                     form={testForm}
                     layout="inline"
@@ -649,7 +664,7 @@ export function HttpClientPage() {
                   >
                     <Form.Item
                       name="url"
-                      rules={[{ required: true, message: "请输入测试 URL" }]}
+                      rules={[{ required: true, message: t("请输入测试 URL") }]}
                       style={{ flex: 1, minWidth: 320 }}
                     >
                       <Input placeholder="https://example.com" />
@@ -660,7 +675,7 @@ export function HttpClientPage() {
                         loading={testMutation.isPending}
                         onClick={() => testForm.submit()}
                       >
-                        测试请求
+                        {t("测试请求")}
                       </PermissionButton>
                     </Form.Item>
                   </Form>
@@ -683,10 +698,10 @@ export function HttpClientPage() {
           },
           {
             key: "requests",
-            label: "请求管理",
+            label: t("请求管理"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
-                <Card title="导入请求" className="admin-card">
+                <Card title={t("导入请求")} className="admin-card">
                   <Form
                     form={importForm}
                     layout="vertical"
@@ -694,7 +709,7 @@ export function HttpClientPage() {
                     onFinish={(values) => importMutation.mutate(values)}
                   >
                     <Space wrap className="full-width">
-                      <Form.Item name="format" label="格式">
+                      <Form.Item name="format" label={t("格式")}>
                         <Select
                           style={{ width: 160 }}
                           options={[
@@ -704,19 +719,19 @@ export function HttpClientPage() {
                           ]}
                         />
                       </Form.Item>
-                      <Form.Item label="操作">
+                      <Form.Item label={t("操作")}>
                         <PermissionButton
                           permission="system:http_client:request:create"
                           loading={importMutation.isPending}
                           onClick={() => importForm.submit()}
                         >
-                          解析到编辑器
+                          {t("解析到编辑器")}
                         </PermissionButton>
                       </Form.Item>
                     </Space>
                     <Form.Item
                       name="content"
-                      rules={[{ required: true, message: "请输入导入内容" }]}
+                      rules={[{ required: true, message: t("请输入导入内容") }]}
                     >
                       <Input.TextArea
                         rows={4}
@@ -725,7 +740,7 @@ export function HttpClientPage() {
                     </Form.Item>
                   </Form>
                 </Card>
-                <Card title="已保存请求" className="admin-card">
+                <Card title={t("已保存请求")} className="admin-card">
                   <DataTable<HttpRequestPresetRecord>
                     loading={presetsQuery.isLoading}
                     columns={requestColumns}
@@ -738,9 +753,9 @@ export function HttpClientPage() {
           },
           {
             key: "runs",
-            label: "执行记录",
+            label: t("执行记录"),
             children: (
-              <Card title="请求执行记录" className="admin-card">
+              <Card title={t("请求执行记录")} className="admin-card">
                 <DataTable<HttpRequestRunRecord>
                   loading={runsQuery.isLoading}
                   columns={runColumns}
@@ -754,7 +769,7 @@ export function HttpClientPage() {
       />
 
       <Modal
-        title={editing ? "编辑请求" : "新增请求"}
+        title={editing ? t("编辑请求") : t("新增请求")}
         open={requestOpen}
         onCancel={() => setRequestOpen(false)}
         footer={null}
@@ -764,7 +779,7 @@ export function HttpClientPage() {
       </Modal>
 
       <Drawer
-        title="请求结果详情"
+        title={t("请求结果详情")}
         open={Boolean(detailRunId)}
         onClose={() => setDetailRunId(null)}
         width={720}
@@ -772,10 +787,10 @@ export function HttpClientPage() {
         {detailRun ? (
           <Space direction="vertical" size="middle" className="full-width">
             <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="请求">
+              <Descriptions.Item label={t("请求")}>
                 {detailRun.method} {detailRun.url}
               </Descriptions.Item>
-              <Descriptions.Item label="状态">
+              <Descriptions.Item label={t("状态")}>
                 <Tag color={statusColor[detailRun.status] ?? "default"}>
                   {detailRun.status}
                 </Tag>
@@ -783,23 +798,23 @@ export function HttpClientPage() {
                   ? ` HTTP ${detailRun.response_status_code}`
                   : null}
               </Descriptions.Item>
-              <Descriptions.Item label="耗时">
+              <Descriptions.Item label={t("耗时")}>
                 {detailRun.duration_ms} ms
               </Descriptions.Item>
-              <Descriptions.Item label="响应大小">
+              <Descriptions.Item label={t("响应大小")}>
                 {detailRun.response_size_bytes} B
               </Descriptions.Item>
-              <Descriptions.Item label="错误">
+              <Descriptions.Item label={t("错误")}>
                 {detailRun.error_message ?? "-"}
               </Descriptions.Item>
             </Descriptions>
-            <Typography.Text strong>响应头</Typography.Text>
+            <Typography.Text strong>{t("响应头")}</Typography.Text>
             <pre className="admin-code-block">
               {detailRun.response_headers_json ?? "{}"}
             </pre>
-            <Typography.Text strong>响应预览</Typography.Text>
+            <Typography.Text strong>{t("响应预览")}</Typography.Text>
             <pre className="admin-code-block">
-              {detailRun.response_preview_text ?? "无响应内容"}
+              {detailRun.response_preview_text ?? t("无响应内容")}
             </pre>
             {detailRun.has_response_body ? (
               <PermissionButton
@@ -808,7 +823,7 @@ export function HttpClientPage() {
                 loading={downloadMutation.isPending}
                 onClick={() => downloadMutation.mutate(detailRun)}
               >
-                下载结果
+                {t("下载结果")}
               </PermissionButton>
             ) : null}
           </Space>

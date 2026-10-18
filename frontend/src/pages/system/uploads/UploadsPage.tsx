@@ -99,6 +99,7 @@ import {
   useFinderHistory,
   useFinderView,
 } from "../../../components/admin/finder/useFinderHistory";
+import { t } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 import { decodeTextBlob } from "../../../utils/textEncoding";
 import {
@@ -239,9 +240,9 @@ const EDITABLE_UPLOAD_MIME_TYPES = new Set([
   "application/yaml",
 ]);
 const UPLOAD_STAGE_LABELS: Record<ChunkUploadStage, string> = {
-  preparing: "正在准备上传",
-  uploading: "正在上传到当前目录",
-  finishing: "正在完成上传",
+  preparing: t("正在准备上传"),
+  uploading: t("正在上传到当前目录"),
+  finishing: t("正在完成上传"),
 };
 
 function joinPrefix(prefix: string | undefined, name: string) {
@@ -487,7 +488,7 @@ export function UploadsPage() {
           return [
             {
               key: "",
-              title: "根目录",
+              title: t("根目录"),
               icon: <FolderOpenOutlined />,
               children,
             },
@@ -514,7 +515,7 @@ export function UploadsPage() {
         setTreeData([
           {
             key: "",
-            title: "根目录",
+            title: t("根目录"),
             icon: <FolderOpenOutlined />,
             children: browser.prefixes.map(folderTreeNode),
           },
@@ -524,7 +525,7 @@ export function UploadsPage() {
       .catch((error) => {
         if (!cancelled) {
           message.error(
-            error instanceof Error ? error.message : "目录树加载失败",
+            error instanceof Error ? error.message : t("目录树加载失败"),
           );
         }
       });
@@ -570,13 +571,13 @@ export function UploadsPage() {
         },
       }),
     onSuccess: () => {
-      message.success("素材已上传");
+      message.success(t("素材已上传"));
       finishUploadFeedback();
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     },
     onError: (error) => {
-      const reason = error instanceof Error ? error.message : "素材上传失败";
+      const reason = error instanceof Error ? error.message : t("素材上传失败");
       message.error(reason);
       resetUploadFeedback();
     },
@@ -585,7 +586,7 @@ export function UploadsPage() {
     mutationFn: (values: UpdateUploadParams) =>
       updateUpload(editing?.id ?? 0, values),
     onSuccess: () => {
-      message.success("素材信息已保存");
+      message.success(t("素材信息已保存"));
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
     },
@@ -596,7 +597,7 @@ export function UploadsPage() {
         content: variables.content,
       }),
     onSuccess: (record, variables) => {
-      message.success("文本内容已保存");
+      message.success(t("文本内容已保存"));
       setContentEditing(record);
       setEditorOriginalContent(variables.content);
       setEditorUpdatedAt(record.updated_at);
@@ -608,19 +609,19 @@ export function UploadsPage() {
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "文本内容保存失败",
+        error instanceof Error ? error.message : t("文本内容保存失败"),
       );
     },
   });
   const accessMutation = useMutation({
     mutationFn: (values: AccessFormValues) => {
       if (!accessEditing) {
-        throw new Error("请选择素材");
+        throw new Error(t("请选择素材"));
       }
       return updateUpload(accessEditing.id, { visibility: values.visibility });
     },
     onSuccess: (record) => {
-      message.success("访问设置已保存");
+      message.success(t("访问设置已保存"));
       setAccessEditing(null);
       accessForm.resetFields();
       if (detail?.id === record.id) {
@@ -633,14 +634,14 @@ export function UploadsPage() {
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "访问设置保存失败",
+        error instanceof Error ? error.message : t("访问设置保存失败"),
       );
     },
   });
   const deleteMutation = useMutation({
     mutationFn: deleteUpload,
     onSuccess: (_, deletedId) => {
-      message.success("素材已移至已删除");
+      message.success(t("素材已移至已删除"));
       if (detail?.id === deletedId) {
         setDetail(null);
       }
@@ -664,13 +665,13 @@ export function UploadsPage() {
         visibility: object.url ? "public" : "private",
       }),
     onSuccess: () => {
-      message.success("外部对象已入库");
+      message.success(t("外部对象已入库"));
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     },
     onError: (error) => {
       message.error(
-        error instanceof Error ? error.message : "外部对象入库失败",
+        error instanceof Error ? error.message : t("外部对象入库失败"),
       );
     },
   });
@@ -683,20 +684,20 @@ export function UploadsPage() {
       }),
     onSuccess: (result) => {
       message.success(
-        `已入库 ${result.imported} 个，跳过 ${result.skipped} 个`,
+        t("已入库 {0} 个，跳过 {1} 个", result.imported, result.skipped),
       );
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "批量入库失败");
+      message.error(error instanceof Error ? error.message : t("批量入库失败"));
     },
   });
   const createFolderMutation = useMutation({
     mutationFn: (values: FolderFormValues) => {
       const targetPrefix = joinPrefix(prefix, values.name);
       if (!targetPrefix) {
-        throw new Error("请输入文件夹名称");
+        throw new Error(t("请输入文件夹名称"));
       }
       return createUploadFolder({
         storage_bucket_id: bucketId ?? 0,
@@ -704,20 +705,22 @@ export function UploadsPage() {
       });
     },
     onSuccess: () => {
-      message.success("文件夹已创建");
+      message.success(t("文件夹已创建"));
       setFolderModalOpen(false);
       folderForm.resetFields();
       loadTreeChildren(prefix);
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "创建文件夹失败");
+      message.error(
+        error instanceof Error ? error.message : t("创建文件夹失败"),
+      );
     },
   });
   const createFileMutation = useMutation({
     mutationFn: (values: FileFormValues) => {
       if (!bucketId) {
-        throw new Error("请先选择存储桶");
+        throw new Error(t("请先选择存储桶"));
       }
       return createUploadFile({
         storage_bucket_id: bucketId,
@@ -728,21 +731,21 @@ export function UploadsPage() {
       });
     },
     onSuccess: () => {
-      message.success("文件已创建并入库");
+      message.success(t("文件已创建并入库"));
       setFileModalOpen(false);
       fileForm.resetFields();
       queryClient.invalidateQueries({ queryKey: ["admin-uploads"] });
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "创建文件失败");
+      message.error(error instanceof Error ? error.message : t("创建文件失败"));
     },
   });
   const renameMutation = useMutation({
     mutationFn: (values: RenameFormValues) =>
       renameUpload(renaming?.id ?? 0, values),
     onSuccess: (record) => {
-      message.success("文件已重命名");
+      message.success(t("文件已重命名"));
       if (previewing?.id === record.id) {
         closePreview();
       }
@@ -752,7 +755,9 @@ export function UploadsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-upload-browser"] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "文件重命名失败");
+      message.error(
+        error instanceof Error ? error.message : t("文件重命名失败"),
+      );
     },
   });
   const downloadMutation = useMutation({
@@ -779,7 +784,7 @@ export function UploadsPage() {
           onError: (error) => {
             resetUploadFeedback();
             onError?.(
-              error instanceof Error ? error : new Error("分片上传失败"),
+              error instanceof Error ? error : new Error(t("分片上传失败")),
             );
           },
         });
@@ -871,7 +876,7 @@ export function UploadsPage() {
       }
     } catch (error) {
       const reason =
-        error instanceof Error ? error.message : "素材预览加载失败";
+        error instanceof Error ? error.message : t("素材预览加载失败");
       setPreviewError(reason);
       message.error(reason);
     } finally {
@@ -902,18 +907,18 @@ export function UploadsPage() {
       return;
     }
     Modal.confirm({
-      title: "放弃未保存的修改？",
-      content: "关闭编辑器后，本次修改将不会保留。",
-      okText: "放弃修改",
+      title: t("放弃未保存的修改？"),
+      content: t("关闭编辑器后，本次修改将不会保留。"),
+      okText: t("放弃修改"),
       okButtonProps: { danger: true },
-      cancelText: "继续编辑",
+      cancelText: t("继续编辑"),
       onOk: dismissContentEditor,
     });
   };
 
   const openContentEditor = async (record: UploadRecord) => {
     if (!isEditableTextUpload(record)) {
-      message.warning("该素材不是可编辑的文本文件");
+      message.warning(t("该素材不是可编辑的文本文件"));
       return;
     }
     const requestId = editorRequestId.current + 1;
@@ -938,7 +943,7 @@ export function UploadsPage() {
       }
       setContentEditing(null);
       message.error(
-        error instanceof Error ? error.message : "文本内容加载失败",
+        error instanceof Error ? error.message : t("文本内容加载失败"),
       );
     } finally {
       if (editorRequestId.current === requestId) {
@@ -949,11 +954,11 @@ export function UploadsPage() {
 
   const saveContent = () => {
     if (!contentEditing) {
-      message.error("请选择要编辑的文本素材");
+      message.error(t("请选择要编辑的文本素材"));
       return;
     }
     if (editorOverLimit) {
-      message.error("文件超过 1 MiB，无法保存");
+      message.error(t("文件超过 1 MiB，无法保存"));
       return;
     }
     updateContentMutation.mutate({
@@ -996,18 +1001,18 @@ export function UploadsPage() {
     if (!link) {
       if (record.visibility !== "public") {
         message.warning(
-          "该文件是私有文件，请先在访问设置中改为公开再复制分享链接",
+          t("该文件是私有文件，请先在访问设置中改为公开再复制分享链接"),
         );
       } else {
-        message.warning("当前文件暂时无法生成公开链接");
+        message.warning(t("当前文件暂时无法生成公开链接"));
       }
       return;
     }
     try {
       await navigator.clipboard.writeText(link);
-      message.success("公开链接已复制");
+      message.success(t("公开链接已复制"));
     } catch {
-      message.error("复制失败，请检查浏览器权限");
+      message.error(t("复制失败，请检查浏览器权限"));
     }
   };
 
@@ -1015,7 +1020,7 @@ export function UploadsPage() {
     if (record.status === "external") {
       const link = publicLink(record);
       if (!link) {
-        message.warning("外部对象未配置公开访问地址，无法直接下载");
+        message.warning(t("外部对象未配置公开访问地址，无法直接下载"));
         return;
       }
       const anchor = document.createElement("a");
@@ -1053,7 +1058,7 @@ export function UploadsPage() {
     mime_type: object.mime_type,
     size_bytes: object.size_bytes,
     sha256: "-",
-    category: "外部对象",
+    category: t("外部对象"),
     tags: null,
     visibility: object.url ? "public" : "private",
     status: "external",
@@ -1070,7 +1075,9 @@ export function UploadsPage() {
     setPreviewError(
       link
         ? undefined
-        : "外部对象未配置公开访问地址，无法在线预览；请先入库后使用后台鉴权预览或配置公开访问地址。",
+        : t(
+            "外部对象未配置公开访问地址，无法在线预览；请先入库后使用后台鉴权预览或配置公开访问地址。",
+          ),
     );
     setPreviewLoading(false);
   };
@@ -1091,14 +1098,14 @@ export function UploadsPage() {
         ? {
             key: "edit-text",
             icon: <FileTextOutlined />,
-            label: "编辑文本",
+            label: t("编辑文本"),
             onClick: () => openContentEditor(record),
           }
         : hasPermission("system:upload:download")
           ? {
               key: "open-preview",
               icon: <EyeOutlined />,
-              label: "预览",
+              label: t("预览"),
               onClick: () => openPreview(record),
             }
           : null,
@@ -1107,21 +1114,21 @@ export function UploadsPage() {
         ? {
             key: "preview",
             icon: <EyeOutlined />,
-            label: "预览",
+            label: t("预览"),
             onClick: () => openPreview(record),
           }
         : null,
       {
         key: "copy-link",
         icon: <LinkOutlined />,
-        label: "复制链接",
+        label: t("复制链接"),
         onClick: () => copyLink(record),
       },
       hasPermission("system:upload:download")
         ? {
             key: "download",
             icon: <CloudDownloadOutlined />,
-            label: "下载",
+            label: t("下载"),
             onClick: () => downloadRecord(record),
           }
         : null,
@@ -1129,7 +1136,7 @@ export function UploadsPage() {
         ? {
             key: "detail",
             icon: <FileOutlined />,
-            label: "详情",
+            label: t("详情"),
             onClick: () => setDetail(record),
           }
         : null,
@@ -1137,7 +1144,7 @@ export function UploadsPage() {
         ? {
             key: "access",
             icon: <LinkOutlined />,
-            label: "访问设置",
+            label: t("访问设置"),
             onClick: () => openAccessEditor(record),
           }
         : null,
@@ -1145,7 +1152,7 @@ export function UploadsPage() {
         ? {
             key: "edit",
             icon: <EditOutlined />,
-            label: "编辑信息",
+            label: t("编辑信息"),
             onClick: () => editRecord(record),
           }
         : null,
@@ -1153,7 +1160,7 @@ export function UploadsPage() {
         ? {
             key: "rename",
             icon: <EditOutlined />,
-            label: "重命名",
+            label: t("重命名"),
             onClick: () => openRename(record),
           }
         : null,
@@ -1162,14 +1169,14 @@ export function UploadsPage() {
         ? {
             key: "delete",
             icon: <DeleteOutlined />,
-            label: "删除",
+            label: t("删除"),
             danger: true,
             onClick: () =>
               Modal.confirm({
-                title: "确认删除素材？",
-                okText: "删除",
+                title: t("确认删除素材？"),
+                okText: t("删除"),
                 okButtonProps: { danger: true },
-                cancelText: "取消",
+                cancelText: t("取消"),
                 onOk: () => deleteMutation.mutateAsync(record.id),
               }),
           }
@@ -1184,27 +1191,27 @@ export function UploadsPage() {
       {
         key: "open-preview",
         icon: <EyeOutlined />,
-        label: "预览",
+        label: t("预览"),
         onClick: () => openExternalPreview(object),
       },
       { type: "divider" },
       {
         key: "copy-link",
         icon: <LinkOutlined />,
-        label: "复制链接",
+        label: t("复制链接"),
         onClick: () => copyLink(record),
       },
       {
         key: "download",
         icon: <CloudDownloadOutlined />,
-        label: "下载",
+        label: t("下载"),
         onClick: () => downloadRecord(record),
       },
       hasPermission("system:upload:create")
         ? {
             key: "import",
             icon: <CloudSyncOutlined />,
-            label: "入库",
+            label: t("入库"),
             onClick: () => importMutation.mutate(object),
           }
         : null,
@@ -1216,12 +1223,12 @@ export function UploadsPage() {
     if (previewLoading) {
       return (
         <div className="material-preview-empty">
-          <Spin tip="正在加载预览" />
+          <Spin tip={t("正在加载预览")} />
         </div>
       );
     }
     if (!previewing) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     if (previewError) {
       return (
@@ -1229,21 +1236,21 @@ export function UploadsPage() {
           <ExclamationCircleOutlined className="material-preview-large-icon" />
           <Typography.Text type="secondary">{previewError}</Typography.Text>
           <Typography.Text type="secondary">
-            {previewing.mime_type ?? previewing.extension ?? "未知文件类型"}
+            {previewing.mime_type ?? previewing.extension ?? t("未知文件类型")}
           </Typography.Text>
           <Space wrap className="material-preview-actions">
             <Button
               icon={<LinkOutlined />}
               onClick={() => copyLink(previewing)}
             >
-              复制公开链接
+              {t("复制公开链接")}
             </Button>
             <PermissionButton
               icon={<CloudDownloadOutlined />}
               permission="system:upload:download"
               onClick={() => downloadRecord(previewing)}
             >
-              下载
+              {t("下载")}
             </PermissionButton>
           </Space>
         </div>
@@ -1253,7 +1260,7 @@ export function UploadsPage() {
       return <pre className="material-preview-text">{previewText}</pre>;
     }
     if (!previewObjectUrl) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     const kind = fileKind(previewing);
     if (kind === "image") {
@@ -1303,18 +1310,18 @@ export function UploadsPage() {
       <div className="material-preview-empty">
         <FileOutlined className="material-preview-large-icon" />
         <Typography.Text type="secondary">
-          该文件类型暂不支持在线预览，请下载后查看。
+          {t("该文件类型暂不支持在线预览，请下载后查看。")}
         </Typography.Text>
         <Space wrap className="material-preview-actions">
           <Button icon={<LinkOutlined />} onClick={() => copyLink(previewing)}>
-            复制公开链接
+            {t("复制公开链接")}
           </Button>
           <PermissionButton
             icon={<CloudDownloadOutlined />}
             permission="system:upload:download"
             onClick={() => downloadRecord(previewing)}
           >
-            下载
+            {t("下载")}
           </PermissionButton>
         </Space>
       </div>
@@ -1368,9 +1375,9 @@ export function UploadsPage() {
       muted: record.status !== "active",
       badge:
         record.status !== "active"
-          ? { label: "已删除", tone: "red" as const }
+          ? { label: t("已删除"), tone: "red" as const }
           : record.visibility === "public"
-            ? { label: "公开", tone: "green" as const }
+            ? { label: t("公开"), tone: "green" as const }
             : undefined,
     })),
     ...externalObjects.map((object) => ({
@@ -1383,7 +1390,7 @@ export function UploadsPage() {
       }),
       sizeBytes: object.size_bytes,
       modifiedAt: object.updated_at,
-      badge: { label: "未入库", tone: "orange" as const },
+      badge: { label: t("未入库"), tone: "orange" as const },
     })),
   ];
   const managedTotal = uploadsQuery.data?.total ?? files.length;
@@ -1416,7 +1423,7 @@ export function UploadsPage() {
         {
           key: "open",
           icon: <FolderOpenOutlined />,
-          label: "打开",
+          label: t("打开"),
           onClick: () => openPrefix(key.slice(2)),
         },
       ];
@@ -1437,7 +1444,7 @@ export function UploadsPage() {
       icon: <CloudUploadOutlined />,
       label: (
         <Upload {...uploadProps} disabled={isUploadBusy}>
-          <span className="finder-menu-upload">上传文件</span>
+          <span className="finder-menu-upload">{t("上传文件")}</span>
         </Upload>
       ),
     },
@@ -1445,16 +1452,16 @@ export function UploadsPage() {
     {
       key: "folder",
       icon: <FolderOutlined />,
-      label: "新建文件夹",
+      label: t("新建文件夹"),
       onClick: () => setFolderModalOpen(true),
     },
     {
       key: "file",
       icon: <FileAddOutlined />,
-      label: "新建文本文件",
+      label: t("新建文本文件"),
       onClick: () => {
         fileForm.setFieldsValue({
-          name: "新建文件.txt",
+          name: t("新建文件.txt"),
           content: "",
           visibility: uploadVisibility,
         });
@@ -1468,19 +1475,19 @@ export function UploadsPage() {
   const moreMenuItems: MenuProps["items"] = [
     {
       key: "upload-mode",
-      label: "上传方式",
+      label: t("上传方式"),
       type: "group",
       children: [
         {
           key: "mode-chunk",
           icon: check(uploadMode === "chunk"),
-          label: "分片上传（大文件可续传）",
+          label: t("分片上传（大文件可续传）"),
           onClick: () => setUploadMode("chunk"),
         },
         {
           key: "mode-normal",
           icon: check(uploadMode === "normal"),
-          label: "普通上传",
+          label: t("普通上传"),
           onClick: () => setUploadMode("normal"),
         },
       ],
@@ -1488,20 +1495,20 @@ export function UploadsPage() {
     {
       key: "visibility",
       label: hasPublicAccess
-        ? "新上传文件的可见性"
-        : "新上传文件的可见性（未配置公开地址）",
+        ? t("新上传文件的可见性")
+        : t("新上传文件的可见性（未配置公开地址）"),
       type: "group",
       children: [
         {
           key: "visibility-private",
           icon: check(uploadVisibility === "private"),
-          label: "私有",
+          label: t("私有"),
           onClick: () => setUploadVisibility("private"),
         },
         {
           key: "visibility-public",
           icon: check(uploadVisibility === "public"),
-          label: "公开",
+          label: t("公开"),
           onClick: () => setUploadVisibility("public"),
         },
       ],
@@ -1510,7 +1517,7 @@ export function UploadsPage() {
     {
       key: "import-all",
       icon: <CloudSyncOutlined />,
-      label: `全部入库（${externalObjects.length}）`,
+      label: t("全部入库（{0}）", externalObjects.length),
       disabled:
         !canUpload ||
         externalObjects.length === 0 ||
@@ -1520,7 +1527,7 @@ export function UploadsPage() {
     {
       key: "tasks",
       icon: <UnorderedListOutlined />,
-      label: "上传任务",
+      label: t("上传任务"),
       onClick: () => navigate("/admin/system/upload-tasks"),
     },
   ];
@@ -1528,8 +1535,8 @@ export function UploadsPage() {
   return (
     <div className="finder-page-shell">
       <FinderShell
-        label="素材库"
-        rootLabel={selectedBucket?.name ?? "素材库"}
+        label={t("素材库")}
+        rootLabel={selectedBucket?.name ?? t("素材库")}
         crumbs={currentPathSegments.map((segment) => ({
           key: segment.prefix,
           label: segment.name,
@@ -1550,7 +1557,7 @@ export function UploadsPage() {
         onViewChange={setView}
         search={{
           value: keyword,
-          placeholder: "搜索素材",
+          placeholder: t("搜索素材"),
           onChange: (value) => {
             setPage(1);
             setKeyword(value);
@@ -1568,13 +1575,13 @@ export function UploadsPage() {
                   type="primary"
                   size="small"
                   icon={<PlusOutlined />}
-                  aria-label="新建"
+                  aria-label={t("新建")}
                 >
-                  <span className="finder-action-label">新建</span>
+                  <span className="finder-action-label">{t("新建")}</span>
                 </Button>
               </Dropdown>
             ) : null}
-            <Tooltip title="刷新">
+            <Tooltip title={t("刷新")}>
               <Button
                 type="text"
                 size="small"
@@ -1583,7 +1590,7 @@ export function UploadsPage() {
                     spin={uploadsQuery.isFetching || browserQuery.isFetching}
                   />
                 }
-                aria-label="刷新"
+                aria-label={t("刷新")}
                 onClick={() => {
                   void uploadsQuery.refetch();
                   void browserQuery.refetch();
@@ -1599,14 +1606,14 @@ export function UploadsPage() {
                 type="text"
                 size="small"
                 icon={<EllipsisOutlined />}
-                aria-label="更多"
+                aria-label={t("更多")}
               />
             </Dropdown>
           </>
         }
         sidebar={
           <>
-            <FinderSidebarSection title="存储">
+            <FinderSidebarSection title={t("存储")}>
               {profiles.map((profile) => (
                 <FinderSidebarItem
                   key={profile.id}
@@ -1623,13 +1630,13 @@ export function UploadsPage() {
                 />
               ))}
             </FinderSidebarSection>
-            <FinderSidebarSection title="桶">
+            <FinderSidebarSection title={t("桶")}>
               {buckets.length === 0 && !bucketsQuery.isLoading ? (
                 <Typography.Text
                   type="secondary"
                   className="finder-sidebar-hint"
                 >
-                  当前存储没有可用的桶
+                  {t("当前存储没有可用的桶")}
                 </Typography.Text>
               ) : null}
               {buckets.map((bucket) => (
@@ -1648,7 +1655,7 @@ export function UploadsPage() {
               ))}
             </FinderSidebarSection>
             {bucketId ? (
-              <FinderSidebarSection title="文件夹">
+              <FinderSidebarSection title={t("文件夹")}>
                 <FinderTree
                   selectedKeys={[prefix ?? ""]}
                   expandedKeys={expandedTreeKeys}
@@ -1663,10 +1670,10 @@ export function UploadsPage() {
                 />
               </FinderSidebarSection>
             ) : null}
-            <FinderSidebarSection title="显示">
+            <FinderSidebarSection title={t("显示")}>
               <FinderSidebarItem
                 icon={<span className="finder-filter-dot is-green" />}
-                label="正常素材"
+                label={t("正常素材")}
                 active={status === "active"}
                 onClick={() => {
                   setPage(1);
@@ -1675,7 +1682,7 @@ export function UploadsPage() {
               />
               <FinderSidebarItem
                 icon={<span className="finder-filter-dot is-red" />}
-                label="已删除"
+                label={t("已删除")}
                 active={status === "deleted"}
                 onClick={() => {
                   setPage(1);
@@ -1684,7 +1691,7 @@ export function UploadsPage() {
               />
               <FinderSidebarItem
                 icon={<span className="finder-filter-dot is-gray" />}
-                label="全部"
+                label={t("全部")}
                 active={!status}
                 onClick={() => {
                   setPage(1);
@@ -1696,12 +1703,15 @@ export function UploadsPage() {
         }
         status={
           selectedName
-            ? `已选择“${selectedName}”`
-            : `${folderPrefixes.length} 个文件夹，${managedTotal} 个素材${
+            ? t("已选择“{0}”", selectedName)
+            : t(
+                "{0} 个文件夹，{1} 个素材{2}",
+                folderPrefixes.length,
+                managedTotal,
                 externalObjects.length > 0
-                  ? `，${externalObjects.length} 个未入库`
-                  : ""
-              }`
+                  ? t("，{0} 个未入库", externalObjects.length)
+                  : "",
+              )
         }
         statusAside={
           managedTotal > pageSize ? (
@@ -1754,12 +1764,12 @@ export function UploadsPage() {
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
                     !bucketId
-                      ? "请选择左侧的存储和桶"
+                      ? t("请选择左侧的存储和桶")
                       : keyword
-                        ? "没有匹配的素材"
+                        ? t("没有匹配的素材")
                         : canUpload
-                          ? "空文件夹，可拖拽文件到这里上传"
-                          : "空文件夹"
+                          ? t("空文件夹，可拖拽文件到这里上传")
+                          : t("空文件夹")
                   }
                 />
               }
@@ -1768,37 +1778,39 @@ export function UploadsPage() {
         </div>
       </FinderShell>
       <Drawer
-        title="素材详情"
+        title={t("素材详情")}
         open={Boolean(detail)}
         onClose={() => setDetail(null)}
         width="min(680px, 96vw)"
       >
         {detail && (
           <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="文件名">
+            <Descriptions.Item label={t("文件名")}>
               {detail.original_name}
             </Descriptions.Item>
-            <Descriptions.Item label="存储">{detail.storage}</Descriptions.Item>
-            <Descriptions.Item label="桶">
+            <Descriptions.Item label={t("存储")}>
+              {detail.storage}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("桶")}>
               {detail.bucket ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="目录">
+            <Descriptions.Item label={t("目录")}>
               {detail.prefix ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="对象键">
+            <Descriptions.Item label={t("对象键")}>
               {detail.object_key}
             </Descriptions.Item>
-            <Descriptions.Item label="公开链接">
+            <Descriptions.Item label={t("公开链接")}>
               <Space wrap>
                 <Typography.Text copyable={Boolean(publicLink(detail))}>
-                  {publicLink(detail) ?? "未配置公开链接或文件不是公开状态"}
+                  {publicLink(detail) ?? t("未配置公开链接或文件不是公开状态")}
                 </Typography.Text>
                 <Button
                   size="small"
                   icon={<LinkOutlined />}
                   onClick={() => copyLink(detail)}
                 >
-                  复制
+                  {t("复制")}
                 </Button>
               </Space>
             </Descriptions.Item>
@@ -1808,7 +1820,7 @@ export function UploadsPage() {
             <Descriptions.Item label="MIME">
               {detail.mime_type ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="大小">
+            <Descriptions.Item label={t("大小")}>
               {formatBytes(detail.size_bytes)}
             </Descriptions.Item>
             <Descriptions.Item label="SHA256">
@@ -1817,21 +1829,25 @@ export function UploadsPage() {
             <Descriptions.Item label="ETag">
               {detail.etag ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="分类">
+            <Descriptions.Item label={t("分类")}>
               {detail.category ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="标签">
+            <Descriptions.Item label={t("标签")}>
               {detail.tags ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="状态">{detail.status}</Descriptions.Item>
-            <Descriptions.Item label="上传时间">
+            <Descriptions.Item label={t("状态")}>
+              {detail.status}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("上传时间")}>
               {detail.created_at}
             </Descriptions.Item>
           </Descriptions>
         )}
       </Drawer>
       <Modal
-        title={previewing ? `预览：${previewing.original_name}` : "素材预览"}
+        title={
+          previewing ? t("预览：{0}", previewing.original_name) : t("素材预览")
+        }
         open={Boolean(previewing)}
         onCancel={closePreview}
         footer={
@@ -1841,7 +1857,7 @@ export function UploadsPage() {
                 icon={<LinkOutlined />}
                 onClick={() => copyLink(previewing)}
               >
-                复制公开链接
+                {t("复制公开链接")}
               </Button>
               <PermissionButton
                 icon={<CloudDownloadOutlined />}
@@ -1849,7 +1865,7 @@ export function UploadsPage() {
                 loading={downloadMutation.isPending}
                 onClick={() => downloadRecord(previewing)}
               >
-                下载
+                {t("下载")}
               </PermissionButton>
               {isEditableTextUpload(previewing) ? (
                 <PermissionButton
@@ -1861,10 +1877,10 @@ export function UploadsPage() {
                     openContentEditor(record);
                   }}
                 >
-                  编辑文本
+                  {t("编辑文本")}
                 </PermissionButton>
               ) : null}
-              <Button onClick={closePreview}>关闭</Button>
+              <Button onClick={closePreview}>{t("关闭")}</Button>
             </Space>
           ) : null
         }
@@ -1876,8 +1892,8 @@ export function UploadsPage() {
       <Modal
         title={
           contentEditing
-            ? `编辑文本：${contentEditing.original_name}`
-            : "编辑文本"
+            ? t("编辑文本：{0}", contentEditing.original_name)
+            : t("编辑文本")
         }
         open={Boolean(contentEditing)}
         onCancel={closeContentEditor}
@@ -1893,7 +1909,7 @@ export function UploadsPage() {
               {formatBytes(editorByteSize)} / 1 MiB
             </Typography.Text>
             <Space>
-              <Button onClick={closeContentEditor}>关闭</Button>
+              <Button onClick={closeContentEditor}>{t("关闭")}</Button>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
@@ -1906,13 +1922,13 @@ export function UploadsPage() {
                 }
                 onClick={saveContent}
               >
-                保存
+                {t("保存")}
               </Button>
             </Space>
           </div>
         }
       >
-        <Spin spinning={editorLoading} tip="正在读取文本内容">
+        <Spin spinning={editorLoading} tip={t("正在读取文本内容")}>
           <div className="managed-file-editor-shell">
             <div className="managed-file-editor-meta">
               <Space wrap size={6}>
@@ -1923,31 +1939,34 @@ export function UploadsPage() {
               </Space>
               <Typography.Text type="secondary">
                 {editorUpdatedAt
-                  ? `更新于 ${new Date(editorUpdatedAt).toLocaleString("zh-CN")}`
-                  : "尚无更新时间"}
+                  ? t(
+                      "更新于 {0}",
+                      new Date(editorUpdatedAt).toLocaleString("zh-CN"),
+                    )
+                  : t("尚无更新时间")}
               </Typography.Text>
             </div>
             <Input.TextArea
-              aria-label="素材文本编辑器"
+              aria-label={t("素材文本编辑器")}
               className="managed-file-editor-textarea"
               value={editorContent}
               disabled={editorLoading || updateContentMutation.isPending}
               autoSize={false}
               spellCheck={false}
-              placeholder="输入文本内容"
+              placeholder={t("输入文本内容")}
               onChange={(event) => setEditorContent(event.target.value)}
               onKeyDown={handleEditorKeyDown}
             />
             {editorOverLimit ? (
               <Typography.Text type="danger">
-                当前内容超过 1 MiB，请缩减后再保存。
+                {t("当前内容超过 1 MiB，请缩减后再保存。")}
               </Typography.Text>
             ) : null}
           </div>
         </Spin>
       </Modal>
       <Modal
-        title="新建文件夹"
+        title={t("新建文件夹")}
         open={folderModalOpen}
         onCancel={() => setFolderModalOpen(false)}
         onOk={() => folderForm.submit()}
@@ -1958,20 +1977,20 @@ export function UploadsPage() {
           layout="vertical"
           onFinish={(values) => createFolderMutation.mutate(values)}
         >
-          <Form.Item label="当前目录">
-            <Typography.Text>{prefix ?? "根目录"}</Typography.Text>
+          <Form.Item label={t("当前目录")}>
+            <Typography.Text>{prefix ?? t("根目录")}</Typography.Text>
           </Form.Item>
           <Form.Item
             name="name"
-            label="文件夹名称"
-            rules={[{ required: true, message: "请输入文件夹名称" }]}
+            label={t("文件夹名称")}
+            rules={[{ required: true, message: t("请输入文件夹名称") }]}
           >
-            <Input placeholder="例如 images" />
+            <Input placeholder={t("例如 images")} />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="新建文件"
+        title={t("新建文件")}
         open={fileModalOpen}
         onCancel={() => {
           setFileModalOpen(false);
@@ -1986,41 +2005,41 @@ export function UploadsPage() {
           initialValues={{ visibility: "private" }}
           onFinish={(values) => createFileMutation.mutate(values)}
         >
-          <Form.Item label="当前目录">
-            <Typography.Text>{prefix ?? "根目录"}</Typography.Text>
+          <Form.Item label={t("当前目录")}>
+            <Typography.Text>{prefix ?? t("根目录")}</Typography.Text>
           </Form.Item>
           <Form.Item
             name="name"
-            label="文件名称"
+            label={t("文件名称")}
             rules={[
-              { required: true, message: "请输入文件名称" },
+              { required: true, message: t("请输入文件名称") },
               {
                 pattern: /^[^/\\]+$/,
-                message: "文件名称不能包含 / 或 \\",
+                message: t("文件名称不能包含 / 或 \\"),
               },
             ]}
           >
-            <Input placeholder="例如 notes.txt" autoFocus />
+            <Input placeholder={t("例如 notes.txt")} autoFocus />
           </Form.Item>
-          <Form.Item name="visibility" label="可见性">
+          <Form.Item name="visibility" label={t("可见性")}>
             <Segmented
               options={[
-                { label: "私有", value: "private" },
-                { label: "公开", value: "public" },
+                { label: t("私有"), value: "private" },
+                { label: t("公开"), value: "public" },
               ]}
             />
           </Form.Item>
-          <Form.Item name="content" label="初始内容（可选）">
+          <Form.Item name="content" label={t("初始内容（可选）")}>
             <Input.TextArea
               rows={8}
-              placeholder="可留空，内容会随文件一同保存"
+              placeholder={t("可留空，内容会随文件一同保存")}
               spellCheck={false}
             />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="重命名文件"
+        title={t("重命名文件")}
         open={Boolean(renaming)}
         onCancel={() => setRenaming(null)}
         onOk={() => renameForm.submit()}
@@ -2031,20 +2050,20 @@ export function UploadsPage() {
           layout="vertical"
           onFinish={(values) => renameMutation.mutate(values)}
         >
-          <Form.Item label="当前对象键">
+          <Form.Item label={t("当前对象键")}>
             <Typography.Text>{renaming?.object_key ?? "-"}</Typography.Text>
           </Form.Item>
           <Form.Item
             name="original_name"
-            label="新文件名"
-            rules={[{ required: true, message: "请输入新文件名" }]}
+            label={t("新文件名")}
+            rules={[{ required: true, message: t("请输入新文件名") }]}
           >
-            <Input placeholder="例如 avatar.png" />
+            <Input placeholder={t("例如 avatar.png")} />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="访问设置"
+        title={t("访问设置")}
         open={Boolean(accessEditing)}
         onCancel={() => setAccessEditing(null)}
         onOk={() => accessForm.submit()}
@@ -2055,45 +2074,47 @@ export function UploadsPage() {
           layout="vertical"
           onFinish={(values) => accessMutation.mutate(values)}
         >
-          <Form.Item label="文件名">
+          <Form.Item label={t("文件名")}>
             <Typography.Text>
               {accessEditing?.original_name ?? "-"}
             </Typography.Text>
           </Form.Item>
-          <Form.Item label="对象键">
+          <Form.Item label={t("对象键")}>
             <Typography.Text copyable>
               {accessEditing?.object_key ?? "-"}
             </Typography.Text>
           </Form.Item>
-          <Form.Item name="visibility" label="访问范围">
+          <Form.Item name="visibility" label={t("访问范围")}>
             <Segmented
               options={[
-                { value: "private", label: "私有" },
-                { value: "public", label: "公开" },
+                { value: "private", label: t("私有") },
+                { value: "public", label: t("公开") },
               ]}
             />
           </Form.Item>
           {accessVisibility === "public" ? (
             accessEditing ? (
-              <Form.Item label="公开链接">
+              <Form.Item label={t("公开链接")}>
                 <Typography.Text copyable>
                   {publicLink({ ...accessEditing, visibility: "public" })}
                 </Typography.Text>
               </Form.Item>
             ) : (
               <Typography.Text type="warning">
-                文件信息尚未加载完成。
+                {t("文件信息尚未加载完成。")}
               </Typography.Text>
             )
           ) : (
             <Typography.Text type="secondary">
-              私有素材只能通过后台登录后的预览和下载接口访问，不会复制公开分享链接。
+              {t(
+                "私有素材只能通过后台登录后的预览和下载接口访问，不会复制公开分享链接。",
+              )}
             </Typography.Text>
           )}
         </Form>
       </Modal>
       <Modal
-        title="编辑素材信息"
+        title={t("编辑素材信息")}
         open={Boolean(editing)}
         onCancel={() => setEditing(null)}
         onOk={() => form.submit()}
@@ -2104,25 +2125,25 @@ export function UploadsPage() {
           layout="vertical"
           onFinish={(values) => updateMutation.mutate(values)}
         >
-          <Form.Item name="category" label="分类">
+          <Form.Item name="category" label={t("分类")}>
             <Input />
           </Form.Item>
-          <Form.Item name="tags" label="标签">
+          <Form.Item name="tags" label={t("标签")}>
             <Input />
           </Form.Item>
-          <Form.Item name="visibility" label="可见性">
+          <Form.Item name="visibility" label={t("可见性")}>
             <Select
               options={[
-                { value: "private", label: "私有" },
-                { value: "public", label: "公开" },
+                { value: "private", label: t("私有") },
+                { value: "public", label: t("公开") },
               ]}
             />
           </Form.Item>
-          <Form.Item name="status" label="状态">
+          <Form.Item name="status" label={t("状态")}>
             <Select
               options={[
-                { value: "active", label: "正常" },
-                { value: "deleted", label: "已删除" },
+                { value: "active", label: t("正常") },
+                { value: "deleted", label: t("已删除") },
               ]}
             />
           </Form.Item>

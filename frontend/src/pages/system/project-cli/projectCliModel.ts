@@ -3,6 +3,7 @@ import type {
   CliCommandSpec,
   CliValue,
 } from "../../../api/admin/projectCli";
+import { t } from "../../../i18n";
 
 export type CliValues = Record<string, CliValue | undefined>;
 
@@ -13,11 +14,11 @@ export type CommandSection = {
 };
 
 const SECTION_TITLES: Record<string, string> = {
-  loco: "Loco 内置命令",
-  task: "自定义任务",
-  service: "系统服务",
+  loco: t("Loco 内置命令"),
+  task: t("自定义任务"),
+  service: t("系统服务"),
   vnc: "VNC",
-  data: "数据导入导出",
+  data: t("数据导入导出"),
 };
 const SECTION_ORDER = ["loco", "task", "service", "vnc", "data"];
 
@@ -89,7 +90,7 @@ export function groupCommands(
 }
 
 export function argLabel(arg: CliArgSpec) {
-  if (arg.kind === "task_param") return `${arg.id}:<值>`;
+  if (arg.kind === "task_param") return t("{0}:<值>", arg.id);
   if (arg.kind === "positional") {
     const name = arg.value_name ?? arg.id.toUpperCase();
     return `${arg.required ? `<${name}>` : `[${name}]`}${arg.multiple ? "..." : ""}`;
@@ -250,7 +251,7 @@ export function formatDuration(ms?: number | null) {
   if (ms === undefined || ms === null) return "";
   if (ms < 1000) return `${ms} ms`;
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)} 秒`;
+  if (seconds < 60) return t("{0} 秒", seconds.toFixed(1));
   const minutes = Math.floor(seconds / 60);
-  return `${minutes} 分 ${Math.round(seconds % 60)} 秒`;
+  return t("{0} 分 {1} 秒", minutes, Math.round(seconds % 60));
 }

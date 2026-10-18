@@ -22,7 +22,10 @@
     "test:menu-trail": "node --test tests/menu-trail.test.cjs",
     "test:static-access": "node --test tests/static-access.test.cjs",
     "test:vnc-input": "node --test tests/vnc-input.test.cjs",
-    "test:certificates": "node --test tests/certificate-view.test.cjs"
+    "test:certificates": "node --test tests/certificate-view.test.cjs",
+    "test:i18n": "node --test tests/i18n-coverage.test.cjs",
+    "i18n:wrap": "node scripts/i18n.cjs wrap",
+    "i18n:missing": "node scripts/i18n.cjs missing"
   },
   "dependencies": {
     "@ant-design/icons": "^5",

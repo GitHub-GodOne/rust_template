@@ -1,5 +1,16 @@
 import { create } from "zustand";
 import type { AdminMenuItem, PermissionCode } from "../app/menu";
+import { tData } from "../i18n";
+
+/** Server menu titles are Chinese source text; show them in the UI language. */
+function translateMenus(items: AdminMenuItem[]): AdminMenuItem[] {
+  return items.map((item) => ({
+    ...item,
+    label: tData(item.label) || item.label,
+    title: item.title ? tData(item.title) : item.title,
+    children: item.children ? translateMenus(item.children) : item.children,
+  }));
+}
 
 export type AuthUser = {
   pid: string;
@@ -125,7 +136,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user,
       roles,
       permissions,
-      menus,
+      menus: translateMenus(menus),
       tenant,
       departments,
       currentDepartment,
@@ -133,7 +144,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       effectiveDataScope,
     });
   },
-  setMenus: (menus) => set({ menus }),
+  setMenus: (menus) => set({ menus: translateMenus(menus) }),
   signOut: () => {
     localStorage.removeItem(tokenKey);
     localStorage.removeItem(refreshTokenKey);

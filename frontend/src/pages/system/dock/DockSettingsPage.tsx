@@ -56,6 +56,7 @@ import { useAuthStore } from "../../../stores/auth";
 import { useDockStore } from "../../../stores/dock";
 import { useUiStore } from "../../../stores/ui";
 import "./dock-settings.css";
+import { t } from "../../../i18n";
 
 function flattenPages(items: AdminMenuItem[]): AdminMenuItem[] {
   return items.flatMap((item) => [
@@ -134,7 +135,7 @@ export function DockSettingsPage() {
       label: `${page.label}（${page.path}）`,
     }));
   const pageModeOptions: { value: RuleModeChoice; label: string }[] = [
-    { value: "default", label: "默认" },
+    { value: "default", label: t("默认") },
     ...(["show", "autoHide", "hide"] as const).map((mode) => ({
       value: mode,
       label: DOCK_PAGE_MODE_LABELS[mode].replace(" Dock", ""),
@@ -159,9 +160,9 @@ export function DockSettingsPage() {
       await save(draft);
       setTouched(false);
       if (!dockVisible && draft.enabled) toggleDockVisible();
-      message.success("Dock 设置已保存");
+      message.success(t("Dock 设置已保存"));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "保存失败");
+      message.error(error instanceof Error ? error.message : t("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -172,29 +173,31 @@ export function DockSettingsPage() {
       await reset();
       setTouched(false);
       setDraft(DEFAULT_DOCK_CONFIG);
-      message.success("已恢复默认 Dock");
+      message.success(t("已恢复默认 Dock"));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "恢复失败");
+      message.error(error instanceof Error ? error.message : t("恢复失败"));
     }
   };
 
   return (
     <div className="dock-settings">
       <PageHeader
-        title="快捷 Dock"
-        subtitle="选择常用页面放进 Dock，并调整它的位置、大小和行为；设置跟随账号保存"
-        breadcrumb={["系统管理", "快捷 Dock"]}
+        title={t("快捷 Dock")}
+        subtitle={t(
+          "选择常用页面放进 Dock，并调整它的位置、大小和行为；设置跟随账号保存",
+        )}
+        breadcrumb={[t("系统管理"), t("快捷 Dock")]}
         icon={<AppstoreOutlined />}
         extra={
           <Space wrap>
             <Popconfirm
-              title="恢复默认 Dock？"
-              description="会清除你的自定义设置"
-              okText="恢复"
-              cancelText="取消"
+              title={t("恢复默认 Dock？")}
+              description={t("会清除你的自定义设置")}
+              okText={t("恢复")}
+              cancelText={t("取消")}
               onConfirm={handleReset}
             >
-              <Button icon={<UndoOutlined />}>恢复默认</Button>
+              <Button icon={<UndoOutlined />}>{t("恢复默认")}</Button>
             </Popconfirm>
             <Button
               type="primary"
@@ -203,7 +206,7 @@ export function DockSettingsPage() {
               disabled={!dirty}
               onClick={handleSave}
             >
-              保存
+              {t("保存")}
             </Button>
           </Space>
         }
@@ -228,12 +231,12 @@ export function DockSettingsPage() {
               />
             ) : (
               <Typography.Text type="secondary" className="dock-settings-hint">
-                Dock 中还没有页面，从下方「添加页面」里选择
+                {t("Dock 中还没有页面，从下方「添加页面」里选择")}
               </Typography.Text>
             )
           ) : (
             <Typography.Text type="secondary" className="dock-settings-hint">
-              Dock 已停用
+              {t("Dock 已停用")}
             </Typography.Text>
           )}
         </div>
@@ -242,7 +245,7 @@ export function DockSettingsPage() {
             type="info"
             showIcon
             className="dock-settings-dirty"
-            message="预览中的修改尚未保存"
+            message={t("预览中的修改尚未保存")}
             action={
               <Button
                 size="small"
@@ -250,7 +253,7 @@ export function DockSettingsPage() {
                 loading={saving}
                 onClick={handleSave}
               >
-                保存
+                {t("保存")}
               </Button>
             }
           />
@@ -261,17 +264,21 @@ export function DockSettingsPage() {
         <Col xs={24} xl={14}>
           <Card
             className="admin-card"
-            title={`Dock 中的页面（${draft.items.length}/${MAX_DOCK_ITEMS}）`}
+            title={t(
+              "Dock 中的页面（{0}/{1}）",
+              draft.items.length,
+              MAX_DOCK_ITEMS,
+            )}
             extra={
               <Typography.Text type="secondary" className="dock-settings-tip">
-                拖动排序
+                {t("拖动排序")}
               </Typography.Text>
             }
           >
             {resolved.length === 0 ? (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="还没有页面"
+                description={t("还没有页面")}
               />
             ) : (
               <ul className="dock-settings-list">
@@ -308,7 +315,7 @@ export function DockSettingsPage() {
                       size="small"
                       disabledAlpha
                       value={item.color}
-                      presets={[{ label: "推荐颜色", colors: DOCK_COLORS }]}
+                      presets={[{ label: t("推荐颜色"), colors: DOCK_COLORS }]}
                       onChangeComplete={(color) =>
                         update((current) => ({
                           ...current,
@@ -324,7 +331,7 @@ export function DockSettingsPage() {
                         type="button"
                         className="dock-settings-icon"
                         style={{ background: item.color }}
-                        aria-label={`更换 ${item.label} 的颜色`}
+                        aria-label={t("更换 {0} 的颜色", item.label)}
                       >
                         {renderMenuIcon(item.icon)}
                       </button>
@@ -336,38 +343,38 @@ export function DockSettingsPage() {
                     {item.unavailable ? (
                       <Tag color="orange">
                         {item.unavailable === "missing"
-                          ? "页面不存在"
-                          : "无权限，不显示"}
+                          ? t("页面不存在")
+                          : t("无权限，不显示")}
                       </Tag>
                     ) : null}
                     <Space size={2} className="dock-settings-actions">
-                      <Tooltip title="上移">
+                      <Tooltip title={t("上移")}>
                         <Button
                           type="text"
                           size="small"
                           icon={<ArrowUpOutlined />}
-                          aria-label={`上移 ${item.label}`}
+                          aria-label={t("上移 {0}", item.label)}
                           disabled={index === 0}
                           onClick={() => moveItem(index, index - 1)}
                         />
                       </Tooltip>
-                      <Tooltip title="下移">
+                      <Tooltip title={t("下移")}>
                         <Button
                           type="text"
                           size="small"
                           icon={<ArrowDownOutlined />}
-                          aria-label={`下移 ${item.label}`}
+                          aria-label={t("下移 {0}", item.label)}
                           disabled={index === resolved.length - 1}
                           onClick={() => moveItem(index, index + 1)}
                         />
                       </Tooltip>
-                      <Tooltip title="从 Dock 移除">
+                      <Tooltip title={t("从 Dock 移除")}>
                         <Button
                           type="text"
                           size="small"
                           danger
                           icon={<DeleteOutlined />}
-                          aria-label={`移除 ${item.label}`}
+                          aria-label={t("移除 {0}", item.label)}
                           onClick={() =>
                             update((current) => ({
                               ...current,
@@ -387,12 +394,12 @@ export function DockSettingsPage() {
         </Col>
         <Col xs={24} xl={10}>
           <Space direction="vertical" size={16} className="full-width">
-            <Card className="admin-card" title="外观与行为">
+            <Card className="admin-card" title={t("外观与行为")}>
               <div className="dock-settings-options">
                 <div className="dock-settings-option">
                   <span>
-                    <strong>启用 Dock</strong>
-                    <small>关闭后所有页面都不显示 Dock</small>
+                    <strong>{t("启用 Dock")}</strong>
+                    <small>{t("关闭后所有页面都不显示 Dock")}</small>
                   </span>
                   <Switch
                     checked={draft.enabled}
@@ -403,8 +410,8 @@ export function DockSettingsPage() {
                 </div>
                 <div className="dock-settings-option">
                   <span>
-                    <strong>位置</strong>
-                    <small>手机上始终显示在底部</small>
+                    <strong>{t("位置")}</strong>
+                    <small>{t("手机上始终显示在底部")}</small>
                   </span>
                   <Segmented<DockPosition>
                     value={draft.position}
@@ -412,15 +419,15 @@ export function DockSettingsPage() {
                       update((current) => ({ ...current, position }))
                     }
                     options={[
-                      { value: "left", label: "左侧" },
-                      { value: "bottom", label: "底部" },
-                      { value: "right", label: "右侧" },
+                      { value: "left", label: t("左侧") },
+                      { value: "bottom", label: t("底部") },
+                      { value: "right", label: t("右侧") },
                     ]}
                   />
                 </div>
                 <div className="dock-settings-option">
                   <span>
-                    <strong>图标大小</strong>
+                    <strong>{t("图标大小")}</strong>
                   </span>
                   <Segmented<DockSize>
                     value={draft.size}
@@ -428,16 +435,16 @@ export function DockSettingsPage() {
                       update((current) => ({ ...current, size }))
                     }
                     options={[
-                      { value: "small", label: "小" },
-                      { value: "medium", label: "中" },
-                      { value: "large", label: "大" },
+                      { value: "small", label: t("小") },
+                      { value: "medium", label: t("中") },
+                      { value: "large", label: t("大") },
                     ]}
                   />
                 </div>
                 <div className="dock-settings-option">
                   <span>
-                    <strong>悬停放大</strong>
-                    <small>鼠标指向图标时放大</small>
+                    <strong>{t("悬停放大")}</strong>
+                    <small>{t("鼠标指向图标时放大")}</small>
                   </span>
                   <Switch
                     checked={draft.magnify}
@@ -448,9 +455,9 @@ export function DockSettingsPage() {
                 </div>
                 <div className="dock-settings-option">
                   <span>
-                    <strong>默认自动隐藏</strong>
+                    <strong>{t("默认自动隐藏")}</strong>
                     <small>
-                      移到屏幕边缘时再显示；没有单独设置的页面使用此行为
+                      {t("移到屏幕边缘时再显示；没有单独设置的页面使用此行为")}
                     </small>
                   </span>
                   <Switch
@@ -462,10 +469,11 @@ export function DockSettingsPage() {
                 </div>
                 <div className="dock-settings-option">
                   <span>
-                    <strong>为 Dock 预留空间</strong>
+                    <strong>{t("为 Dock 预留空间")}</strong>
                     <small>
-                      常驻显示时在页面边缘留出空白，避免遮挡内容；关闭后 Dock
-                      浮在内容上方
+                      {t(
+                        "常驻显示时在页面边缘留出空白，避免遮挡内容；关闭后 Dock 浮在内容上方",
+                      )}
                     </small>
                   </span>
                   <Switch
@@ -477,8 +485,8 @@ export function DockSettingsPage() {
                 </div>
                 <div className="dock-settings-option">
                   <span>
-                    <strong>显示名称</strong>
-                    <small>在图标下方显示页面名称</small>
+                    <strong>{t("显示名称")}</strong>
+                    <small>{t("在图标下方显示页面名称")}</small>
                   </span>
                   <Switch
                     checked={draft.showLabels}
@@ -491,11 +499,11 @@ export function DockSettingsPage() {
             </Card>
             <Card
               className="admin-card"
-              title="添加页面"
+              title={t("添加页面")}
               extra={
                 full ? (
                   <Typography.Text type="warning">
-                    最多 {MAX_DOCK_ITEMS} 个
+                    {t("最多 {0} 个", MAX_DOCK_ITEMS)}
                   </Typography.Text>
                 ) : null
               }
@@ -503,7 +511,7 @@ export function DockSettingsPage() {
               <Input
                 allowClear
                 prefix={<SearchOutlined />}
-                placeholder="搜索页面名称或路径"
+                placeholder={t("搜索页面名称或路径")}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -511,7 +519,7 @@ export function DockSettingsPage() {
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
-                    search ? "没有匹配的页面" : "可用页面都已加入 Dock"
+                    search ? t("没有匹配的页面") : t("可用页面都已加入 Dock")
                   }
                 />
               ) : (
@@ -532,10 +540,10 @@ export function DockSettingsPage() {
                         size="small"
                         icon={<PlusOutlined />}
                         disabled={full}
-                        aria-label={`添加 ${page.label}`}
+                        aria-label={t("添加 {0}", page.label)}
                         onClick={() => page.path && addPage(page.path)}
                       >
-                        添加
+                        {t("添加")}
                       </Button>
                     </li>
                   ))}
@@ -548,10 +556,10 @@ export function DockSettingsPage() {
 
       <Card
         className="admin-card"
-        title={`按页面设置（${draft.pageRules.length}）`}
+        title={t("按页面设置（{0}）", draft.pageRules.length)}
         extra={
           <Typography.Text type="secondary" className="dock-settings-tip">
-            也可以在任意页面右键 Dock →「当前页面」
+            {t("也可以在任意页面右键 Dock →「当前页面」")}
           </Typography.Text>
         }
       >
@@ -559,7 +567,7 @@ export function DockSettingsPage() {
           <Select
             showSearch
             allowClear
-            placeholder="选择一个菜单页面"
+            placeholder={t("选择一个菜单页面")}
             className="dock-rule-select"
             value={rulePath}
             options={ruleOptions}
@@ -593,14 +601,16 @@ export function DockSettingsPage() {
               setRulePath(undefined);
             }}
           >
-            添加
+            {t("添加")}
           </Button>
         </div>
         {draft.pageRules.length === 0 ? (
           <Typography.Paragraph type="secondary" className="dock-rule-empty">
-            所有页面都使用默认行为（{draft.autoHide ? "自动隐藏" : "常驻显示"}，
-            {draft.reserveSpace ? "预留空间" : "不预留空间"}
-            ）。例如可以让 SSH 管理常驻显示但不预留空间，终端占满整个高度。
+            {t(
+              "所有页面都使用默认行为（{0}，{1}）。例如可以让 SSH 管理常驻显示但不预留空间，终端占满整个高度。",
+              draft.autoHide ? t("自动隐藏") : t("常驻显示"),
+              draft.reserveSpace ? t("预留空间") : t("不预留空间"),
+            )}
           </Typography.Paragraph>
         ) : (
           <ul className="dock-settings-list">
@@ -618,7 +628,7 @@ export function DockSettingsPage() {
                     <strong>{page?.label ?? rule.path}</strong>
                     <span>{rule.path}</span>
                   </span>
-                  {page ? null : <Tag color="orange">页面不可用</Tag>}
+                  {page ? null : <Tag color="orange">{t("页面不可用")}</Tag>}
                   <RuleControls
                     size="small"
                     mode={rule.mode ?? "default"}
@@ -640,13 +650,16 @@ export function DockSettingsPage() {
                       )
                     }
                   />
-                  <Tooltip title="删除规则，恢复默认">
+                  <Tooltip title={t("删除规则，恢复默认")}>
                     <Button
                       type="text"
                       size="small"
                       danger
                       icon={<DeleteOutlined />}
-                      aria-label={`删除 ${page?.label ?? rule.path} 的规则`}
+                      aria-label={t(
+                        "删除 {0} 的规则",
+                        page?.label ?? rule.path,
+                      )}
                       onClick={() =>
                         update((current) =>
                           withPageRule(current, rule.path, null),
@@ -700,17 +713,17 @@ function RuleControls({
         options={modeOptions}
         onChange={onModeChange}
       />
-      <Tooltip title="Dock 常驻显示时，是否在页面边缘留出空白">
+      <Tooltip title={t("Dock 常驻显示时，是否在页面边缘留出空白")}>
         <Segmented<RuleReserveChoice>
           size={size}
           value={reserve}
           options={[
             {
               value: "default",
-              label: `默认（${defaultReserve ? "预留" : "不预留"}）`,
+              label: t("默认（{0}）", defaultReserve ? t("预留") : t("不预留")),
             },
-            { value: "on", label: "预留" },
-            { value: "off", label: "不预留" },
+            { value: "on", label: t("预留") },
+            { value: "off", label: t("不预留") },
           ]}
           onChange={onReserveChange}
         />

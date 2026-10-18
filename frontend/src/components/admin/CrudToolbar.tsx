@@ -13,6 +13,7 @@ import { Modal, Space } from "antd";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import type { PermissionCode } from "../../app/menu";
+import { t } from "../../i18n";
 import { PermissionButton } from "./PermissionButton";
 
 type ToolbarAction = {
@@ -27,15 +28,15 @@ type ToolbarAction = {
 };
 
 const defaultActions: ToolbarAction[] = [
-  { key: "create", label: "新增", icon: <PlusOutlined />, primary: true },
-  { key: "delete", label: "删除", icon: <DeleteOutlined />, danger: true },
-  { key: "save", label: "保存", icon: <SaveOutlined /> },
-  { key: "cancel", label: "取消", icon: <StopOutlined /> },
-  { key: "refresh", label: "刷新", icon: <ReloadOutlined /> },
-  { key: "import", label: "导入", icon: <CloudUploadOutlined /> },
-  { key: "export", label: "导出", icon: <CloudDownloadOutlined /> },
-  { key: "print", label: "打印", icon: <PrinterOutlined /> },
-  { key: "help", label: "帮助", icon: <QuestionCircleOutlined /> },
+  { key: "create", label: t("新增"), icon: <PlusOutlined />, primary: true },
+  { key: "delete", label: t("删除"), icon: <DeleteOutlined />, danger: true },
+  { key: "save", label: t("保存"), icon: <SaveOutlined /> },
+  { key: "cancel", label: t("取消"), icon: <StopOutlined /> },
+  { key: "refresh", label: t("刷新"), icon: <ReloadOutlined /> },
+  { key: "import", label: t("导入"), icon: <CloudUploadOutlined /> },
+  { key: "export", label: t("导出"), icon: <CloudDownloadOutlined /> },
+  { key: "print", label: t("打印"), icon: <PrinterOutlined /> },
+  { key: "help", label: t("帮助"), icon: <QuestionCircleOutlined /> },
 ];
 
 export function CrudToolbar({
@@ -80,12 +81,12 @@ export function CrudToolbar({
         {primaryAction ? renderAction(primaryAction) : null}
         {secondaryActions.length > 0 ? (
           <PermissionButton onClick={() => setMobileActionsOpen(true)}>
-            更多
+            {t("更多")}
           </PermissionButton>
         ) : null}
       </Space.Compact>
       <Modal
-        title="更多操作"
+        title={t("更多操作")}
         open={mobileActionsOpen}
         onCancel={() => setMobileActionsOpen(false)}
         footer={null}

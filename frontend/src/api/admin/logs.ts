@@ -1,3 +1,4 @@
+import { tData } from "../../i18n";
 import { type ApiResponse, unwrap } from "../auth";
 import { apiClient } from "../client";
 import type { PageResponse } from "./users";
@@ -85,7 +86,19 @@ export type SaveAuditSettings = {
 export async function fetchAuditSettings() {
   const response =
     await apiClient.get<ApiResponse<AuditSettings>>("/admin/audit-rules");
-  return unwrap(response.data);
+  return translateAuditSettings(unwrap(response.data));
+}
+
+// Feature names and groups are defined (in Chinese) by the backend.
+function translateAuditSettings(settings: AuditSettings): AuditSettings {
+  return {
+    ...settings,
+    features: settings.features.map((feature) => ({
+      ...feature,
+      label: tData(feature.label),
+      group: tData(feature.group),
+    })),
+  };
 }
 
 export async function saveAuditSettings(payload: SaveAuditSettings) {
@@ -93,7 +106,7 @@ export async function saveAuditSettings(payload: SaveAuditSettings) {
     "/admin/audit-rules",
     payload,
   );
-  return unwrap(response.data);
+  return translateAuditSettings(unwrap(response.data));
 }
 
 /** File name from `Content-Disposition`, if the server sent one. */

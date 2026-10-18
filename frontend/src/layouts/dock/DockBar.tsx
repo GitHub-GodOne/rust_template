@@ -5,6 +5,7 @@ import { findMenuByPath } from "../../app/menu";
 import { renderMenuIcon } from "../icons";
 import { DOCK_SIZES, type DockConfig, type DockItemConfig } from "./dockConfig";
 import "./dock.css";
+import { t } from "../../i18n";
 
 export type ResolvedDockItem = DockItemConfig & {
   label: string;
@@ -74,7 +75,7 @@ export function DockBar({
   return (
     <nav
       className={classes}
-      aria-label="快捷页面"
+      aria-label={t("快捷页面")}
       style={
         {
           "--dock-item": `${size.item}px`,

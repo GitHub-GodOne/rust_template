@@ -70,6 +70,7 @@ import {
   statusOverlay,
 } from "./sshSession";
 import "./ssh.css";
+import { t } from "../../../i18n";
 
 type ServerTerminalMessage = {
   type: string;
@@ -227,21 +228,21 @@ function persistSessions(sessions: SshSession[], activeSessionId: string) {
 
 function statusLabel(status: TerminalStatus) {
   if (status === "connected") {
-    return "已连接";
+    return t("已连接");
   }
   if (status === "connecting") {
-    return "连接中";
+    return t("连接中");
   }
   if (status === "closed") {
-    return "已关闭";
+    return t("已关闭");
   }
   if (status === "detached") {
-    return "已断开";
+    return t("已断开");
   }
   if (status === "error") {
-    return "异常";
+    return t("异常");
   }
-  return "未连接";
+  return t("未连接");
 }
 
 function sessionId() {
@@ -308,7 +309,7 @@ async function writeClipboardText(text: string) {
   const copied = document.execCommand("copy");
   textarea.remove();
   if (!copied) {
-    throw new Error("当前浏览器不允许读取剪贴板");
+    throw new Error(t("当前浏览器不允许读取剪贴板"));
   }
 }
 
@@ -747,7 +748,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     (sessionIdValue: string, data: string, focusTerminal = true) => {
       const runtime = runtimeMapRef.current.get(sessionIdValue);
       if (runtime?.socket?.readyState !== WebSocket.OPEN) {
-        message.warning("终端未连接，请先接入会话");
+        message.warning(t("终端未连接，请先接入会话"));
         return false;
       }
       runtime.socket.send(JSON.stringify({ type: "input", data }));
@@ -783,7 +784,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   const openCopySheet = useCallback((sessionIdValue: string) => {
     const runtime = runtimeMapRef.current.get(sessionIdValue);
     if (!runtime) {
-      message.warning("终端尚未就绪");
+      message.warning(t("终端尚未就绪"));
       return;
     }
     const text = runtime.terminal.hasSelection()
@@ -795,7 +796,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   const copyTerminalContent = useCallback(async (sessionIdValue: string) => {
     const runtime = runtimeMapRef.current.get(sessionIdValue);
     if (!runtime) {
-      message.warning("终端尚未就绪");
+      message.warning(t("终端尚未就绪"));
       return;
     }
 
@@ -804,16 +805,16 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       ? runtime.terminal.getSelection()
       : terminalBufferText(runtime.terminal);
     if (!text) {
-      message.info("终端中暂无可复制内容");
+      message.info(t("终端中暂无可复制内容"));
       runtime.terminal.focus();
       return;
     }
 
     try {
       await writeClipboardText(text);
-      message.success(selected ? "已复制选中内容" : "已复制终端内容");
+      message.success(selected ? t("已复制选中内容") : t("已复制终端内容"));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "复制失败");
+      message.error(error instanceof Error ? error.message : t("复制失败"));
     } finally {
       runtime.terminal.focus();
     }
@@ -1037,12 +1038,12 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     async (sessionIdValue: string) => {
       const session = sessions.find((item) => item.id === sessionIdValue);
       if (!session?.targetKey) {
-        message.warning("请先选择 SSH 目标");
+        message.warning(t("请先选择 SSH 目标"));
         return;
       }
       const runtime = runtimeMapRef.current.get(sessionIdValue);
       if (!runtime) {
-        message.error("终端尚未就绪，请稍后再试");
+        message.error(t("终端尚未就绪，请稍后再试"));
         return;
       }
       const reconnectAttempt = reconnectAttemptsRef.current.get(sessionIdValue);
@@ -1078,7 +1079,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
           }
           // The server restarted or the session ended: recreate it silently.
           runtime.terminal.writeln(
-            "\r\n\x1b[90m原会话已失效，已自动新建连接\x1b[0m",
+            t("\r\n\u001b[90m原会话已失效，已自动新建连接\u001b[0m"),
           );
           serverSessionId = await createServerSession();
           ticket = await ticketMutation.mutateAsync(serverSessionId);
@@ -1135,7 +1136,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
               updateSession(sessionIdValue, (current) => ({
                 ...current,
                 status: "error",
-                errorMessage: payload.data ?? "终端连接异常",
+                errorMessage: payload.data ?? t("终端连接异常"),
                 reconnectAttempt: undefined,
               }));
             }
@@ -1173,7 +1174,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         void sessionsQuery.refetch();
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message : "连接失败";
+          error instanceof Error ? error.message : t("连接失败");
         updateSession(sessionIdValue, (current) => ({
           ...current,
           status: "error",
@@ -1273,7 +1274,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
 
   const openFileBrowser = useCallback((session: SshSession) => {
     if (!session.serverSessionId) {
-      message.warning("请先连接 SSH 会话");
+      message.warning(t("请先连接 SSH 会话"));
       return;
     }
     setFileBrowserSession(session);
@@ -1320,7 +1321,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         }
       } catch (error) {
         setFilePreviewError(
-          error instanceof Error ? error.message : "文件预览失败",
+          error instanceof Error ? error.message : t("文件预览失败"),
         );
       } finally {
         setFilePreviewLoading(false);
@@ -1333,12 +1334,12 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     if (filePreviewLoading) {
       return (
         <div className="material-preview-empty">
-          <Spin tip="正在加载预览" />
+          <Spin tip={t("正在加载预览")} />
         </div>
       );
     }
     if (!filePreviewing) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     if (filePreviewError) {
       return <Empty description={filePreviewError} />;
@@ -1348,7 +1349,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       return <pre className="material-preview-text">{filePreviewText}</pre>;
     }
     if (!filePreviewUrl) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     if (kind === "image") {
       return (
@@ -1388,13 +1389,13 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         />
       );
     }
-    return <Empty description="该文件类型暂不支持在线预览" />;
+    return <Empty description={t("该文件类型暂不支持在线预览")} />;
   };
 
   const sshFileColumns: ColumnsType<SshFileRecord> = useMemo(
     () => [
       {
-        title: "名称",
+        title: t("名称"),
         dataIndex: "name",
         render: (name: string, record) =>
           record.is_dir ? (
@@ -1406,19 +1407,19 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
           ),
       },
       {
-        title: "类型",
+        title: t("类型"),
         width: 90,
         render: (_, record) =>
-          record.is_dir ? "目录" : record.extension || "文件",
+          record.is_dir ? t("目录") : record.extension || t("文件"),
       },
       {
-        title: "大小",
+        title: t("大小"),
         width: 110,
         render: (_, record) =>
           record.is_dir ? "-" : formatBytes(record.size_bytes),
       },
       {
-        title: "更新时间",
+        title: t("更新时间"),
         width: 190,
         render: (_, record) =>
           record.updated_at
@@ -1451,9 +1452,9 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     : null;
 
   const targetLabel = !selectedTarget
-    ? "未选择目标"
+    ? t("未选择目标")
     : selectedTarget.target_type === "local"
-      ? "本机 Shell"
+      ? t("本机 Shell")
       : `${selectedTarget.username}@${selectedTarget.host}:${selectedTarget.port ?? 22}`;
   const targetOptions = (targetsQuery.data ?? []).map((targetOption) => ({
     value: targetOption.key,
@@ -1472,23 +1473,25 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
-              aria-label="退出终端"
+              aria-label={t("退出终端")}
               onClick={() => navigate("/admin/dashboard")}
             />
             <div className="ssh-mobile-terminal-title">
               <Typography.Text strong>
-                {selectedTarget?.name ?? "SSH 终端"}
+                {selectedTarget?.name ?? t("SSH 终端")}
               </Typography.Text>
               <Typography.Text type="secondary">
-                {activeSession ? statusLabel(activeSession.status) : "无会话"}
+                {activeSession
+                  ? statusLabel(activeSession.status)
+                  : t("无会话")}
               </Typography.Text>
             </div>
             <Space size={2}>
-              <Tooltip title="复制选中内容；未选择时复制全部终端内容">
+              <Tooltip title={t("复制选中内容；未选择时复制全部终端内容")}>
                 <Button
                   type="text"
                   icon={<CopyOutlined />}
-                  aria-label="复制终端内容"
+                  aria-label={t("复制终端内容")}
                   onClick={() => {
                     if (!activeSession) return;
                     // Touch screens cannot select inside xterm; offer a
@@ -1505,13 +1508,13 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                 type="text"
                 icon={<PlusOutlined />}
                 permission="system:ssh:connect"
-                aria-label="新建终端"
+                aria-label={t("新建终端")}
                 onClick={() => createSession()}
               />
               <Button
                 type="text"
                 icon={<MoreOutlined />}
-                aria-label="终端控制"
+                aria-label={t("终端控制")}
                 onClick={() => setMobileControlsOpen(true)}
               />
             </Space>
@@ -1519,7 +1522,11 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
           <div
             className={`ssh-window-bar${sessions.length === 1 ? " is-single" : ""}`}
           >
-            <div className="ssh-tabstrip" role="tablist" aria-label="终端会话">
+            <div
+              className="ssh-tabstrip"
+              role="tablist"
+              aria-label={t("终端会话")}
+            >
               {sessions.map((session, index) => {
                 const target = targetsQuery.data?.find(
                   (item) => item.key === session.targetKey,
@@ -1535,7 +1542,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                       role="tab"
                       aria-selected={active}
                       className="ssh-tab-main"
-                      title={`${target?.name ?? "终端"} · ${statusLabel(session.status)}`}
+                      title={`${target?.name ?? t("终端")} · ${statusLabel(session.status)}`}
                       onClick={() => setActiveSessionId(session.id)}
                     >
                       <span
@@ -1543,14 +1550,14 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                         aria-label={statusLabel(session.status)}
                       />
                       <span className="ssh-tab-title">
-                        {target?.name ?? "终端"} {index + 1}
+                        {target?.name ?? t("终端")} {index + 1}
                       </span>
                     </button>
                     {sessions.length > 1 && (
                       <button
                         type="button"
                         className="ssh-tab-close"
-                        aria-label="关闭标签"
+                        aria-label={t("关闭标签")}
                         onClick={() => closeSession(session.id)}
                       >
                         <CloseOutlined />
@@ -1559,14 +1566,14 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   </div>
                 );
               })}
-              <Tooltip title="新建终端">
+              <Tooltip title={t("新建终端")}>
                 <PermissionButton
                   type="text"
                   size="small"
                   className="ssh-tab-add"
                   icon={<PlusOutlined />}
                   permission="system:ssh:connect"
-                  aria-label="新建终端"
+                  aria-label={t("新建终端")}
                   onClick={() => createSession()}
                 />
               </Tooltip>
@@ -1589,23 +1596,23 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   }}
                 />
                 {activeConnected ? (
-                  <Tooltip title="断开（会话保留在服务器）">
+                  <Tooltip title={t("断开（会话保留在服务器）")}>
                     <Button
                       type="text"
                       size="small"
                       icon={<DisconnectOutlined />}
-                      aria-label="断开"
+                      aria-label={t("断开")}
                       onClick={() => disconnectSession(activeSession.id)}
                     />
                   </Tooltip>
                 ) : (
-                  <Tooltip title="连接">
+                  <Tooltip title={t("连接")}>
                     <PermissionButton
                       type="text"
                       size="small"
                       icon={<LinkOutlined />}
                       permission="system:ssh:connect"
-                      aria-label="连接"
+                      aria-label={t("连接")}
                       loading={
                         ticketMutation.isPending ||
                         createSessionMutation.isPending
@@ -1614,31 +1621,31 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                     />
                   </Tooltip>
                 )}
-                <Tooltip title="粘贴">
+                <Tooltip title={t("粘贴")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<SnippetsOutlined />}
-                    aria-label="粘贴"
+                    aria-label={t("粘贴")}
                     disabled={!activeConnected}
                     onClick={() => void pasteIntoTerminal(activeSession.id)}
                   />
                 </Tooltip>
-                <Tooltip title="复制选中内容；未选择时复制全部">
+                <Tooltip title={t("复制选中内容；未选择时复制全部")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<CopyOutlined />}
-                    aria-label="复制"
+                    aria-label={t("复制")}
                     onClick={() => copyTerminalContent(activeSession.id)}
                   />
                 </Tooltip>
-                <Tooltip title="清屏">
+                <Tooltip title={t("清屏")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<ClearOutlined />}
-                    aria-label="清屏"
+                    aria-label={t("清屏")}
                     onClick={() =>
                       runtimeMapRef.current
                         .get(activeSession.id)
@@ -1646,39 +1653,39 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                     }
                   />
                 </Tooltip>
-                <Tooltip title="文件">
+                <Tooltip title={t("文件")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<FolderOpenOutlined />}
-                    aria-label="文件"
+                    aria-label={t("文件")}
                     disabled={!activeSession.serverSessionId}
                     onClick={() => openFileBrowser(activeSession)}
                   />
                 </Tooltip>
-                <Tooltip title="刷新目标">
+                <Tooltip title={t("刷新目标")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<ReloadOutlined />}
-                    aria-label="刷新目标"
+                    aria-label={t("刷新目标")}
                     onClick={() => targetsQuery.refetch()}
                   />
                 </Tooltip>
                 <Popconfirm
-                  title="关闭这个会话？"
-                  description="服务器上的终端进程会被结束"
-                  okText="关闭"
-                  cancelText="取消"
+                  title={t("关闭这个会话？")}
+                  description={t("服务器上的终端进程会被结束")}
+                  okText={t("关闭")}
+                  cancelText={t("取消")}
                   onConfirm={() => void closeSharedSession(activeSession)}
                 >
-                  <Tooltip title="关闭会话">
+                  <Tooltip title={t("关闭会话")}>
                     <Button
                       type="text"
                       size="small"
                       danger
                       icon={<PoweroffOutlined />}
-                      aria-label="关闭会话"
+                      aria-label={t("关闭会话")}
                       loading={closeSessionMutation.isPending}
                     />
                   </Tooltip>
@@ -1694,7 +1701,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   icon={<SnippetsOutlined />}
                   onClick={() => void pasteIntoTerminal(activeSession.id)}
                 >
-                  粘贴
+                  {t("粘贴")}
                 </Button>
                 {specialKeys.map((key) => (
                   <Button
@@ -1764,7 +1771,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                       {selectedTarget && (
                         <span className="ssh-status-target">
                           {selectedTarget.target_type === "local"
-                            ? "本机 Shell"
+                            ? t("本机 Shell")
                             : `${selectedTarget.username}@${selectedTarget.host}`}
                         </span>
                       )}
@@ -1791,8 +1798,8 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   value={commandText}
                   placeholder={
                     activeSession.status === "connected"
-                      ? "输入命令，回车发送"
-                      : "连接后可输入命令"
+                      ? t("输入命令，回车发送")
+                      : t("连接后可输入命令")
                   }
                   disabled={activeSession.status !== "connected"}
                   autoCapitalize="off"
@@ -1806,7 +1813,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   type="primary"
                   htmlType="submit"
                   icon={<SendOutlined />}
-                  aria-label="发送命令"
+                  aria-label={t("发送命令")}
                   disabled={activeSession.status !== "connected"}
                 />
               </form>
@@ -1830,7 +1837,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         </Card>
       </div>
       <Drawer
-        title="终端控制"
+        title={t("终端控制")}
         open={mobileControlsOpen}
         placement="bottom"
         height="auto"
@@ -1870,7 +1877,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   connectSession(activeSession.id);
                 }}
               >
-                连接
+                {t("连接")}
               </PermissionButton>
               <Button
                 icon={<DisconnectOutlined />}
@@ -1879,7 +1886,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   disconnectSession(activeSession.id);
                 }}
               >
-                断开
+                {t("断开")}
               </Button>
               <Button
                 icon={<ClearOutlined />}
@@ -1888,7 +1895,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   setMobileControlsOpen(false);
                 }}
               >
-                清屏
+                {t("清屏")}
               </Button>
               <Button
                 icon={<CopyOutlined />}
@@ -1897,7 +1904,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   openCopySheet(activeSession.id);
                 }}
               >
-                复制
+                {t("复制")}
               </Button>
               <Button
                 icon={<FolderOpenOutlined />}
@@ -1907,13 +1914,13 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   openFileBrowser(activeSession);
                 }}
               >
-                文件
+                {t("文件")}
               </Button>
               <Button
                 icon={<ReloadOutlined />}
                 onClick={() => targetsQuery.refetch()}
               >
-                刷新目标
+                {t("刷新目标")}
               </Button>
               <Button
                 danger
@@ -1924,17 +1931,17 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   void closeSharedSession(activeSession);
                 }}
               >
-                关闭会话
+                {t("关闭会话")}
               </Button>
             </div>
           </Space>
         ) : null}
       </Drawer>
       <Modal
-        title="粘贴到终端"
+        title={t("粘贴到终端")}
         open={pasteOpen}
-        okText="发送"
-        cancelText="取消"
+        okText={t("发送")}
+        cancelText={t("取消")}
         okButtonProps={{ disabled: !pasteText }}
         onCancel={() => setPasteOpen(false)}
         onOk={() => {
@@ -1946,7 +1953,9 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         destroyOnClose
       >
         <Typography.Paragraph type="secondary">
-          长按下方输入框选择「粘贴」，确认内容后发送到终端（不会自动回车）。
+          {t(
+            "长按下方输入框选择「粘贴」，确认内容后发送到终端（不会自动回车）。",
+          )}
         </Typography.Paragraph>
         <Input.TextArea
           autoFocus
@@ -1959,11 +1968,11 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         />
       </Modal>
       <Modal
-        title="复制终端内容"
+        title={t("复制终端内容")}
         open={copySheetText !== null}
         footer={
           <Space>
-            <Button onClick={() => setCopySheetText(null)}>关闭</Button>
+            <Button onClick={() => setCopySheetText(null)}>{t("关闭")}</Button>
             <Button
               type="primary"
               icon={<CopyOutlined />}
@@ -1971,16 +1980,16 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
               onClick={async () => {
                 try {
                   await writeClipboardText(copySheetText ?? "");
-                  message.success("已复制");
+                  message.success(t("已复制"));
                   setCopySheetText(null);
                 } catch (error) {
                   message.error(
-                    error instanceof Error ? error.message : "复制失败",
+                    error instanceof Error ? error.message : t("复制失败"),
                   );
                 }
               }}
             >
-              复制全部
+              {t("复制全部")}
             </Button>
           </Space>
         }
@@ -1988,7 +1997,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         className="ssh-sheet-modal"
       >
         <Typography.Paragraph type="secondary">
-          长按文字可以选择部分内容复制。
+          {t("长按文字可以选择部分内容复制。")}
         </Typography.Paragraph>
         <Input.TextArea
           readOnly
@@ -1998,7 +2007,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         />
       </Modal>
       <Modal
-        title="SSH 文件管理"
+        title={t("SSH 文件管理")}
         open={Boolean(fileBrowserSession)}
         width={900}
         footer={null}
@@ -2010,9 +2019,9 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       >
         <Space direction="vertical" size={12} className="admin-full-width">
           <Space wrap className="ssh-file-toolbar">
-            <Typography.Text type="secondary">当前目录</Typography.Text>
+            <Typography.Text type="secondary">{t("当前目录")}</Typography.Text>
             <Typography.Text code copyable>
-              {sshFilesQuery.data?.path ?? fileBrowserPath ?? "加载中..."}
+              {sshFilesQuery.data?.path ?? fileBrowserPath ?? t("加载中...")}
             </Typography.Text>
             <Button
               size="small"
@@ -2023,7 +2032,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                 setFileBrowserPath(parentPath(sshFilesQuery.data?.path ?? "/"))
               }
             >
-              上级目录
+              {t("上级目录")}
             </Button>
             <Button
               size="small"
@@ -2031,7 +2040,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
               loading={sshFilesQuery.isFetching}
               onClick={() => sshFilesQuery.refetch()}
             >
-              刷新
+              {t("刷新")}
             </Button>
           </Space>
           {sshFilesQuery.isError ? (
@@ -2039,7 +2048,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
               description={
                 sshFilesQuery.error instanceof Error
                   ? sshFilesQuery.error.message
-                  : "目录加载失败"
+                  : t("目录加载失败")
               }
             />
           ) : (
@@ -2065,7 +2074,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         </Space>
       </Modal>
       <Modal
-        title={filePreviewing?.name ?? "文件预览"}
+        title={filePreviewing?.name ?? t("文件预览")}
         open={Boolean(filePreviewing)}
         footer={null}
         width="min(980px, 96vw)"

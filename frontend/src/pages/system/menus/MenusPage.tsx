@@ -32,6 +32,7 @@ import { current } from "../../../api/auth";
 import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 import { menuIconOptions, renderMenuIcon } from "../../../layouts/icons";
 import { useAuthStore } from "../../../stores/auth";
 
@@ -189,7 +190,7 @@ export function MenusPage() {
       const session = await current();
       setMenus(session.menus);
     } catch {
-      message.warning("菜单已保存，导航刷新失败，请刷新页面后查看");
+      message.warning(t("菜单已保存，导航刷新失败，请刷新页面后查看"));
     }
   };
 
@@ -205,7 +206,7 @@ export function MenusPage() {
     mutationFn: (values: SaveMenuParams) =>
       editing ? updateMenu(editing.id, values) : createMenu(values),
     onSuccess: async () => {
-      message.success("菜单已保存");
+      message.success(t("菜单已保存"));
       setFormOpen(false);
       setEditing(null);
       form.resetFields();
@@ -239,20 +240,20 @@ export function MenusPage() {
       return { previousTree };
     },
     onSuccess: async () => {
-      message.success("菜单顺序已更新");
+      message.success(t("菜单顺序已更新"));
       await refreshMenuViews();
     },
     onError: (error, _nextTree, context) => {
       if (context?.previousTree) {
         setMenuTree(context.previousTree);
       }
-      message.error(error instanceof Error ? error.message : "菜单排序失败");
+      message.error(error instanceof Error ? error.message : t("菜单排序失败"));
     },
   });
   const deleteMutation = useMutation({
     mutationFn: deleteMenu,
     onSuccess: async () => {
-      message.success("菜单已删除");
+      message.success(t("菜单已删除"));
       await refreshMenuViews();
     },
   });
@@ -313,16 +314,16 @@ export function MenusPage() {
 
   return (
     <CrudPage
-      title="菜单管理"
-      subtitle="维护后台侧边栏、前端路由和菜单权限编码"
-      breadcrumb={["系统管理", "菜单管理"]}
+      title={t("菜单管理")}
+      subtitle={t("维护后台侧边栏、前端路由和菜单权限编码")}
+      breadcrumb={[t("系统管理"), t("菜单管理")]}
       icon={<MenuOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增",
+              label: t("新增"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:menu:create",
@@ -345,11 +346,11 @@ export function MenusPage() {
         <div className="menu-tree-hint">
           <Typography.Text type="secondary">
             {canReorder
-              ? "拖动菜单可调整顺序；拖到菜单名称上可设为其子菜单。"
-              : "当前账号仅可查看菜单层级。"}
+              ? t("拖动菜单可调整顺序；拖到菜单名称上可设为其子菜单。")
+              : t("当前账号仅可查看菜单层级。")}
           </Typography.Text>
           {reorderMutation.isPending ? (
-            <Tag color="processing">保存中</Tag>
+            <Tag color="processing">{t("保存中")}</Tag>
           ) : null}
         </div>
         <Tree<MenuTreeNode>
@@ -375,22 +376,22 @@ export function MenusPage() {
                 </div>
               </div>
               <div className="menu-tree-node-status">
-                {!menu.visible ? <Tag>已隐藏</Tag> : null}
-                {!menu.enabled ? <Tag color="error">已停用</Tag> : null}
+                {!menu.visible ? <Tag>{t("已隐藏")}</Tag> : null}
+                {!menu.enabled ? <Tag color="error">{t("已停用")}</Tag> : null}
               </div>
               <div className="menu-tree-node-actions">
                 <PermissionButton
                   size="small"
                   icon={<EditOutlined />}
                   permission="system:menu:update"
-                  aria-label={`编辑${menu.title}`}
-                  title="编辑"
+                  aria-label={t("编辑{0}", menu.title)}
+                  title={t("编辑")}
                   onClick={(event) => {
                     event.stopPropagation();
                     openEditor(menu);
                   }}
                 >
-                  编辑
+                  {t("编辑")}
                 </PermissionButton>
                 <PermissionButton
                   size="small"
@@ -398,21 +399,21 @@ export function MenusPage() {
                   icon={<DeleteOutlined />}
                   permission="system:menu:delete"
                   loading={deleteMutation.isPending}
-                  aria-label={`删除${menu.title}`}
-                  title="删除"
+                  aria-label={t("删除{0}", menu.title)}
+                  title={t("删除")}
                   onClick={(event) => {
                     event.stopPropagation();
                     Modal.confirm({
-                      title: `删除“${menu.title}”？`,
-                      content: "删除父菜单前，请确认其子菜单已完成迁移。",
-                      okText: "删除",
+                      title: t("删除“{0}”？", menu.title),
+                      content: t("删除父菜单前，请确认其子菜单已完成迁移。"),
+                      okText: t("删除"),
                       okButtonProps: { danger: true },
-                      cancelText: "取消",
+                      cancelText: t("取消"),
                       onOk: () => deleteMutation.mutateAsync(menu.id),
                     });
                   }}
                 >
-                  删除
+                  {t("删除")}
                 </PermissionButton>
               </div>
             </div>
@@ -420,7 +421,7 @@ export function MenusPage() {
         />
       </div>
       <Modal
-        title={editing ? "编辑菜单" : "新增菜单"}
+        title={editing ? t("编辑菜单") : t("新增菜单")}
         open={formOpen}
         onCancel={() => setFormOpen(false)}
         onOk={() => form.submit()}
@@ -432,7 +433,7 @@ export function MenusPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="parent_id" label="上级菜单">
+          <Form.Item name="parent_id" label={t("上级菜单")}>
             <Select
               allowClear
               options={flatMenus
@@ -440,17 +441,21 @@ export function MenusPage() {
                 .map((menu) => ({ label: menu.title, value: menu.id }))}
             />
           </Form.Item>
-          <Form.Item name="title" label="菜单名称" rules={[{ required: true }]}>
+          <Form.Item
+            name="title"
+            label={t("菜单名称")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="path" label="前端路径">
+          <Form.Item name="path" label={t("前端路径")}>
             <Input placeholder="/admin/system/users" />
           </Form.Item>
-          <Form.Item name="icon" label="图标">
+          <Form.Item name="icon" label={t("图标")}>
             <Select
               allowClear
               showSearch
-              placeholder="请选择图标"
+              placeholder={t("请选择图标")}
               optionFilterProp="label"
               options={iconSelectOptions(form.getFieldValue("icon")).map(
                 (option) => ({
@@ -479,17 +484,17 @@ export function MenusPage() {
               )}
             />
           </Form.Item>
-          <Form.Item name="permission_code" label="菜单权限编码">
+          <Form.Item name="permission_code" label={t("菜单权限编码")}>
             <Input placeholder="system:user:list" />
           </Form.Item>
-          <Form.Item name="sort_order" label="排序">
+          <Form.Item name="sort_order" label={t("排序")}>
             <InputNumber min={0} className="full-width" />
           </Form.Item>
           <Space>
-            <Form.Item name="visible" label="显示" valuePropName="checked">
+            <Form.Item name="visible" label={t("显示")} valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
               <Switch />
             </Form.Item>
           </Space>

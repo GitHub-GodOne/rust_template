@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 export type FinderKind =
   | "folder"
   | "image"
@@ -101,17 +102,17 @@ export function finderKindOf(options: {
 }
 
 const KIND_LABELS: Record<FinderKind, string> = {
-  folder: "文件夹",
-  image: "图像",
-  video: "视频",
-  audio: "音频",
-  pdf: "PDF 文稿",
-  text: "纯文本",
-  code: "源代码",
-  archive: "压缩包",
-  sheet: "表格",
-  doc: "文稿",
-  file: "文件",
+  folder: t("文件夹"),
+  image: t("图像"),
+  video: t("视频"),
+  audio: t("音频"),
+  pdf: t("PDF 文稿"),
+  text: t("纯文本"),
+  code: t("源代码"),
+  archive: t("压缩包"),
+  sheet: t("表格"),
+  doc: t("文稿"),
+  file: t("文件"),
 };
 
 export function kindLabel(item: Pick<FinderItem, "kind" | "typeLabel">) {
@@ -120,7 +121,7 @@ export function kindLabel(item: Pick<FinderItem, "kind" | "typeLabel">) {
 
 export function formatBytes(value?: number | null) {
   if (value === undefined || value === null || Number.isNaN(value)) return "--";
-  if (value < 1000) return `${value} 字节`;
+  if (value < 1000) return t("{0} 字节", value);
   const units = ["KB", "MB", "GB", "TB"];
   let size = value / 1000;
   let unit = 0;
@@ -151,8 +152,8 @@ export function formatModified(value?: string | null, now: Date = new Date()) {
       new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()) /
       86_400_000,
   );
-  if (dayDiff === 0) return `今天 ${time}`;
-  if (dayDiff === 1) return `昨天 ${time}`;
+  if (dayDiff === 0) return t("今天 {0}", time);
+  if (dayDiff === 1) return t("昨天 {0}", time);
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${time}`;
 }
 

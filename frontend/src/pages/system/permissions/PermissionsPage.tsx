@@ -30,18 +30,19 @@ import {
 } from "../../../api/admin/roles";
 import { PageHeader } from "../../../components/admin/PageHeader";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t, tData } from "../../../i18n";
 
 const actionOptions: Array<{
   key: keyof Omit<RoleMenuGrant, "menu_id">;
   label: string;
 }> = [
-  { key: "can_create", label: "新增" },
-  { key: "can_update", label: "编辑" },
-  { key: "can_delete", label: "删除" },
-  { key: "can_import", label: "导入" },
-  { key: "can_export", label: "导出" },
-  { key: "can_print", label: "打印" },
-  { key: "can_help", label: "帮助" },
+  { key: "can_create", label: t("新增") },
+  { key: "can_update", label: t("编辑") },
+  { key: "can_delete", label: t("删除") },
+  { key: "can_import", label: t("导入") },
+  { key: "can_export", label: t("导出") },
+  { key: "can_print", label: t("打印") },
+  { key: "can_help", label: t("帮助") },
 ];
 
 function flattenMenus(menus: MenuRecord[]): MenuRecord[] {
@@ -62,43 +63,43 @@ function emptyGrant(menuId: number): RoleMenuGrant {
 }
 
 const permissionGroupLabels: Record<string, string> = {
-  dashboard: "首页",
-  "system:user": "用户管理",
-  "system:role": "角色管理",
-  "system:tenant": "租户管理",
-  "system:department": "部门管理",
-  "system:menu": "菜单管理",
-  "system:permission": "权限管理",
-  "system:log": "日志审计",
-  "system:upload": "素材库",
-  "system:file": "文件管理",
-  "system:static_host": "静态托管",
-  "system:chat": "聊天管理",
-  "system:storage": "存储配置",
-  "system:setting": "系统设置",
-  "system:dict": "字典管理",
-  "system:http_client": "HTTP 客户端",
-  "system:notification": "通知中心",
-  "system:scheduled_task": "定时任务",
-  "system:backup": "数据库备份",
-  "system:docs": "接口文档",
-  "system:monitor": "系统监控",
-  "system:rate_limit": "限流规则",
-  "system:command": "命令管理",
-  "system:api_key": "API 授权",
-  "system:ssh": "SSH 管理",
-  "system:vnc": "VNC 管理",
-  "system:rdp": "RDP 管理",
-  "system:ddns": "IPv6 动态解析",
-  "system:certificate": "证书与域名",
-  "system:ai_image": "AI 图片",
-  "system:email_template": "邮箱模板",
-  "system:work_order": "工单管理",
-  "system:payment_order": "支付管理 · 订单",
-  "system:payment_channel": "支付管理 · 渠道",
-  "system:payment_refund": "支付管理 · 退款",
-  "system:content_article": "内容管理 · 文章",
-  "system:content_category": "内容管理 · 分类",
+  dashboard: t("首页"),
+  "system:user": t("用户管理"),
+  "system:role": t("角色管理"),
+  "system:tenant": t("租户管理"),
+  "system:department": t("部门管理"),
+  "system:menu": t("菜单管理"),
+  "system:permission": t("权限管理"),
+  "system:log": t("日志审计"),
+  "system:upload": t("素材库"),
+  "system:file": t("文件管理"),
+  "system:static_host": t("静态托管"),
+  "system:chat": t("聊天管理"),
+  "system:storage": t("存储配置"),
+  "system:setting": t("系统设置"),
+  "system:dict": t("字典管理"),
+  "system:http_client": t("HTTP 客户端"),
+  "system:notification": t("通知中心"),
+  "system:scheduled_task": t("定时任务"),
+  "system:backup": t("数据库备份"),
+  "system:docs": t("接口文档"),
+  "system:monitor": t("系统监控"),
+  "system:rate_limit": t("限流规则"),
+  "system:command": t("命令管理"),
+  "system:api_key": t("API 授权"),
+  "system:ssh": t("SSH 管理"),
+  "system:vnc": t("VNC 管理"),
+  "system:rdp": t("RDP 管理"),
+  "system:ddns": t("IPv6 动态解析"),
+  "system:certificate": t("证书与域名"),
+  "system:ai_image": t("AI 图片"),
+  "system:email_template": t("邮箱模板"),
+  "system:work_order": t("工单管理"),
+  "system:payment_order": t("支付管理 · 订单"),
+  "system:payment_channel": t("支付管理 · 渠道"),
+  "system:payment_refund": t("支付管理 · 退款"),
+  "system:content_article": t("内容管理 · 文章"),
+  "system:content_category": t("内容管理 · 分类"),
 };
 
 function permissionGroupLabel(groupName: string) {
@@ -179,6 +180,7 @@ export function PermissionsPage() {
       (permission) =>
         !keyword ||
         permission.name.toLowerCase().includes(keyword) ||
+        tData(permission.name).toLowerCase().includes(keyword) ||
         permission.code.toLowerCase().includes(keyword) ||
         permission.group_name.toLowerCase().includes(keyword),
     );
@@ -208,7 +210,7 @@ export function PermissionsPage() {
       await saveRoleMenus(selectedRoleId, Object.values(menuGrants));
     },
     onSuccess: () => {
-      message.success("权限已保存");
+      message.success(t("权限已保存"));
       queryClient.invalidateQueries({
         queryKey: ["admin-role-permissions", selectedRoleId],
       });
@@ -274,14 +276,14 @@ export function PermissionsPage() {
   return (
     <div className="permissions-page">
       <PageHeader
-        title="权限配置"
-        subtitle="左侧选择角色，右侧维护接口权限、菜单权限和按钮权限"
-        breadcrumb={["系统管理", "权限配置"]}
+        title={t("权限配置")}
+        subtitle={t("左侧选择角色，右侧维护接口权限、菜单权限和按钮权限")}
+        breadcrumb={[t("系统管理"), t("权限配置")]}
         icon={<SafetyCertificateOutlined />}
       />
       <div className="permissions-workspace">
         <aside className="permissions-role-column">
-          <Card title="角色" className="admin-card permissions-role-card">
+          <Card title={t("角色")} className="admin-card permissions-role-card">
             <List
               loading={rolesQuery.isLoading}
               dataSource={rolesQuery.data?.items ?? []}
@@ -306,7 +308,10 @@ export function PermissionsPage() {
         </aside>
         <main className="permissions-matrix-column">
           <Card
-            title={`权限矩阵${selectedRole ? `：${selectedRole.name}` : ""}`}
+            title={t(
+              "权限矩阵{0}",
+              selectedRole ? `：${selectedRole.name}` : "",
+            )}
             className="admin-card"
             extra={
               <PermissionButton
@@ -316,7 +321,7 @@ export function PermissionsPage() {
                 loading={saveMutation.isPending}
                 onClick={() => saveMutation.mutate()}
               >
-                保存授权
+                {t("保存授权")}
               </PermissionButton>
             }
           >
@@ -330,19 +335,19 @@ export function PermissionsPage() {
                   label: (
                     <Space size={6}>
                       <ApiOutlined />
-                      接口 / 功能权限
+                      {t("接口 / 功能权限")}
                     </Space>
                   ),
                   children: (
                     <div className="permission-api-section">
                       <div className="permission-section-heading">
                         <Typography.Text type="secondary">
-                          按管理模块分组，可按名称或权限代码快速筛选
+                          {t("按管理模块分组，可按名称或权限代码快速筛选")}
                         </Typography.Text>
                         <Input.Search
                           allowClear
                           value={permissionKeyword}
-                          placeholder="搜索权限名称或代码"
+                          placeholder={t("搜索权限名称或代码")}
                           onChange={(event) =>
                             setPermissionKeyword(event.target.value)
                           }
@@ -400,7 +405,7 @@ export function PermissionsPage() {
                                     value={permission.id}
                                   >
                                     <span className="permission-option-label">
-                                      <span>{permission.name}</span>
+                                      <span>{tData(permission.name)}</span>
                                       <code>{permission.code}</code>
                                     </span>
                                   </Checkbox>
@@ -418,7 +423,7 @@ export function PermissionsPage() {
                   label: (
                     <Space size={6}>
                       <MenuOutlined />
-                      菜单与按钮权限
+                      {t("菜单与按钮权限")}
                     </Space>
                   ),
                   children: (
@@ -427,7 +432,7 @@ export function PermissionsPage() {
                         type="secondary"
                         className="permission-tab-intro"
                       >
-                        控制导航入口是否显示，以及页面内允许使用的操作
+                        {t("控制导航入口是否显示，以及页面内允许使用的操作")}
                       </Typography.Text>
                       <div className="permission-grid">
                         {menus.map((menu) => {
@@ -442,7 +447,7 @@ export function PermissionsPage() {
                                     toggleMenu(menu.id, event.target.checked)
                                   }
                                 >
-                                  菜单可见
+                                  {t("菜单可见")}
                                 </Checkbox>
                                 {actionOptions.map((action) => (
                                   <Checkbox

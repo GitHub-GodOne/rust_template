@@ -73,6 +73,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { StatusTag } from "../../../components/admin/StatusTag";
+import { t } from "../../../i18n";
 import { useAuthStore } from "../../../stores/auth";
 import { fileKind, mimeFromExtension } from "../uploads/uploadTaskManager";
 
@@ -203,7 +204,7 @@ function buildRunStatusCurl(token: string, runId: number) {
 
 function buildRunPayloadFromRecord(run: CommandRunRecord) {
   return {
-    name: `${run.name} API 重跑`,
+    name: t("{0} API 重跑", run.name),
     working_directory: run.working_directory,
     command_line: run.command_line,
     preview_path_template: run.preview_path_template ?? undefined,
@@ -414,23 +415,23 @@ export function CommandsPage() {
         : createCommandTemplate(payload);
     },
     onSuccess: () => {
-      message.success("命令模板已保存");
+      message.success(t("命令模板已保存"));
       setTemplateOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ["admin-command-templates"] });
     },
     onError: (error) => {
-      message.error(error.message || "命令模板保存失败");
+      message.error(error.message || t("命令模板保存失败"));
     },
   });
   const deleteMutation = useMutation({
     mutationFn: deleteCommandTemplate,
     onSuccess: () => {
-      message.success("命令模板已删除");
+      message.success(t("命令模板已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-command-templates"] });
     },
     onError: (error) => {
-      message.error(error.message || "命令模板删除失败");
+      message.error(error.message || t("命令模板删除失败"));
     },
   });
   const saveWorkflowMutation = useMutation({
@@ -442,7 +443,7 @@ export function CommandsPage() {
         enabled: values.enabled ?? true,
         steps: (values.steps ?? []).filter(Boolean).map((step, index) => ({
           template_id: step?.template_id as number,
-          name: step?.name ?? `步骤 ${index + 1}`,
+          name: step?.name ?? t("步骤 {0}", index + 1),
           sort_order: step?.sort_order ?? index + 1,
           args: normalizeEmpty(step?.args),
           env_vars: normalizeEmpty(step?.env_vars),
@@ -456,37 +457,37 @@ export function CommandsPage() {
         : createCommandWorkflow(payload);
     },
     onSuccess: () => {
-      message.success("任务编排已保存");
+      message.success(t("任务编排已保存"));
       setWorkflowOpen(false);
       setEditingWorkflow(null);
       queryClient.invalidateQueries({ queryKey: ["admin-command-workflows"] });
     },
     onError: (error) => {
-      message.error(error.message || "任务编排保存失败");
+      message.error(error.message || t("任务编排保存失败"));
     },
   });
   const deleteWorkflowMutation = useMutation({
     mutationFn: deleteCommandWorkflow,
     onSuccess: () => {
-      message.success("任务编排已删除");
+      message.success(t("任务编排已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-command-workflows"] });
     },
     onError: (error) => {
-      message.error(error.message || "任务编排删除失败");
+      message.error(error.message || t("任务编排删除失败"));
     },
   });
   const runWorkflowMutation = useMutation({
     mutationFn: (workflow: CommandWorkflowRecord) =>
       runCommandWorkflow(workflow.id, { name: workflow.name }),
     onSuccess: (run) => {
-      message.success("任务编排已开始执行");
+      message.success(t("任务编排已开始执行"));
       setDetailWorkflowRunId(run.id);
       queryClient.invalidateQueries({
         queryKey: ["admin-command-workflow-runs"],
       });
     },
     onError: (error) => {
-      message.error(error.message || "任务编排执行失败");
+      message.error(error.message || t("任务编排执行失败"));
     },
   });
   const runMutation = useMutation({
@@ -509,7 +510,7 @@ export function CommandsPage() {
         : runAdHocCommand(payload);
     },
     onSuccess: (run) => {
-      message.success("命令已开始执行");
+      message.success(t("命令已开始执行"));
       setRunOpen(false);
       openRunDetail(run.id);
       queryClient.invalidateQueries({ queryKey: ["admin-command-runs"] });
@@ -518,7 +519,7 @@ export function CommandsPage() {
   const cancelMutation = useMutation({
     mutationFn: cancelCommandRun,
     onSuccess: (run) => {
-      message.success("命令已取消");
+      message.success(t("命令已取消"));
       queryClient.setQueryData(["admin-command-run", run.id], run);
       queryClient.invalidateQueries({ queryKey: ["admin-command-runs"] });
     },
@@ -562,7 +563,7 @@ export function CommandsPage() {
         setPreviewObjectUrl(URL.createObjectURL(blob));
       }
     } catch (error) {
-      setPreviewError(error instanceof Error ? error.message : "预览失败");
+      setPreviewError(error instanceof Error ? error.message : t("预览失败"));
     } finally {
       setPreviewLoading(false);
     }
@@ -675,29 +676,29 @@ export function CommandsPage() {
 
   const copyRunCurl = async (run: CommandRunRecord) => {
     if (!activeApiKey) {
-      message.warning("请先在 API 授权管理中添加并启用密钥");
+      message.warning(t("请先在 API 授权管理中添加并启用密钥"));
       return;
     }
     await copyText(
       buildRunCurl(activeApiKey.token, buildRunPayloadFromRecord(run)),
-      "执行 curl 已复制",
+      t("执行 curl 已复制"),
     );
   };
 
   const copyRunStatusCurl = async (runId: number) => {
     if (!activeApiKey) {
-      message.warning("请先在 API 授权管理中添加并启用密钥");
+      message.warning(t("请先在 API 授权管理中添加并启用密钥"));
       return;
     }
     await copyText(
       buildRunStatusCurl(activeApiKey.token, runId),
-      "查询 curl 已复制",
+      t("查询 curl 已复制"),
     );
   };
 
   const copyTemplateCurl = async (template: CommandTemplateRecord) => {
     if (!activeApiKey) {
-      message.warning("请先在 API 授权管理中添加并启用密钥");
+      message.warning(t("请先在 API 授权管理中添加并启用密钥"));
       return;
     }
     await copyText(
@@ -705,7 +706,7 @@ export function CommandsPage() {
         template_id: template.id,
         name: template.name,
       }),
-      "模板执行 curl 已复制",
+      t("模板执行 curl 已复制"),
     );
   };
 
@@ -726,7 +727,7 @@ export function CommandsPage() {
     templateForm.resetFields();
     templateForm.setFieldsValue({
       ...record,
-      name: `${record.name} 副本`,
+      name: t("{0} 副本", record.name),
       code: `${record.code}_copy`,
     });
     setTemplateOpen(true);
@@ -755,7 +756,7 @@ export function CommandsPage() {
           }
         : {
             enabled: true,
-            steps: [{ sort_order: 1, enabled: true, name: "步骤 1" }],
+            steps: [{ sort_order: 1, enabled: true, name: t("步骤 1") }],
           },
     );
     setWorkflowOpen(true);
@@ -765,7 +766,7 @@ export function CommandsPage() {
     setEditingWorkflow(null);
     workflowForm.resetFields();
     workflowForm.setFieldsValue({
-      name: `${record.name} 副本`,
+      name: t("{0} 副本", record.name),
       code: `${record.code}_copy`,
       description: record.description,
       enabled: record.enabled,
@@ -870,7 +871,7 @@ export function CommandsPage() {
     } else {
       runForm.setFieldsValue({
         working_directory: "/tmp",
-        name: "临时命令",
+        name: t("临时命令"),
         base_command: "",
         args: [],
         command_line: "",
@@ -881,23 +882,23 @@ export function CommandsPage() {
 
   const templateColumns: ColumnsType<CommandTemplateRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 160 },
-    { title: "编码", dataIndex: "code", width: 160 },
+    { title: t("名称"), dataIndex: "name", width: 160 },
+    { title: t("编码"), dataIndex: "code", width: 160 },
     {
-      title: "目录",
+      title: t("目录"),
       dataIndex: "working_directory",
       width: 240,
       ellipsis: true,
     },
-    { title: "命令", dataIndex: "command", width: 260, ellipsis: true },
+    { title: t("命令"), dataIndex: "command", width: 260, ellipsis: true },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 360,
       fixed: "right",
@@ -909,7 +910,7 @@ export function CommandsPage() {
             permission="system:command:run"
             onClick={() => openRunModal(record)}
           >
-            运行
+            {t("运行")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -925,7 +926,7 @@ export function CommandsPage() {
             permission="system:command:update"
             onClick={() => openTemplateEditor(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -933,10 +934,10 @@ export function CommandsPage() {
             permission="system:command:create"
             onClick={() => cloneTemplate(record)}
           >
-            克隆
+            {t("克隆")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除命令模板？"
+            title={t("确认删除命令模板？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -945,7 +946,7 @@ export function CommandsPage() {
               icon={<DeleteOutlined />}
               permission="system:command:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -955,22 +956,22 @@ export function CommandsPage() {
 
   const workflowColumns: ColumnsType<CommandWorkflowRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 180 },
-    { title: "编码", dataIndex: "code", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
+    { title: t("编码"), dataIndex: "code", width: 180 },
     {
-      title: "步骤数",
+      title: t("步骤数"),
       key: "steps",
       width: 90,
       render: (_, record) => record.steps.filter((step) => step.enabled).length,
     },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <StatusTag active={value} />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 300,
       fixed: "right",
@@ -982,7 +983,7 @@ export function CommandsPage() {
             permission="system:command:run"
             onClick={() => runWorkflowMutation.mutate(record)}
           >
-            排队执行
+            {t("排队执行")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -990,7 +991,7 @@ export function CommandsPage() {
             permission="system:command:update"
             onClick={() => openWorkflowEditor(record)}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -998,10 +999,10 @@ export function CommandsPage() {
             permission="system:command:create"
             onClick={() => cloneWorkflow(record)}
           >
-            克隆
+            {t("克隆")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除任务编排？"
+            title={t("确认删除任务编排？")}
             onConfirm={() => deleteWorkflowMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -1010,7 +1011,7 @@ export function CommandsPage() {
               icon={<DeleteOutlined />}
               permission="system:command:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -1020,9 +1021,9 @@ export function CommandsPage() {
 
   const workflowRunColumns: ColumnsType<CommandWorkflowRunRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 180 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (value) => (
@@ -1030,32 +1031,32 @@ export function CommandsPage() {
       ),
     },
     {
-      title: "步骤进度",
+      title: t("步骤进度"),
       key: "steps",
       width: 160,
       render: (_, record) =>
         `${record.steps.filter((step) => step.status === "success").length}/${record.steps.length}`,
     },
     {
-      title: "耗时",
+      title: t("耗时"),
       dataIndex: "duration_ms",
       width: 100,
       render: (value) => (value ? `${value} ms` : "-"),
     },
     {
-      title: "开始时间",
+      title: t("开始时间"),
       dataIndex: "started_at",
       width: 220,
       render: (value) => value ?? "-",
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 100,
       fixed: "right",
       render: (_, record) => (
         <Button size="small" onClick={() => setDetailWorkflowRunId(record.id)}>
-          详情
+          {t("详情")}
         </Button>
       ),
     },
@@ -1065,12 +1066,12 @@ export function CommandsPage() {
     if (previewLoading) {
       return (
         <div className="material-preview-empty">
-          <Spin tip="正在加载预览" />
+          <Spin tip={t("正在加载预览")} />
         </div>
       );
     }
     if (!previewingRun) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     if (previewError) {
       return (
@@ -1084,7 +1085,7 @@ export function CommandsPage() {
       return <pre className="material-preview-text">{previewText}</pre>;
     }
     if (!previewObjectUrl) {
-      return <Empty description="暂无预览内容" />;
+      return <Empty description={t("暂无预览内容")} />;
     }
     const kind = fileKind(commandArtifactRecord(previewingRun));
     if (kind === "image") {
@@ -1132,7 +1133,7 @@ export function CommandsPage() {
     return (
       <div className="material-preview-empty">
         <Typography.Text type="secondary">
-          该文件类型暂不支持在线预览，可以复制路径后在服务器查看。
+          {t("该文件类型暂不支持在线预览，可以复制路径后在服务器查看。")}
         </Typography.Text>
       </div>
     );
@@ -1140,9 +1141,9 @@ export function CommandsPage() {
 
   const runColumns: ColumnsType<CommandRunRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "名称", dataIndex: "name", width: 160 },
+    { title: t("名称"), dataIndex: "name", width: 160 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (value) => (
@@ -1150,48 +1151,52 @@ export function CommandsPage() {
       ),
     },
     {
-      title: "自动重试",
+      title: t("自动重试"),
       key: "retry_policy",
       width: 130,
       render: (_, record) =>
         record.retry_on_failure
-          ? `已重试 ${Math.max(0, (record.attempt_count ?? 1) - 1)}/${record.max_retries} 次`
-          : "关闭",
+          ? t(
+              "已重试 {0}/{1} 次",
+              Math.max(0, (record.attempt_count ?? 1) - 1),
+              record.max_retries,
+            )
+          : t("关闭"),
     },
     {
-      title: "目录",
+      title: t("目录"),
       dataIndex: "working_directory",
       width: 220,
       ellipsis: true,
     },
-    { title: "命令", dataIndex: "command_line", width: 300, ellipsis: true },
+    { title: t("命令"), dataIndex: "command_line", width: 300, ellipsis: true },
     {
-      title: "退出码",
+      title: t("退出码"),
       dataIndex: "exit_code",
       width: 90,
       render: (value) => value ?? "-",
     },
     {
-      title: "耗时",
+      title: t("耗时"),
       dataIndex: "duration_ms",
       width: 100,
       render: (value) => (value ? `${value} ms` : "-"),
     },
     {
-      title: "开始时间",
+      title: t("开始时间"),
       dataIndex: "started_at",
       width: 220,
       render: (value) => value ?? "-",
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 430,
       fixed: "right",
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => openRunDetail(record.id)}>
-            日志
+            {t("日志")}
           </Button>
           <PermissionButton
             size="small"
@@ -1199,7 +1204,7 @@ export function CommandsPage() {
             permission="system:api_key:list"
             onClick={() => copyRunCurl(record)}
           >
-            执行 curl
+            {t("执行 curl")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -1207,7 +1212,7 @@ export function CommandsPage() {
             permission="system:api_key:list"
             onClick={() => copyRunStatusCurl(record.id)}
           >
-            查询 curl
+            {t("查询 curl")}
           </PermissionButton>
           {record.preview_path ? (
             <Button
@@ -1215,7 +1220,7 @@ export function CommandsPage() {
               icon={<EyeOutlined />}
               onClick={() => openPreview(record)}
             >
-              预览
+              {t("预览")}
             </Button>
           ) : null}
           <PermissionButton
@@ -1223,7 +1228,7 @@ export function CommandsPage() {
             permission="system:command:run"
             onClick={() => openRunModal(undefined, record)}
           >
-            编辑重跑
+            {t("编辑重跑")}
           </PermissionButton>
           {isActiveRun(record.status) ? (
             <PermissionButton
@@ -1233,7 +1238,7 @@ export function CommandsPage() {
               permission="system:command:cancel"
               onClick={() => cancelMutation.mutate(record.id)}
             >
-              取消
+              {t("取消")}
             </PermissionButton>
           ) : null}
         </Space>
@@ -1246,16 +1251,16 @@ export function CommandsPage() {
 
   return (
     <CrudPage
-      title="命令管理"
-      subtitle="管理常用命令模板、执行历史和长任务实时输出"
-      breadcrumb={["系统管理", "命令管理"]}
+      title={t("命令管理")}
+      subtitle={t("管理常用命令模板、执行历史和长任务实时输出")}
+      breadcrumb={[t("系统管理"), t("命令管理")]}
       icon={<CodeOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "新增模板",
+              label: t("新增模板"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:command:create",
@@ -1263,21 +1268,21 @@ export function CommandsPage() {
             },
             {
               key: "workflow",
-              label: "新增编排",
+              label: t("新增编排"),
               icon: <ApartmentOutlined />,
               permission: "system:command:create",
               onClick: () => openWorkflowEditor(),
             },
             {
               key: "adhoc",
-              label: "临时执行",
+              label: t("临时执行"),
               icon: <PlayCircleOutlined />,
               permission: "system:command:run",
               onClick: () => openRunModal(),
             },
             {
               key: "refresh",
-              label: "刷新",
+              label: t("刷新"),
               icon: <ReloadOutlined />,
               onClick: () => {
                 templatesQuery.refetch();
@@ -1296,13 +1301,15 @@ export function CommandsPage() {
       <Alert
         type="warning"
         showIcon
-        message="命令输出会持久化保存，请避免在命令或日志中打印密钥、Token 等敏感信息。"
+        message={t(
+          "命令输出会持久化保存，请避免在命令或日志中打印密钥、Token 等敏感信息。",
+        )}
       />
       <Tabs
         items={[
           {
             key: "templates",
-            label: "命令模板",
+            label: t("命令模板"),
             children: (
               <DataTable<CommandTemplateRecord>
                 columns={templateColumns}
@@ -1318,7 +1325,7 @@ export function CommandsPage() {
           },
           {
             key: "workflows",
-            label: "任务编排",
+            label: t("任务编排"),
             children: (
               <DataTable<CommandWorkflowRecord>
                 columns={workflowColumns}
@@ -1334,7 +1341,7 @@ export function CommandsPage() {
           },
           {
             key: "workflow-runs",
-            label: "编排记录",
+            label: t("编排记录"),
             children: (
               <DataTable<CommandWorkflowRunRecord>
                 columns={workflowRunColumns}
@@ -1350,7 +1357,7 @@ export function CommandsPage() {
           },
           {
             key: "runs",
-            label: "执行记录",
+            label: t("执行记录"),
             children: (
               <DataTable<CommandRunRecord>
                 columns={runColumns}
@@ -1367,7 +1374,7 @@ export function CommandsPage() {
         ]}
       />
       <Modal
-        title={editing ? "编辑命令模板" : "新增命令模板"}
+        title={editing ? t("编辑命令模板") : t("新增命令模板")}
         open={templateOpen}
         onCancel={() => setTemplateOpen(false)}
         onOk={() => templateForm.submit()}
@@ -1379,60 +1386,66 @@ export function CommandsPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="编码" rules={[{ required: true }]}>
+          <Form.Item name="code" label={t("编码")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t("描述")}>
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item
             name="working_directory"
-            label="工作目录"
+            label={t("工作目录")}
             rules={[{ required: true }]}
           >
             <Input placeholder="/path/to/project" />
           </Form.Item>
-          <Form.Item name="command" label="命令" rules={[{ required: true }]}>
+          <Form.Item
+            name="command"
+            label={t("命令")}
+            rules={[{ required: true }]}
+          >
             <Input.TextArea
               rows={3}
               placeholder="python script.py --arg value"
             />
           </Form.Item>
-          <Form.Item name="default_args" label="默认参数">
+          <Form.Item name="default_args" label={t("默认参数")}>
             <Input.TextArea rows={5} placeholder="--env dev --limit 10" />
           </Form.Item>
           <Form.Item
             name="preview_path_template"
-            label="预览文件路径模板"
-            extra="相对路径会按工作目录解析；支持 {{random:8}}，执行记录会保存当次实际文件路径。"
+            label={t("预览文件路径模板")}
+            extra={t(
+              "相对路径会按工作目录解析；支持 {{random:8}}，执行记录会保存当次实际文件路径。",
+            )}
           >
             <Input placeholder={`outputs/result-${RANDOM_PLACEHOLDER}.mp4`} />
           </Form.Item>
-          <Form.Item name="env_vars" label="环境变量 JSON">
+          <Form.Item name="env_vars" label={t("环境变量 JSON")}>
             <Input.TextArea rows={3} placeholder='{"PYTHONPATH":"src"}' />
           </Form.Item>
-          <Form.Item name="python_venv_path" label="Python 虚拟环境路径">
+          <Form.Item name="python_venv_path" label={t("Python 虚拟环境路径")}>
             <Input placeholder="/path/to/.venv" />
           </Form.Item>
-          <Form.Item name="setup_script" label="前置脚本">
+          <Form.Item name="setup_script" label={t("前置脚本")}>
             <Input.TextArea
               rows={4}
               placeholder="source .env\nexport APP_ENV=dev"
             />
           </Form.Item>
-          <Form.Item name="timeout_seconds" label="超时时间（秒）">
+          <Form.Item name="timeout_seconds" label={t("超时时间（秒）")}>
             <Input type="number" min={1} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title={editingWorkflow ? "编辑任务编排" : "新增任务编排"}
+        title={editingWorkflow ? t("编辑任务编排") : t("新增任务编排")}
         open={workflowOpen}
         onCancel={() => setWorkflowOpen(false)}
         onOk={() => workflowForm.submit()}
@@ -1444,18 +1457,18 @@ export function CommandsPage() {
           layout="vertical"
           onFinish={(values) => saveWorkflowMutation.mutate(values)}
         >
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="编码" rules={[{ required: true }]}>
+          <Form.Item name="code" label={t("编码")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t("描述")}>
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.List name="steps">
             {(fields, { add, remove }) => (
-              <Form.Item label="编排步骤" required>
+              <Form.Item label={t("编排步骤")} required>
                 <Space
                   direction="vertical"
                   className="full-width"
@@ -1473,7 +1486,7 @@ export function CommandsPage() {
                         className="full-width command-workflow-step-head"
                       >
                         <Typography.Text strong>
-                          步骤 {index + 1}
+                          {t("步骤 {0}", index + 1)}
                         </Typography.Text>
                         <Button
                           danger
@@ -1481,29 +1494,29 @@ export function CommandsPage() {
                           icon={<MinusCircleOutlined />}
                           onClick={() => remove(field.name)}
                         >
-                          删除步骤
+                          {t("删除步骤")}
                         </Button>
                       </Space>
                       <Space wrap className="full-width">
                         <Form.Item
                           name={[field.name, "name"]}
-                          label="步骤名称"
+                          label={t("步骤名称")}
                           rules={[
-                            { required: true, message: "请输入步骤名称" },
+                            { required: true, message: t("请输入步骤名称") },
                           ]}
                         >
-                          <Input placeholder="例如 构建前端" />
+                          <Input placeholder={t("例如 构建前端")} />
                         </Form.Item>
                         <Form.Item
                           name={[field.name, "sort_order"]}
-                          label="顺序"
-                          rules={[{ required: true, message: "请输入顺序" }]}
+                          label={t("顺序")}
+                          rules={[{ required: true, message: t("请输入顺序") }]}
                         >
                           <Input type="number" min={1} />
                         </Form.Item>
                         <Form.Item
                           name={[field.name, "enabled"]}
-                          label="启用"
+                          label={t("启用")}
                           valuePropName="checked"
                         >
                           <Switch />
@@ -1511,12 +1524,14 @@ export function CommandsPage() {
                       </Space>
                       <Form.Item
                         name={[field.name, "template_id"]}
-                        label="命令模板"
-                        rules={[{ required: true, message: "请选择命令模板" }]}
+                        label={t("命令模板")}
+                        rules={[
+                          { required: true, message: t("请选择命令模板") },
+                        ]}
                       >
                         <Select
                           showSearch
-                          placeholder="选择已保存的命令模板"
+                          placeholder={t("选择已保存的命令模板")}
                           optionFilterProp="label"
                           options={(templateOptionsQuery.data?.items ?? []).map(
                             (template) => ({
@@ -1528,14 +1543,14 @@ export function CommandsPage() {
                       </Form.Item>
                       <Form.Item
                         name={[field.name, "args"]}
-                        label="运行参数覆盖"
+                        label={t("运行参数覆盖")}
                       >
                         <Input.TextArea
                           ref={(node) => {
                             workflowStepArgRefs.current[index] = node;
                           }}
                           rows={3}
-                          placeholder={`例如 --seed ${RANDOM_PLACEHOLDER}`}
+                          placeholder={t("例如 --seed {0}", RANDOM_PLACEHOLDER)}
                         />
                       </Form.Item>
                       <Button
@@ -1545,17 +1560,17 @@ export function CommandsPage() {
                           insertWorkflowStepArg(index, RANDOM_PLACEHOLDER)
                         }
                       >
-                        插入随机数占位符
+                        {t("插入随机数占位符")}
                       </Button>
                       <Form.Item
                         name={[field.name, "working_directory"]}
-                        label="工作目录覆盖"
+                        label={t("工作目录覆盖")}
                       >
-                        <Input placeholder="不填则使用命令模板工作目录" />
+                        <Input placeholder={t("不填则使用命令模板工作目录")} />
                       </Form.Item>
                       <Form.Item
                         name={[field.name, "env_vars"]}
-                        label="环境变量覆盖 JSON"
+                        label={t("环境变量覆盖 JSON")}
                       >
                         <Input.TextArea
                           rows={2}
@@ -1564,7 +1579,7 @@ export function CommandsPage() {
                       </Form.Item>
                       <Form.Item
                         name={[field.name, "timeout_seconds"]}
-                        label="超时时间覆盖（秒）"
+                        label={t("超时时间覆盖（秒）")}
                       >
                         <Input type="number" min={1} />
                       </Form.Item>
@@ -1577,24 +1592,24 @@ export function CommandsPage() {
                       add({
                         sort_order: fields.length + 1,
                         enabled: true,
-                        name: `步骤 ${fields.length + 1}`,
+                        name: t("步骤 {0}", fields.length + 1),
                       })
                     }
                     block
                   >
-                    添加步骤
+                    {t("添加步骤")}
                   </Button>
                 </Space>
               </Form.Item>
             )}
           </Form.List>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t("启用")} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        title="执行命令"
+        title={t("执行命令")}
         open={runOpen}
         onCancel={() => setRunOpen(false)}
         onOk={() => runForm.submit()}
@@ -1609,26 +1624,26 @@ export function CommandsPage() {
           <Form.Item name="template_id" hidden>
             <Input />
           </Form.Item>
-          <Form.Item name="name" label="执行名称">
+          <Form.Item name="name" label={t("执行名称")}>
             <Input />
           </Form.Item>
           <Form.Item
             name="working_directory"
-            label="工作目录"
+            label={t("工作目录")}
             rules={[{ required: true }]}
           >
             <Input />
           </Form.Item>
           <Form.Item
             name="base_command"
-            label="基础命令"
+            label={t("基础命令")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.List name="args">
             {(fields, { add, remove }) => (
-              <Form.Item label="运行参数">
+              <Form.Item label={t("运行参数")}>
                 <Space direction="vertical" className="full-width" size="small">
                   {fields.map((field, index) => (
                     <Space.Compact key={field.key} className="full-width">
@@ -1637,7 +1652,7 @@ export function CommandsPage() {
                           ref={(node) => {
                             runArgRefs.current[index] = node;
                           }}
-                          placeholder={`参数 ${index + 1}`}
+                          placeholder={t("参数 {0}", index + 1)}
                         />
                       </Form.Item>
                       <Button
@@ -1645,7 +1660,7 @@ export function CommandsPage() {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => insertRunArg(index, RANDOM_PLACEHOLDER)}
                       >
-                        随机数
+                        {t("随机数")}
                       </Button>
                       <Button
                         icon={<MinusCircleOutlined />}
@@ -1655,13 +1670,13 @@ export function CommandsPage() {
                   ))}
                   <Space.Compact className="full-width">
                     <Button type="dashed" onClick={() => add("")} block>
-                      添加参数
+                      {t("添加参数")}
                     </Button>
                     <Button
                       icon={<NumberOutlined />}
                       onClick={() => add(RANDOM_PLACEHOLDER)}
                     >
-                      添加随机数
+                      {t("添加随机数")}
                     </Button>
                   </Space.Compact>
                 </Space>
@@ -1670,35 +1685,39 @@ export function CommandsPage() {
           </Form.List>
           <Form.Item
             name="command_line"
-            label="最终命令行"
+            label={t("最终命令行")}
             rules={[{ required: true }]}
           >
             <Input.TextArea rows={4} readOnly />
           </Form.Item>
           <Form.Item
             name="preview_path_template"
-            label="预览文件路径模板"
-            extra="例如命令参数中有 -o outputs/a-{{random:8}}.mp4，这里填写同样的输出路径即可按本次实际随机文件名预览。"
+            label={t("预览文件路径模板")}
+            extra={t(
+              "例如命令参数中有 -o outputs/a-{{random:8}}.mp4，这里填写同样的输出路径即可按本次实际随机文件名预览。",
+            )}
           >
             <Input placeholder={`outputs/result-${RANDOM_PLACEHOLDER}.png`} />
           </Form.Item>
-          <Form.Item name="env_vars" label="环境变量 JSON">
+          <Form.Item name="env_vars" label={t("环境变量 JSON")}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="python_venv_path" label="Python 虚拟环境路径">
+          <Form.Item name="python_venv_path" label={t("Python 虚拟环境路径")}>
             <Input />
           </Form.Item>
-          <Form.Item name="setup_script" label="前置脚本">
+          <Form.Item name="setup_script" label={t("前置脚本")}>
             <Input.TextArea rows={4} />
           </Form.Item>
-          <Form.Item name="timeout_seconds" label="超时时间（秒）">
+          <Form.Item name="timeout_seconds" label={t("超时时间（秒）")}>
             <Input type="number" min={1} />
           </Form.Item>
           <Form.Item
             name="retry_on_failure"
-            label="出错后自动重试"
+            label={t("出错后自动重试")}
             valuePropName="checked"
-            extra="非零退出或被信号异常终止时，从头重新运行脚本；正常结束、手动取消和超时不会重试。"
+            extra={t(
+              "非零退出或被信号异常终止时，从头重新运行脚本；正常结束、手动取消和超时不会重试。",
+            )}
           >
             <Switch />
           </Form.Item>
@@ -1714,7 +1733,7 @@ export function CommandsPage() {
                   <Col span={12}>
                     <Form.Item
                       name="max_retries"
-                      label="最多重试次数"
+                      label={t("最多重试次数")}
                       rules={[{ required: true }]}
                     >
                       <InputNumber
@@ -1728,7 +1747,7 @@ export function CommandsPage() {
                   <Col span={12}>
                     <Form.Item
                       name="retry_delay_seconds"
-                      label="重试间隔（秒）"
+                      label={t("重试间隔（秒）")}
                       rules={[{ required: true }]}
                     >
                       <InputNumber
@@ -1746,7 +1765,7 @@ export function CommandsPage() {
         </Form>
       </Modal>
       <Drawer
-        title={`执行日志${detailRun ? ` #${detailRun.id}` : ""}`}
+        title={t("执行日志{0}", detailRun ? ` #${detailRun.id}` : "")}
         open={Boolean(detailRunId)}
         onClose={() => setDetailRunId(null)}
         width={780}
@@ -1759,8 +1778,12 @@ export function CommandsPage() {
               </Tag>
               <Tag color={detailRun.retry_on_failure ? "blue" : "default"}>
                 {detailRun.retry_on_failure
-                  ? `自动重试开启 · 已重试 ${Math.max(0, (detailRun.attempt_count ?? 1) - 1)}/${detailRun.max_retries} 次`
-                  : "自动重试关闭"}
+                  ? t(
+                      "自动重试开启 · 已重试 {0}/{1} 次",
+                      Math.max(0, (detailRun.attempt_count ?? 1) - 1),
+                      detailRun.max_retries,
+                    )
+                  : t("自动重试关闭")}
               </Tag>
               <Typography.Text>{detailRun.working_directory}</Typography.Text>
               <Typography.Text type="secondary">
@@ -1773,7 +1796,7 @@ export function CommandsPage() {
                   permission="system:command:cancel"
                   onClick={() => cancelMutation.mutate(detailRun.id)}
                 >
-                  取消
+                  {t("取消")}
                 </PermissionButton>
               ) : null}
               <PermissionButton
@@ -1781,26 +1804,26 @@ export function CommandsPage() {
                 permission="system:command:run"
                 onClick={() => openRunModal(undefined, detailRun)}
               >
-                编辑重跑
+                {t("编辑重跑")}
               </PermissionButton>
               <Button
                 icon={<CopyOutlined />}
                 onClick={() => copyRunCurl(detailRun)}
               >
-                复制执行 curl
+                {t("复制执行 curl")}
               </Button>
               <Button
                 icon={<CopyOutlined />}
                 onClick={() => copyRunStatusCurl(detailRun.id)}
               >
-                复制查询 curl
+                {t("复制查询 curl")}
               </Button>
               {detailRun.preview_path ? (
                 <Button
                   icon={<EyeOutlined />}
                   onClick={() => openPreview(detailRun)}
                 >
-                  预览产物
+                  {t("预览产物")}
                 </Button>
               ) : null}
             </Space>
@@ -1808,7 +1831,7 @@ export function CommandsPage() {
               <Alert
                 type="info"
                 showIcon
-                message="预览文件"
+                message={t("预览文件")}
                 description={detailRun.preview_path}
               />
             ) : null}
@@ -1820,13 +1843,16 @@ export function CommandsPage() {
               className="command-log-viewer"
               onScroll={handleLogViewerScroll}
             >
-              {logText || detailRun.output_tail || "暂无输出"}
+              {logText || detailRun.output_tail || t("暂无输出")}
             </pre>
           </Space>
         ) : null}
       </Drawer>
       <Drawer
-        title={`编排详情${detailWorkflowRun ? ` #${detailWorkflowRun.id}` : ""}`}
+        title={t(
+          "编排详情{0}",
+          detailWorkflowRun ? ` #${detailWorkflowRun.id}` : "",
+        )}
         open={Boolean(detailWorkflowRunId)}
         onClose={() => setDetailWorkflowRunId(null)}
         width={780}
@@ -1849,10 +1875,10 @@ export function CommandsPage() {
             <DataTable
               rowKey="id"
               columns={[
-                { title: "顺序", dataIndex: "sort_order", width: 80 },
-                { title: "步骤", dataIndex: "step_name", width: 180 },
+                { title: t("顺序"), dataIndex: "sort_order", width: 80 },
+                { title: t("步骤"), dataIndex: "step_name", width: 180 },
                 {
-                  title: "状态",
+                  title: t("状态"),
                   dataIndex: "status",
                   width: 110,
                   render: (value) => (
@@ -1862,14 +1888,14 @@ export function CommandsPage() {
                   ),
                 },
                 {
-                  title: "参数",
+                  title: t("参数"),
                   dataIndex: "resolved_args",
                   width: 220,
                   ellipsis: true,
                   render: (value) => value ?? "-",
                 },
                 {
-                  title: "操作",
+                  title: t("操作"),
                   key: "actions",
                   width: 100,
                   fixed: "right",
@@ -1881,7 +1907,7 @@ export function CommandsPage() {
                           openRunDetail(record.command_run_id as number)
                         }
                       >
-                        日志
+                        {t("日志")}
                       </Button>
                     ) : (
                       "-"
@@ -1895,7 +1921,9 @@ export function CommandsPage() {
         ) : null}
       </Drawer>
       <Modal
-        title={previewingRun ? `产物预览 #${previewingRun.id}` : "产物预览"}
+        title={
+          previewingRun ? t("产物预览 #{0}", previewingRun.id) : t("产物预览")
+        }
         open={Boolean(previewingRun)}
         onCancel={closePreview}
         footer={null}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { current } from "../api/auth";
 import { getSetupStatus } from "../api/setup";
+import { t } from "../i18n";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { HomePage } from "../pages/home/HomePage";
@@ -121,7 +122,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
       .catch((error: unknown) => {
         if (mounted) {
           setSessionError(
-            error instanceof Error ? error.message : "暂时无法连接服务器",
+            error instanceof Error ? error.message : t("暂时无法连接服务器"),
           );
         }
       })
@@ -152,11 +153,11 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return (
       <Result
         status="warning"
-        title="暂时无法加载登录状态"
+        title={t("暂时无法加载登录状态")}
         subTitle={sessionError}
         extra={
           <Button type="primary" onClick={() => setRetry((value) => value + 1)}>
-            重试
+            {t("重试")}
           </Button>
         }
       />
@@ -185,7 +186,7 @@ function RequirePermission({
         <Result
           status="403"
           title="403"
-          subTitle="当前账号没有访问此页面的权限"
+          subTitle={t("当前账号没有访问此页面的权限")}
         />
       );
     }

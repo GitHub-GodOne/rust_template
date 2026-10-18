@@ -1,5 +1,6 @@
 import { Pagination } from "antd";
 import type { PaginationProps } from "antd";
+import { t } from "../../i18n";
 
 export const standardTablePaginationProps = {
   pageSize: 10,
@@ -7,7 +8,7 @@ export const standardTablePaginationProps = {
   responsive: true,
   showQuickJumper: true,
   showSizeChanger: true,
-  showTotal: (total: number) => `共 ${total} 条`,
+  showTotal: (total: number) => t("共 {0} 条", total),
   size: "small",
 } satisfies PaginationProps;
 

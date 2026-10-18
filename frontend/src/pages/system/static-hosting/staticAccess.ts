@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 // Pure helpers for static-site password protection; kept import-free so the
 // node tests can load them directly.
 
@@ -51,5 +52,5 @@ export function hasRuleAt(rules: readonly AccessRuleLike[], path: string) {
 
 export function accessRuleLabel(path: string) {
   const normalized = path.trim().replace(/^\/+|\/+$/g, "");
-  return normalized ? `/${normalized}` : "整个站点";
+  return normalized ? `/${normalized}` : t("整个站点");
 }

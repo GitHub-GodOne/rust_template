@@ -32,6 +32,7 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const RESTORE_CONFIRM_PHRASE = "RESTORE DATABASE";
 
@@ -72,14 +73,14 @@ export function BackupsPage() {
   const createMutation = useMutation({
     mutationFn: createBackup,
     onSuccess: (backup) => {
-      message.success(`备份任务已完成：${backup.status}`);
+      message.success(t("备份任务已完成：{0}", backup.status));
       queryClient.invalidateQueries({ queryKey: ["admin-backups"] });
     },
   });
   const deliverMutation = useMutation({
     mutationFn: deliverBackup,
     onSuccess: () => {
-      message.success("备份推送状态已更新");
+      message.success(t("备份推送状态已更新"));
       queryClient.invalidateQueries({ queryKey: ["admin-backups"] });
     },
   });
@@ -92,7 +93,7 @@ export function BackupsPage() {
       confirm_phrase: string;
     }) => restoreBackup(id, { confirm_phrase }),
     onSuccess: () => {
-      message.success("数据库还原已执行");
+      message.success(t("数据库还原已执行"));
       setRestoreTarget(null);
       setConfirmPhrase("");
       queryClient.invalidateQueries({ queryKey: ["admin-backups"] });
@@ -102,39 +103,44 @@ export function BackupsPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteBackup,
     onSuccess: () => {
-      message.success("备份记录已删除");
+      message.success(t("备份记录已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-backups"] });
     },
   });
 
   const columns: ColumnsType<BackupRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
-    { title: "文件名", dataIndex: "filename", width: 220 },
+    { title: t("文件名"), dataIndex: "filename", width: 220 },
     {
-      title: "大小",
+      title: t("大小"),
       dataIndex: "size_bytes",
       width: 120,
       render: (value) => `${value} B`,
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       render: (value) => (
         <Tag color={statusColor[value] ?? "default"}>{value}</Tag>
       ),
     },
-    { title: "触发", dataIndex: "trigger_type", width: 100 },
+    { title: t("触发"), dataIndex: "trigger_type", width: 100 },
     {
-      title: "耗时",
+      title: t("耗时"),
       dataIndex: "duration_ms",
       width: 100,
       render: (value) => (value ? `${value} ms` : "-"),
     },
-    { title: "开始时间", dataIndex: "started_at", width: 220 },
-    { title: "错误", dataIndex: "error_message", width: 260, ellipsis: true },
+    { title: t("开始时间"), dataIndex: "started_at", width: 220 },
     {
-      title: "操作",
+      title: t("错误"),
+      dataIndex: "error_message",
+      width: 260,
+      ellipsis: true,
+    },
+    {
+      title: t("操作"),
       key: "actions",
       width: 250,
       render: (_, record) => (
@@ -144,7 +150,7 @@ export function BackupsPage() {
             permission="system:backup:list"
             onClick={() => setDetail(record)}
           >
-            详情
+            {t("详情")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -152,7 +158,7 @@ export function BackupsPage() {
             permission="system:backup:deliver"
             onClick={() => deliverMutation.mutate(record.id)}
           >
-            推送
+            {t("推送")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -165,10 +171,10 @@ export function BackupsPage() {
               setConfirmPhrase("");
             }}
           >
-            还原
+            {t("还原")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除备份记录？"
+            title={t("确认删除备份记录？")}
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -177,7 +183,7 @@ export function BackupsPage() {
               icon={<DeleteOutlined />}
               permission="system:backup:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -187,16 +193,16 @@ export function BackupsPage() {
 
   return (
     <CrudPage
-      title="数据库备份"
-      subtitle="手动创建 PostgreSQL 备份，记录校验值和推送状态"
-      breadcrumb={["系统管理", "数据库备份"]}
+      title={t("数据库备份")}
+      subtitle={t("手动创建 PostgreSQL 备份，记录校验值和推送状态")}
+      breadcrumb={[t("系统管理"), t("数据库备份")]}
       icon={<DatabaseOutlined />}
       toolbar={
         <CrudToolbar
           actions={[
             {
               key: "create",
-              label: "立即备份",
+              label: t("立即备份"),
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:backup:create",
@@ -217,7 +223,7 @@ export function BackupsPage() {
         }}
       />
       <Drawer
-        title="备份详情"
+        title={t("备份详情")}
         open={Boolean(detail)}
         onClose={() => setDetail(null)}
         width={680}
@@ -225,32 +231,39 @@ export function BackupsPage() {
         {detail && (
           <Space direction="vertical" size="middle" style={{ width: "100%" }}>
             <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="文件名">
+              <Descriptions.Item label={t("文件名")}>
                 {detail.filename}
               </Descriptions.Item>
-              <Descriptions.Item label="路径">
+              <Descriptions.Item label={t("路径")}>
                 {detail.storage_path}
               </Descriptions.Item>
               <Descriptions.Item label="SHA-256">
                 {detail.sha256 ?? "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="推送目标">
+              <Descriptions.Item label={t("推送目标")}>
                 {detail.delivery_targets ?? "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="推送状态">
+              <Descriptions.Item label={t("推送状态")}>
                 <pre className="admin-code-block">
                   {formatDeliveryStatus(detail.delivery_status)}
                 </pre>
               </Descriptions.Item>
-              <Descriptions.Item label="错误">
+              <Descriptions.Item label={t("错误")}>
                 {detail.error_message ?? "-"}
               </Descriptions.Item>
             </Descriptions>
-            <Descriptions title="还原记录" column={1} bordered size="small">
+            <Descriptions
+              title={t("还原记录")}
+              column={1}
+              bordered
+              size="small"
+            >
               {restoresQuery.isLoading ? (
-                <Descriptions.Item label="记录">加载中</Descriptions.Item>
+                <Descriptions.Item label={t("记录")}>
+                  {t("加载中")}
+                </Descriptions.Item>
               ) : (restoresQuery.data ?? []).length === 0 ? (
-                <Descriptions.Item label="记录">-</Descriptions.Item>
+                <Descriptions.Item label={t("记录")}>-</Descriptions.Item>
               ) : (
                 (restoresQuery.data ?? []).map((restore) => (
                   <Descriptions.Item
@@ -263,12 +276,19 @@ export function BackupsPage() {
                       style={{ width: "100%" }}
                     >
                       <span>
-                        安全备份：{restore.pre_restore_backup_id ?? "-"}
+                        {t(
+                          "安全备份：{0}",
+                          restore.pre_restore_backup_id ?? "-",
+                        )}
                       </span>
-                      <span>操作者：{restore.restored_by ?? "-"}</span>
-                      <span>开始：{restore.started_at}</span>
-                      <span>结束：{restore.finished_at ?? "-"}</span>
-                      <span>耗时：{restore.duration_ms ?? "-"} ms</span>
+                      <span>
+                        {t("操作者：{0}", restore.restored_by ?? "-")}
+                      </span>
+                      <span>{t("开始：{0}", restore.started_at)}</span>
+                      <span>{t("结束：{0}", restore.finished_at ?? "-")}</span>
+                      <span>
+                        {t("耗时：{0} ms", restore.duration_ms ?? "-")}
+                      </span>
                       {restore.output && (
                         <pre className="admin-code-block">{restore.output}</pre>
                       )}
@@ -286,9 +306,9 @@ export function BackupsPage() {
         )}
       </Drawer>
       <Modal
-        title="确认还原数据库"
+        title={t("确认还原数据库")}
         open={Boolean(restoreTarget)}
-        okText="确认还原"
+        okText={t("确认还原")}
         okButtonProps={{
           danger: true,
           disabled: confirmPhrase.trim() !== RESTORE_CONFIRM_PHRASE,
@@ -312,13 +332,15 @@ export function BackupsPage() {
           <Alert
             type="warning"
             showIcon
-            message="该操作会先自动创建安全备份，然后用所选备份覆盖当前数据库。"
+            message={t(
+              "该操作会先自动创建安全备份，然后用所选备份覆盖当前数据库。",
+            )}
           />
           <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="备份 ID">
+            <Descriptions.Item label={t("备份 ID")}>
               {restoreTarget?.id ?? "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="文件名">
+            <Descriptions.Item label={t("文件名")}>
               {restoreTarget?.filename ?? "-"}
             </Descriptions.Item>
             <Descriptions.Item label="SHA-256">

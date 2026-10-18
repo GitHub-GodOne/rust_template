@@ -46,13 +46,14 @@ import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
+import { t } from "../../../i18n";
 
 const valueTypeOptions = [
-  { value: "string", label: "字符串" },
-  { value: "number", label: "数字" },
-  { value: "boolean", label: "布尔" },
+  { value: "string", label: t("字符串") },
+  { value: "number", label: t("数字") },
+  { value: "boolean", label: t("布尔") },
   { value: "json", label: "JSON" },
-  { value: "secret", label: "密文" },
+  { value: "secret", label: t("密文") },
 ];
 
 export function SettingsPage() {
@@ -104,7 +105,7 @@ export function SettingsPage() {
         ? updateSetting(editingSetting.id, values)
         : createSetting(values),
     onSuccess: () => {
-      message.success("配置已保存");
+      message.success(t("配置已保存"));
       setSettingOpen(false);
       setEditingSetting(null);
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
@@ -113,7 +114,7 @@ export function SettingsPage() {
   const deleteSettingMutation = useMutation({
     mutationFn: deleteSetting,
     onSuccess: () => {
-      message.success("配置已删除");
+      message.success(t("配置已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
     },
   });
@@ -123,7 +124,7 @@ export function SettingsPage() {
         ? updateDictType(editingDictType.id, values)
         : createDictType(values),
     onSuccess: () => {
-      message.success("字典类型已保存");
+      message.success(t("字典类型已保存"));
       setDictTypeOpen(false);
       setEditingDictType(null);
       queryClient.invalidateQueries({ queryKey: ["admin-dict-types"] });
@@ -132,7 +133,7 @@ export function SettingsPage() {
   const deleteDictTypeMutation = useMutation({
     mutationFn: deleteDictType,
     onSuccess: () => {
-      message.success("字典类型已删除");
+      message.success(t("字典类型已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-dict-types"] });
     },
   });
@@ -142,7 +143,7 @@ export function SettingsPage() {
         ? updateDictItem(editingDictItem.id, values)
         : createDictItem(values),
     onSuccess: () => {
-      message.success("字典项已保存");
+      message.success(t("字典项已保存"));
       setDictItemOpen(false);
       setEditingDictItem(null);
       queryClient.invalidateQueries({ queryKey: ["admin-dict-items"] });
@@ -151,36 +152,36 @@ export function SettingsPage() {
   const deleteDictItemMutation = useMutation({
     mutationFn: deleteDictItem,
     onSuccess: () => {
-      message.success("字典项已删除");
+      message.success(t("字典项已删除"));
       queryClient.invalidateQueries({ queryKey: ["admin-dict-items"] });
     },
   });
 
   const settingColumns: ColumnsType<SettingRecord> = [
-    { title: "配置键", dataIndex: "key", width: 220 },
-    { title: "名称", dataIndex: "name", width: 160 },
+    { title: t("配置键"), dataIndex: "key", width: 220 },
+    { title: t("名称"), dataIndex: "name", width: 160 },
     {
-      title: "分组",
+      title: t("分组"),
       dataIndex: "group_key",
       width: 120,
       render: (value) => <Tag>{value}</Tag>,
     },
-    { title: "类型", dataIndex: "value_type", width: 110 },
-    { title: "配置值", dataIndex: "value", width: 260, ellipsis: true },
+    { title: t("类型"), dataIndex: "value_type", width: 110 },
+    { title: t("配置值"), dataIndex: "value", width: 260, ellipsis: true },
     {
-      title: "公开",
+      title: t("公开"),
       dataIndex: "is_public",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "内置",
+      title: t("内置"),
       dataIndex: "is_builtin",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 180,
       render: (_, record) => (
@@ -195,10 +196,10 @@ export function SettingsPage() {
               setSettingOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除配置？"
+            title={t("确认删除配置？")}
             onConfirm={() => deleteSettingMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -208,7 +209,7 @@ export function SettingsPage() {
               icon={<DeleteOutlined />}
               permission="system:setting:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -217,22 +218,22 @@ export function SettingsPage() {
   ];
 
   const dictTypeColumns: ColumnsType<DictTypeRecord> = [
-    { title: "编码", dataIndex: "code", width: 180 },
-    { title: "名称", dataIndex: "name", width: 160 },
+    { title: t("编码"), dataIndex: "code", width: 180 },
+    { title: t("名称"), dataIndex: "name", width: 160 },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "内置",
+      title: t("内置"),
       dataIndex: "is_builtin",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 240,
       render: (_, record) => (
@@ -242,7 +243,7 @@ export function SettingsPage() {
             onClick={() => setSelectedDictTypeId(record.id)}
             permission="system:dict:list"
           >
-            字典项
+            {t("字典项")}
           </PermissionButton>
           <PermissionButton
             size="small"
@@ -254,10 +255,10 @@ export function SettingsPage() {
               setDictTypeOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除字典类型？"
+            title={t("确认删除字典类型？")}
             onConfirm={() => deleteDictTypeMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -266,7 +267,7 @@ export function SettingsPage() {
               disabled={record.is_builtin}
               permission="system:dict:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -275,28 +276,28 @@ export function SettingsPage() {
   ];
 
   const dictItemColumns: ColumnsType<DictItemRecord> = [
-    { title: "标签", dataIndex: "label", width: 160 },
-    { title: "值", dataIndex: "value", width: 180 },
+    { title: t("标签"), dataIndex: "label", width: 160 },
+    { title: t("值"), dataIndex: "value", width: 180 },
     {
-      title: "颜色",
+      title: t("颜色"),
       dataIndex: "color",
       width: 120,
       render: (value) => (value ? <Tag color={value}>{value}</Tag> : "-"),
     },
     {
-      title: "启用",
+      title: t("启用"),
       dataIndex: "enabled",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "默认",
+      title: t("默认"),
       dataIndex: "is_default",
       width: 90,
       render: (value) => <Switch checked={value} disabled />,
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 170,
       render: (_, record) => (
@@ -311,10 +312,10 @@ export function SettingsPage() {
               setDictItemOpen(true);
             }}
           >
-            编辑
+            {t("编辑")}
           </PermissionButton>
           <Popconfirm
-            title="确认删除字典项？"
+            title={t("确认删除字典项？")}
             onConfirm={() => deleteDictItemMutation.mutate(record.id)}
           >
             <PermissionButton
@@ -323,7 +324,7 @@ export function SettingsPage() {
               disabled={record.is_default}
               permission="system:dict:delete"
             >
-              删除
+              {t("删除")}
             </PermissionButton>
           </Popconfirm>
         </Space>
@@ -333,22 +334,22 @@ export function SettingsPage() {
 
   return (
     <CrudPage
-      title="系统设置"
-      subtitle="品牌、上传、安全配置和通用业务字典"
-      breadcrumb={["系统管理", "系统设置"]}
+      title={t("系统设置")}
+      subtitle={t("品牌、上传、安全配置和通用业务字典")}
+      breadcrumb={[t("系统管理"), t("系统设置")]}
       icon={<ControlOutlined />}
     >
       <Tabs
         items={[
           {
             key: "settings",
-            label: "系统配置",
+            label: t("系统配置"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <Space wrap>
                   <Input.Search
                     allowClear
-                    placeholder="搜索配置键、名称"
+                    placeholder={t("搜索配置键、名称")}
                     onSearch={(value) => {
                       setSettingPage(1);
                       setSettingKeyword(value);
@@ -359,7 +360,7 @@ export function SettingsPage() {
                     actions={[
                       {
                         key: "create",
-                        label: "新增配置",
+                        label: t("新增配置"),
                         icon: <PlusOutlined />,
                         primary: true,
                         permission: "system:setting:create",
@@ -393,14 +394,14 @@ export function SettingsPage() {
           },
           {
             key: "dicts",
-            label: "字典管理",
+            label: t("字典管理"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <CrudToolbar
                   actions={[
                     {
                       key: "create-type",
-                      label: "新增字典类型",
+                      label: t("新增字典类型"),
                       icon: <PlusOutlined />,
                       primary: true,
                       permission: "system:dict:create",
@@ -416,7 +417,7 @@ export function SettingsPage() {
                     },
                     {
                       key: "create-item",
-                      label: "新增字典项",
+                      label: t("新增字典项"),
                       icon: <PlusOutlined />,
                       permission: "system:dict:create",
                       onClick: () => {
@@ -457,7 +458,7 @@ export function SettingsPage() {
         ]}
       />
       <Modal
-        title={editingSetting ? "编辑配置" : "新增配置"}
+        title={editingSetting ? t("编辑配置") : t("新增配置")}
         open={settingOpen}
         onCancel={() => setSettingOpen(false)}
         onOk={() => settingForm.submit()}
@@ -468,49 +469,70 @@ export function SettingsPage() {
           layout="vertical"
           onFinish={(values) => saveSettingMutation.mutate(values)}
         >
-          <Form.Item name="key" label="配置键" rules={[{ required: true }]}>
+          <Form.Item
+            name="key"
+            label={t("配置键")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="group_key" label="分组" rules={[{ required: true }]}>
+          <Form.Item
+            name="group_key"
+            label={t("分组")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item
             name="value_type"
-            label="值类型"
+            label={t("值类型")}
             rules={[{ required: true }]}
           >
             <Select options={valueTypeOptions} />
           </Form.Item>
-          <Form.Item name="value" label="配置值" rules={[{ required: true }]}>
+          <Form.Item
+            name="value"
+            label={t("配置值")}
+            rules={[{ required: true }]}
+          >
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="default_value" label="默认值">
+          <Form.Item name="default_value" label={t("默认值")}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="sort_order" label="排序">
+          <Form.Item name="sort_order" label={t("排序")}>
             <InputNumber className="full-width" />
           </Form.Item>
           <Space>
             <Form.Item name="is_public" valuePropName="checked">
-              <Switch checkedChildren="公开" unCheckedChildren="私有" />
+              <Switch
+                checkedChildren={t("公开")}
+                unCheckedChildren={t("私有")}
+              />
             </Form.Item>
             <Form.Item name="is_builtin" valuePropName="checked">
-              <Switch checkedChildren="内置" unCheckedChildren="自定义" />
+              <Switch
+                checkedChildren={t("内置")}
+                unCheckedChildren={t("自定义")}
+              />
             </Form.Item>
             <Form.Item name="is_encrypted" valuePropName="checked">
-              <Switch checkedChildren="加密" unCheckedChildren="明文" />
+              <Switch
+                checkedChildren={t("加密")}
+                unCheckedChildren={t("明文")}
+              />
             </Form.Item>
           </Space>
         </Form>
       </Modal>
       <Modal
-        title={editingDictType ? "编辑字典类型" : "新增字典类型"}
+        title={editingDictType ? t("编辑字典类型") : t("新增字典类型")}
         open={dictTypeOpen}
         onCancel={() => setDictTypeOpen(false)}
         onOk={() => dictTypeForm.submit()}
@@ -521,30 +543,36 @@ export function SettingsPage() {
           layout="vertical"
           onFinish={(values) => saveDictTypeMutation.mutate(values)}
         >
-          <Form.Item name="code" label="编码" rules={[{ required: true }]}>
+          <Form.Item name="code" label={t("编码")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("名称")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="说明">
+          <Form.Item name="description" label={t("说明")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="sort_order" label="排序">
+          <Form.Item name="sort_order" label={t("排序")}>
             <InputNumber className="full-width" />
           </Form.Item>
           <Space>
             <Form.Item name="enabled" valuePropName="checked">
-              <Switch checkedChildren="启用" unCheckedChildren="停用" />
+              <Switch
+                checkedChildren={t("启用")}
+                unCheckedChildren={t("停用")}
+              />
             </Form.Item>
             <Form.Item name="is_builtin" valuePropName="checked">
-              <Switch checkedChildren="内置" unCheckedChildren="自定义" />
+              <Switch
+                checkedChildren={t("内置")}
+                unCheckedChildren={t("自定义")}
+              />
             </Form.Item>
           </Space>
         </Form>
       </Modal>
       <Modal
-        title={editingDictItem ? "编辑字典项" : "新增字典项"}
+        title={editingDictItem ? t("编辑字典项") : t("新增字典项")}
         open={dictItemOpen}
         onCancel={() => setDictItemOpen(false)}
         onOk={() => dictItemForm.submit()}
@@ -557,7 +585,7 @@ export function SettingsPage() {
         >
           <Form.Item
             name="dict_type_id"
-            label="字典类型"
+            label={t("字典类型")}
             rules={[{ required: true }]}
           >
             <Select
@@ -567,27 +595,37 @@ export function SettingsPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="label" label="标签" rules={[{ required: true }]}>
+          <Form.Item
+            name="label"
+            label={t("标签")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="value" label="值" rules={[{ required: true }]}>
+          <Form.Item name="value" label={t("值")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="color" label="颜色">
+          <Form.Item name="color" label={t("颜色")}>
             <Input />
           </Form.Item>
-          <Form.Item name="extra" label="扩展 JSON">
+          <Form.Item name="extra" label={t("扩展 JSON")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="sort_order" label="排序">
+          <Form.Item name="sort_order" label={t("排序")}>
             <InputNumber className="full-width" />
           </Form.Item>
           <Space>
             <Form.Item name="enabled" valuePropName="checked">
-              <Switch checkedChildren="启用" unCheckedChildren="停用" />
+              <Switch
+                checkedChildren={t("启用")}
+                unCheckedChildren={t("停用")}
+              />
             </Form.Item>
             <Form.Item name="is_default" valuePropName="checked">
-              <Switch checkedChildren="默认" unCheckedChildren="普通" />
+              <Switch
+                checkedChildren={t("默认")}
+                unCheckedChildren={t("普通")}
+              />
             </Form.Item>
           </Space>
         </Form>

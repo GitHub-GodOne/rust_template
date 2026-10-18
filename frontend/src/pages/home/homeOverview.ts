@@ -4,22 +4,23 @@ import type {
   DashboardTrendPoint,
 } from "../../api/admin/dashboard";
 import type { AdminMenuItem, PermissionCode } from "../../app/menu";
+import { t } from "../../i18n";
 
 export const workOrderStatusLabels: Record<string, string> = {
-  open: "待处理",
-  assigned: "已分配",
-  in_progress: "处理中",
-  pending: "挂起",
-  resolved: "已解决",
-  closed: "已关闭",
-  cancelled: "已取消",
+  open: t("待处理"),
+  assigned: t("已分配"),
+  in_progress: t("处理中"),
+  pending: t("挂起"),
+  resolved: t("已解决"),
+  closed: t("已关闭"),
+  cancelled: t("已取消"),
 };
 
 export const workOrderPriorityLabels: Record<string, string> = {
-  low: "低",
-  normal: "普通",
-  high: "高",
-  urgent: "紧急",
+  low: t("低"),
+  normal: t("普通"),
+  high: t("高"),
+  urgent: t("紧急"),
 };
 
 export const workOrderPriorityColors: Record<string, string> = {
@@ -30,11 +31,11 @@ export const workOrderPriorityColors: Record<string, string> = {
 };
 
 export const levelLabels: Record<string, string> = {
-  info: "信息",
-  success: "成功",
-  warning: "警告",
-  warn: "警告",
-  error: "错误",
+  info: t("信息"),
+  success: t("成功"),
+  warning: t("警告"),
+  warn: t("警告"),
+  error: t("错误"),
 };
 
 /** Paths shown as shortcuts, in display order, when the user may open them. */
@@ -56,18 +57,32 @@ export const quickEntryPaths = [
 const QUICK_ENTRY_LIMIT = 8;
 
 export function greeting(hour: number) {
-  if (hour < 5) return "夜深了";
-  if (hour < 9) return "早上好";
-  if (hour < 12) return "上午好";
-  if (hour < 14) return "中午好";
-  if (hour < 18) return "下午好";
-  return "晚上好";
+  if (hour < 5) return t("夜深了");
+  if (hour < 9) return t("早上好");
+  if (hour < 12) return t("上午好");
+  if (hour < 14) return t("中午好");
+  if (hour < 18) return t("下午好");
+  return t("晚上好");
 }
 
-const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+const weekdays = [
+  t("日"),
+  t("一"),
+  t("二"),
+  t("三"),
+  t("四"),
+  t("五"),
+  t("六"),
+];
 
 export function formatToday(date: Date) {
-  return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日 星期${weekdays[date.getDay()]}`;
+  return t(
+    "{0} 年 {1} 月 {2} 日 星期{3}",
+    date.getFullYear(),
+    date.getMonth() + 1,
+    date.getDate(),
+    weekdays[date.getDay()],
+  );
 }
 
 export function formatUptime(seconds: number) {
@@ -75,9 +90,9 @@ export function formatUptime(seconds: number) {
   const days = Math.floor(total / 86_400);
   const hours = Math.floor((total % 86_400) / 3_600);
   const minutes = Math.floor((total % 3_600) / 60);
-  if (days > 0) return `${days} 天 ${hours} 小时`;
-  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
-  return `${Math.max(1, minutes)} 分钟`;
+  if (days > 0) return t("{0} 天 {1} 小时", days, hours);
+  if (hours > 0) return t("{0} 小时 {1} 分钟", hours, minutes);
+  return t("{0} 分钟", Math.max(1, minutes));
 }
 
 function pad(value: number) {
@@ -96,12 +111,12 @@ export function formatRelativeTime(value: string, now: Date = new Date()) {
   const diff = now.getTime() - date.getTime();
   if (Number.isNaN(diff)) return value;
   const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t("刚刚");
+  if (minutes < 60) return t("{0} 分钟前", minutes);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t("{0} 小时前", hours);
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
+  if (days < 7) return t("{0} 天前", days);
   return formatDateTime(value).slice(0, 10);
 }
 
@@ -165,7 +180,7 @@ export function buildTrendBars(points: DashboardTrendPoint[]) {
     return {
       ...point,
       errors,
-      label: index === points.length - 1 ? "今天" : point.date.slice(5),
+      label: index === points.length - 1 ? t("今天") : point.date.slice(5),
       isToday: index === points.length - 1,
       normal: point.total - errors,
       totalPercent: (point.total / max) * 100,

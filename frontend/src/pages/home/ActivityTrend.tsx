@@ -1,5 +1,6 @@
 import { Tooltip } from "antd";
 import type { DashboardTrendPoint } from "../../api/admin/dashboard";
+import { t } from "../../i18n";
 import { buildTrendBars } from "./homeOverview";
 
 /** Seven-day stacked column chart: regular operations with errors on top. */
@@ -8,15 +9,15 @@ export function ActivityTrend({ points }: { points: DashboardTrendPoint[] }) {
   const ticks = Number.isInteger(max / 2) ? [max, max / 2, 0] : [max, 0];
 
   return (
-    <figure className="home-trend" aria-label="近 7 日系统活动">
+    <figure className="home-trend" aria-label={t("近 7 日系统活动")}>
       <div className="home-trend-legend" aria-hidden="true">
         <span>
           <i className="home-trend-swatch is-normal" />
-          正常操作
+          {t("正常操作")}
         </span>
         <span>
           <i className="home-trend-swatch is-error" />
-          错误
+          {t("错误")}
         </span>
       </div>
       <div className="home-trend-plot">
@@ -38,8 +39,10 @@ export function ActivityTrend({ points }: { points: DashboardTrendPoint[] }) {
                 title={
                   <div className="home-trend-tooltip">
                     <strong>{bar.date}</strong>
-                    <span>操作总数 {bar.total.toLocaleString()}</span>
-                    <span>其中错误 {bar.errors.toLocaleString()}</span>
+                    <span>{t("操作总数 {0}", bar.total.toLocaleString())}</span>
+                    <span>
+                      {t("其中错误 {0}", bar.errors.toLocaleString())}
+                    </span>
                   </div>
                 }
               >
@@ -80,12 +83,12 @@ export function ActivityTrend({ points }: { points: DashboardTrendPoint[] }) {
         </div>
       </div>
       <table className="home-sr-only">
-        <caption>近 7 日系统活动</caption>
+        <caption>{t("近 7 日系统活动")}</caption>
         <thead>
           <tr>
-            <th scope="col">日期</th>
-            <th scope="col">操作总数</th>
-            <th scope="col">错误</th>
+            <th scope="col">{t("日期")}</th>
+            <th scope="col">{t("操作总数")}</th>
+            <th scope="col">{t("错误")}</th>
           </tr>
         </thead>
         <tbody>

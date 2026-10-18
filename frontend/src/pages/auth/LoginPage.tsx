@@ -3,6 +3,8 @@ import { Alert, Button, Card, Form, Input, Typography, message } from "antd";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { current, login } from "../../api/auth";
+import { LanguageSwitch } from "../../components/LanguageSwitch";
+import { t } from "../../i18n";
 import { useAuthStore } from "../../stores/auth";
 
 type LoginForm = {
@@ -59,13 +61,13 @@ export function LoginPage() {
         dataScopes: session.data_scopes,
         effectiveDataScope: session.effective_data_scope,
       });
-      message.success("登录成功");
+      message.success(t("登录成功"));
       navigate(from, { replace: true });
     } catch (error) {
       const backendMessage = error instanceof Error ? error.message.trim() : "";
       const errorMessage =
         !backendMessage || backendMessage === "Network Error"
-          ? "无法连接后端服务，请先在项目目录运行 cargo loco start"
+          ? t("无法连接后端服务，请先在项目目录运行 cargo loco start")
           : backendMessage;
       setLoginError(errorMessage);
       message.error(errorMessage);
@@ -76,12 +78,15 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
+      <LanguageSwitch className="page-language-switch" />
       <Card className="login-card">
         <div className="login-brand">
           <div className="admin-brand-mark">G</div>
           <div>
-            <Typography.Title level={3}>后台管理 Admin</Typography.Title>
-            <Typography.Text type="secondary">专业后台管理模板</Typography.Text>
+            <Typography.Title level={3}>{t("后台管理 Admin")}</Typography.Title>
+            <Typography.Text type="secondary">
+              {t("专业后台管理模板")}
+            </Typography.Text>
           </div>
         </div>
         <Form<LoginForm>
@@ -100,19 +105,19 @@ export function LoginPage() {
           ) : null}
           <Form.Item
             name="email"
-            label="邮箱"
-            rules={[{ required: true, message: "请输入邮箱" }]}
+            label={t("邮箱")}
+            rules={[{ required: true, message: t("请输入邮箱") }]}
           >
             <Input prefix={<UserOutlined />} placeholder="admin@example.com" />
           </Form.Item>
           <Form.Item
             name="password"
-            label="密码"
-            rules={[{ required: true, message: "请输入密码" }]}
+            label={t("密码")}
+            rules={[{ required: true, message: t("请输入密码") }]}
           >
             <Input.Password
               prefix={<LockOutlined />}
-              placeholder="请输入密码"
+              placeholder={t("请输入密码")}
             />
           </Form.Item>
           <Button
@@ -122,7 +127,7 @@ export function LoginPage() {
             block
             size="large"
           >
-            登录后台
+            {t("登录后台")}
           </Button>
         </Form>
       </Card>

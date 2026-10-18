@@ -30,6 +30,7 @@ import { useLocation } from "react-router-dom";
 import { useDockReservesBottom } from "../../../stores/dock";
 import { useUiStore } from "../../../stores/ui";
 import "./finder.css";
+import { t } from "../../../i18n";
 
 export type FinderView = "grid" | "list";
 
@@ -153,38 +154,38 @@ export function FinderShell({
               type="text"
               size="small"
               icon={<MenuOutlined />}
-              aria-label="位置与目录"
+              aria-label={t("位置与目录")}
               onClick={() => setSidebarOpen(true)}
             />
           ) : null}
-          <Tooltip title="后退">
+          <Tooltip title={t("后退")}>
             <Button
               type="text"
               size="small"
               icon={<LeftOutlined />}
-              aria-label="后退"
+              aria-label={t("后退")}
               disabled={!nav.canBack}
               onClick={nav.onBack}
             />
           </Tooltip>
           {isMobile ? null : (
             <>
-              <Tooltip title="前进">
+              <Tooltip title={t("前进")}>
                 <Button
                   type="text"
                   size="small"
                   icon={<RightOutlined />}
-                  aria-label="前进"
+                  aria-label={t("前进")}
                   disabled={!nav.canForward}
                   onClick={nav.onForward}
                 />
               </Tooltip>
-              <Tooltip title="上一级">
+              <Tooltip title={t("上一级")}>
                 <Button
                   type="text"
                   size="small"
                   icon={<ArrowUpOutlined />}
-                  aria-label="上一级"
+                  aria-label={t("上一级")}
                   disabled={!nav.canUp}
                   onClick={nav.onUp}
                 />
@@ -197,7 +198,11 @@ export function FinderShell({
             {currentTitle}
           </strong>
         ) : (
-          <nav className="finder-crumbs" ref={crumbsRef} aria-label="当前路径">
+          <nav
+            className="finder-crumbs"
+            ref={crumbsRef}
+            aria-label={t("当前路径")}
+          >
             <button
               type="button"
               className={`finder-crumb${crumbs.length === 0 ? " is-current" : ""}`}
@@ -227,7 +232,7 @@ export function FinderShell({
                   type="text"
                   size="small"
                   icon={<SearchOutlined />}
-                  aria-label="搜索"
+                  aria-label={t("搜索")}
                   onClick={() => setSearchOpen((open) => !open)}
                 />
               ) : null}
@@ -235,7 +240,7 @@ export function FinderShell({
                 type="text"
                 size="small"
                 icon={view === "grid" ? <BarsOutlined /> : <AppstoreOutlined />}
-                aria-label={view === "grid" ? "列表视图" : "图标视图"}
+                aria-label={view === "grid" ? t("列表视图") : t("图标视图")}
                 onClick={() => onViewChange(view === "grid" ? "list" : "grid")}
               />
             </>
@@ -250,9 +255,13 @@ export function FinderShell({
                   {
                     value: "grid",
                     icon: <AppstoreOutlined />,
-                    title: "图标视图",
+                    title: t("图标视图"),
                   },
-                  { value: "list", icon: <BarsOutlined />, title: "列表视图" },
+                  {
+                    value: "list",
+                    icon: <BarsOutlined />,
+                    title: t("列表视图"),
+                  },
                 ]}
               />
               {searchField}
@@ -292,7 +301,7 @@ export function FinderShell({
             </div>
           </Drawer>
         ) : (
-          <aside className="finder-sidebar" aria-label="位置与目录">
+          <aside className="finder-sidebar" aria-label={t("位置与目录")}>
             <div className="finder-sidebar-scroll">{sidebar}</div>
           </aside>
         )}
@@ -380,7 +389,7 @@ export function FinderProgress({
         {name}
       </span>
       <span className="finder-progress-percent">{percent}%</span>
-      <span className="finder-progress-stage">{stage ?? "正在上传"}</span>
+      <span className="finder-progress-stage">{stage ?? t("正在上传")}</span>
       <Progress
         percent={percent}
         size="small"
