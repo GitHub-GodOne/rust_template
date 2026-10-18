@@ -1419,6 +1419,18 @@ mod tests {
         assert!(!super::has_canceller(run.id));
     }
 
+    /// The final status is stored before the run's canceller is released, so
+    /// give the cleanup a moment instead of asserting the instant it finished.
+    async fn wait_canceller_released(run_id: i32) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while super::has_canceller(run_id) {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the canceller must be released after the run finishes");
+    }
+
     async fn wait_finished(
         db: &sea_orm::DatabaseConnection,
         run_id: i32,
@@ -1494,7 +1506,7 @@ mod tests {
             "3"
         );
         assert!(finished.output_tail.unwrap().contains("重试 2/3"));
-        assert!(!super::has_canceller(run.id));
+        wait_canceller_released(run.id).await;
     }
 
     #[tokio::test]
@@ -1597,6 +1609,6 @@ mod tests {
                 .count(),
             1
         );
-        assert!(!super::has_canceller(run.id));
+        wait_canceller_released(run.id).await;
     }
 }
