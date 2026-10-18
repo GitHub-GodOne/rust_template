@@ -1,5 +1,5 @@
 import axios from "axios";
-import { t } from "../i18n";
+import { locale, t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 
 type ApiEnvelope<T> = {
@@ -62,6 +62,8 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // The backend translates error messages for English clients.
+  config.headers["Accept-Language"] = locale;
 
   return config;
 });

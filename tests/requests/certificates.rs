@@ -259,6 +259,20 @@ async fn certificates_and_domain_mappings_drive_dns_and_tunnel() {
             assert!(response.text().contains(message), "{}", response.text());
         }
 
+        // English clients get English error messages.
+        let english = request
+            .post("/api/admin/domain-mappings")
+            .add_header(auth_key.clone(), auth_value.clone())
+            .add_header("accept-language", "en-US,en;q=0.9")
+            .json(&json!({ "domain": "not a domain", "mode": "direct", "upstream_port": 3000 }))
+            .await;
+        assert_eq!(english.status_code(), 400);
+        assert!(
+            english.text().contains("not a domain is not a valid domain"),
+            "{}",
+            english.text()
+        );
+
         // Direct mode: HTTPS on a custom port, A + AAAA records pointing here.
         let direct = request
             .post("/api/admin/domain-mappings")

@@ -96,6 +96,8 @@ impl Hooks for App {
         stack.push(Box::new(crate::middleware::audit::AuditMiddleware::new(
             ctx,
         )));
+        // Outside audit (logs keep the source text), inside compression.
+        stack.push(Box::new(crate::middleware::locale::LocaleMiddleware));
         stack.push(Box::new(
             crate::middleware::compression::CompressionMiddleware,
         ));

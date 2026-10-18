@@ -3,6 +3,7 @@ pub mod controllers;
 pub mod data;
 pub mod data_manager;
 pub mod errors;
+pub mod i18n;
 pub mod initializers;
 pub mod mailers;
 pub mod middleware;
