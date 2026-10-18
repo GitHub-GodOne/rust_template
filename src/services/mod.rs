@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod certificates;
 pub mod cloudflare_ddns;
 pub mod command_runner;
 pub mod command_workflow_runner;

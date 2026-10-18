@@ -82,6 +82,7 @@ impl Hooks for App {
         if !matches!(ctx.environment, Environment::Test) {
             crate::services::temperature_monitor::start_collector(ctx.db.clone());
             crate::services::cloudflare_ddns::start_updater(ctx.db.clone());
+            crate::services::certificates::start(ctx.db.clone());
             crate::services::network_watch::start();
             crate::services::log_retention::start_cleaner(ctx.db.clone());
         }
@@ -182,6 +183,8 @@ impl Hooks for App {
             crate::models::_entities::project_cli_run_logs::Entity,
         )
         .await?;
+        truncate_table(&ctx.db, crate::models::_entities::domain_mappings::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::tls_certificates::Entity).await?;
         truncate_table(&ctx.db, crate::models::_entities::project_cli_runs::Entity).await?;
         truncate_table(&ctx.db, crate::models::_entities::audit_log_rules::Entity).await?;
         truncate_table(&ctx.db, refresh_tokens::Entity).await?;

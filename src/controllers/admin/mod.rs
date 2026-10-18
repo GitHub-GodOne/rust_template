@@ -10,6 +10,7 @@ use crate::{
 
 pub mod ai_images;
 pub mod backups;
+pub mod certificates;
 pub mod chat_messages;
 pub mod commands;
 pub mod content;
@@ -455,7 +456,48 @@ fn extension_routes(routes: Routes) -> Routes {
     let routes = vnc_routes(routes);
     let routes = ai_image_routes(routes);
     let routes = http_client_routes(routes);
+    let routes = certificate_routes(routes);
     upload_routes(routes)
+}
+
+fn certificate_routes(routes: Routes) -> Routes {
+    routes
+        .add(
+            "/api/admin/certificates",
+            get(certificates::list_certificates).post(certificates::create_certificate),
+        )
+        .add(
+            "/api/admin/certificates/settings",
+            get(certificates::get_settings).put(certificates::update_settings),
+        )
+        .add(
+            "/api/admin/certificates/{id}",
+            put(certificates::update_certificate).delete(certificates::delete_certificate),
+        )
+        .add(
+            "/api/admin/certificates/{id}/issue",
+            post(certificates::issue_certificate),
+        )
+        .add(
+            "/api/admin/domain-mappings",
+            get(certificates::list_mappings).post(certificates::create_mapping),
+        )
+        .add(
+            "/api/admin/domain-mappings/runtime",
+            get(certificates::runtime),
+        )
+        .add(
+            "/api/admin/domain-mappings/tunnel/restart",
+            post(certificates::restart_tunnel),
+        )
+        .add(
+            "/api/admin/domain-mappings/{id}",
+            put(certificates::update_mapping).delete(certificates::delete_mapping),
+        )
+        .add(
+            "/api/admin/domain-mappings/{id}/sync",
+            post(certificates::sync_mapping),
+        )
 }
 
 fn log_setting_routes(routes: Routes) -> Routes {

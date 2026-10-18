@@ -1151,7 +1151,7 @@ mod tests {
         protected.access_rules = vec![rule("a", "alice", "x"), rule("A", "bob", "y")];
         assert!(normalize_site(protected.clone()).is_err());
         protected.access_rules = vec![rule("../etc", "alice", "x")];
-        assert!(normalize_site(protected.clone()).is_err());
+        assert!(normalize_site(protected).is_err());
         assert!(hash_access_password("abc").is_err());
 
         let redacted = redact_site(normalized);
@@ -1162,11 +1162,11 @@ mod tests {
 
     #[test]
     fn most_specific_rule_protects_paths_case_insensitively() {
-        let mut site = site("rules", "/rules");
-        site.access_rules = vec![rule("", "site", "h1"), rule("docs/private", "owner", "h2")];
         fn matched<'a>(site: &'a StaticSiteConfig, relative: &str) -> Option<&'a str> {
             protecting_rule(site, relative, None).map(|rule| rule.username.as_str())
         }
+        let mut site = site("rules", "/rules");
+        site.access_rules = vec![rule("", "site", "h1"), rule("docs/private", "owner", "h2")];
         assert_eq!(matched(&site, "index.html"), Some("site"));
         assert_eq!(matched(&site, "docs/private"), Some("owner"));
         assert_eq!(matched(&site, "Docs/PRIVATE/report.pdf"), Some("owner"));

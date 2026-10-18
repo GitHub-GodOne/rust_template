@@ -1126,3 +1126,38 @@
   description: 按筛选条件导出日志为 CSV 文件
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 162
+  name: 查看证书与域名映射
+  code: system:certificate:list
+  group_name: system:certificate
+  description: 查看域名证书、域名映射和运行状态
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 163
+  name: 新增证书与域名映射
+  code: system:certificate:create
+  group_name: system:certificate
+  description: 申请域名证书、新增域名映射
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 164
+  name: 修改证书与域名映射
+  code: system:certificate:update
+  group_name: system:certificate
+  description: 修改域名映射、证书续签和 Cloudflare/ACME 设置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 165
+  name: 删除证书与域名映射
+  code: system:certificate:delete
+  group_name: system:certificate
+  description: 删除域名证书和域名映射
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 166
+  name: 签发与同步证书
+  code: system:certificate:issue
+  group_name: system:certificate
+  description: 立即签发/续签证书、同步 DNS 记录与 Cloudflare Tunnel
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

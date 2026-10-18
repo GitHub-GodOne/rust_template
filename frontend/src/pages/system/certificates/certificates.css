@@ -1,0 +1,216 @@
+/* Certificates & domain mappings page. */
+.cert-summary {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+.cert-summary-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 12px 14px;
+	background: #fff;
+	border: 1px solid #ebe5dd;
+	border-radius: 10px;
+}
+
+.cert-summary-item span {
+	color: #8a8178;
+	font-size: 12px;
+}
+
+.cert-summary-item strong {
+	color: #2f2b27;
+	font-size: 22px;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.2;
+}
+
+.cert-summary-item.is-error strong {
+	color: #c4423b;
+}
+
+.cert-summary-item.is-warning strong {
+	color: #c27a1a;
+}
+
+.cert-cell-main {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.cert-cell-main .ant-typography {
+	font-size: 12px;
+}
+
+.cert-code {
+	font-family: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.cert-form-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0 14px;
+}
+
+.cert-mode-group.ant-radio-group {
+	display: grid;
+	width: 100%;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.cert-mode-group .ant-radio-button-wrapper {
+	display: flex;
+	height: auto;
+	flex-direction: column;
+	gap: 2px;
+	padding: 10px 12px;
+	line-height: 1.4;
+	border-radius: 8px !important;
+	border-inline-start-width: 1px;
+}
+
+.cert-mode-group .ant-radio-button-wrapper::before {
+	display: none !important;
+}
+
+.cert-mode-group .ant-radio-button-wrapper > span:last-child {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.cert-mode-title {
+	font-weight: 600;
+}
+
+.cert-mode-description {
+	color: #8a8178;
+	font-size: 12px;
+	white-space: normal;
+}
+
+.cert-switch-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 12px;
+	padding: 10px 12px;
+	border: 1px solid #ebe5dd;
+	border-radius: 8px;
+}
+
+.cert-switch-row > span {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.cert-switch-row .ant-typography {
+	font-size: 12px;
+}
+
+.cert-inline-alert {
+	margin-bottom: 12px;
+}
+
+.cert-route-preview {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	color: #6c635a;
+	background: #f7f3ee;
+	border-radius: 8px;
+}
+
+.cert-route-preview code {
+	font-family: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+	font-size: 12.5px;
+	word-break: break-all;
+}
+
+.cert-listener-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.cert-listener {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 8px 10px;
+	background: #faf8f5;
+	border-radius: 8px;
+}
+
+.cert-listener-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.cert-facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: 6px 14px;
+	margin: 0 0 12px;
+}
+
+.cert-facts dt {
+	color: #8a8178;
+}
+
+.cert-facts dd {
+	margin: 0;
+	word-break: break-all;
+}
+
+.cert-logs {
+	max-height: 260px;
+	margin: 0;
+	padding: 10px 12px;
+	overflow: auto;
+	color: #d6d3cd;
+	font-family: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+	font-size: 11.5px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	background: #1b1a18;
+	border-radius: 8px;
+}
+
+.cert-settings .ant-card {
+	margin-bottom: 16px;
+}
+
+.cert-settings-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+	.cert-summary {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.cert-form-grid,
+	.cert-mode-group.ant-radio-group {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.cert-settings-actions .ant-btn {
+		width: 100%;
+	}
+}

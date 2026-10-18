@@ -1,6 +1,7 @@
 mod admin;
 mod audit;
 mod auth;
+mod certificates;
 mod dashboard;
 mod ddns;
 mod logs_export;

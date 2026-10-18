@@ -219,6 +219,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:rdp:list",
       },
       {
+        key: "system-certificates",
+        label: "证书与域名",
+        path: "/admin/system/certificates",
+        icon: "safety-certificate",
+        permission: "system:certificate:list",
+      },
+      {
         key: "system-dock",
         label: "快捷 Dock",
         path: "/admin/system/dock",

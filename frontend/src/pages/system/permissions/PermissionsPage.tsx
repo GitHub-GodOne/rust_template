@@ -90,6 +90,7 @@ const permissionGroupLabels: Record<string, string> = {
   "system:vnc": "VNC 管理",
   "system:rdp": "RDP 管理",
   "system:ddns": "IPv6 动态解析",
+  "system:certificate": "证书与域名",
   "system:ai_image": "AI 图片",
   "system:email_template": "邮箱模板",
   "system:work_order": "工单管理",

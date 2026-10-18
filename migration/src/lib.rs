@@ -39,6 +39,7 @@ mod m20261011_000030_project_cli_runs;
 mod m20261011_000031_audit_log_rules;
 mod m20261011_000032_log_export_permission;
 mod m20261011_000033_log_retention_description;
+mod m20261018_000034_certificates_module;
 
 pub struct Migrator;
 
@@ -80,6 +81,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261011_000031_audit_log_rules::Migration),
             Box::new(m20261011_000032_log_export_permission::Migration),
             Box::new(m20261011_000033_log_retention_description::Migration),
+            Box::new(m20261018_000034_certificates_module::Migration),
             // inject-above (do not remove this comment)
         ]
     }

@@ -11,6 +11,7 @@ import { SetupPage } from "../pages/setup/SetupPage";
 import { AiImagesPage } from "../pages/system/ai-images/AiImagesPage";
 import { ApiKeysPage } from "../pages/system/api-keys/ApiKeysPage";
 import { BackupsPage } from "../pages/system/backups/BackupsPage";
+import { CertificatesPage } from "../pages/system/certificates/CertificatesPage";
 import { ChatMessagesPage } from "../pages/system/chat-messages/ChatMessagesPage";
 import { CommandsPage } from "../pages/system/commands/CommandsPage";
 import { ContentPage } from "../pages/system/content/ContentPage";
@@ -335,6 +336,14 @@ export function AppRouter() {
             element={
               <RequirePermission permission="system:project_cli:view">
                 <ProjectCliPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/certificates"
+            element={
+              <RequirePermission permission="system:certificate:list">
+                <CertificatesPage />
               </RequirePermission>
             }
           />

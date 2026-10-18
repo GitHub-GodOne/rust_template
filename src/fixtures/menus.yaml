@@ -428,3 +428,14 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 44
+  parent_id: 43
+  title: 证书与域名
+  path: /admin/system/certificates
+  icon: safety-certificate
+  permission_code: system:certificate:list
+  sort_order: 40
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

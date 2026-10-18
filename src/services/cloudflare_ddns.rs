@@ -757,7 +757,10 @@ pub struct AddressCandidate {
     pub temporary: Option<bool>,
 }
 
-async fn detect_ipv6(db: &DatabaseConnection, settings: &DdnsSettings) -> Result<Ipv6Addr, String> {
+pub(crate) async fn detect_ipv6(
+    db: &DatabaseConnection,
+    settings: &DdnsSettings,
+) -> Result<Ipv6Addr, String> {
     let from_interface = || async {
         let interface = settings.interface_name.clone();
         let candidates = tokio::task::spawn_blocking(list_interface_addresses)
@@ -1125,7 +1128,7 @@ fn validate_cloudflare_email(value: &str) -> Result<(), String> {
     }
 }
 
-fn cloudflare_auth_headers(
+pub(crate) fn cloudflare_auth_headers(
     mode: &str,
     credential: &str,
     email: &str,

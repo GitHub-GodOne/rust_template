@@ -189,6 +189,12 @@ pub const FEATURES: &[AuditFeature] = &[
     feature("vnc", "VNC 管理", "运维工具", &["/api/admin/vnc"]),
     feature("rdp", "RDP 管理", "运维工具", &["/api/admin/rdp"]),
     feature(
+        "certificates",
+        "证书与域名",
+        "运维工具",
+        &["/api/admin/certificates", "/api/admin/domain-mappings"],
+    ),
+    feature(
         "http_client",
         "HTTP 请求",
         "运维工具",
