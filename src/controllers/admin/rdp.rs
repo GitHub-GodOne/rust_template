@@ -303,7 +303,7 @@ pub async fn create_ticket(
     }
     let expiry_ticket = ticket.clone();
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_mins(1)).await;
+        tokio::time::sleep(Duration::from_secs(60)).await;
         if let Ok(mut store) = tickets().lock() {
             store.remove(&expiry_ticket);
         }
@@ -576,7 +576,7 @@ async fn proxy(socket: &mut WebSocket, mut reader: BufReader<TcpStream>) {
                 let Some(data) = data else { break; };
                 if !matches!(timeout(IO_TIMEOUT, socket.send(Message::Text(data.into()))).await, Ok(Ok(()))) { break; }
             }
-            message = timeout(Duration::from_mins(1), socket.recv()) => {
+            message = timeout(Duration::from_secs(60), socket.recv()) => {
                 match message {
                     Ok(Some(Ok(Message::Text(data)))) => {
                         // Internal WebSocket tunnel pings must not be forwarded to guacd.

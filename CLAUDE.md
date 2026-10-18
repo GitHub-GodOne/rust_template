@@ -21,6 +21,8 @@ Run from the repository root unless noted otherwise.
 - Run tests against the local test database: `DATABASE_URL='postgres://postgres:Vue8484229%40@localhost:5432/gpt_images_test' cargo test --all-features --all`
 - Run the playground example: `cargo playground`
 
+The project must also build on an older Windows stable toolchain: `clippy.toml` sets `msrv = "1.87"`, so clippy flags std APIs that are too new (`incompatible_msrv`) instead of suggesting them. Avoid `Duration::from_mins`/`from_hours` (use `Duration::from_secs(60 * n)`), and check Windows builds with `cargo check --all-features --target x86_64-pc-windows-gnu`.
+
 The `.cargo/config.toml` aliases `cargo loco` and `cargo loco-tool` to `cargo run --`; the default binary is `gpt_images-cli` at `src/bin/main.rs`.
 
 Tests and local development use PostgreSQL by default. `DATABASE_URL` overrides the configured URI. `config/test.yaml` enables `dangerously_truncate` and `dangerously_recreate`; never point tests at a database with data to keep.

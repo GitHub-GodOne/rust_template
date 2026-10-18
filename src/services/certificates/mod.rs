@@ -44,8 +44,8 @@ pub const SETTINGS_KEY: &str = "certificates.config";
 pub const STORAGE_DIR: &str = "storage/certificates";
 pub const MODE_DIRECT: &str = "direct";
 pub const MODE_TUNNEL: &str = "tunnel";
-const SYNC_INTERVAL: Duration = Duration::from_mins(5);
-const VERIFY_INTERVAL: Duration = Duration::from_hours(1);
+const SYNC_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const VERIFY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const RENEW_RETRY_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
 /// Settings stored as one JSON system setting.

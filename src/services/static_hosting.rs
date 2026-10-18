@@ -36,7 +36,7 @@ const MAX_ACCESS_RULES: usize = 50;
 const MAX_ACCESS_USERNAME_CHARS: usize = 64;
 pub const MIN_ACCESS_PASSWORD_CHARS: usize = 4;
 /// 已验证的访问凭据缓存时长，避免同一页面的每个资源都重新计算 argon2。
-const ACCESS_CACHE_TTL: Duration = Duration::from_mins(10);
+const ACCESS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const MAX_ACCESS_CACHE_ENTRIES: usize = 1024;
 
 // Independent on/off switches persisted as JSON; an enum would break saved configs.

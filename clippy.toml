@@ -1,1 +1,5 @@
 doc-valid-idents = ["PostgreSQL", "TightVNC", ".."]
+# Oldest Rust the project must build with (the Windows toolchain is older than
+# the one on macOS). Clippy then skips suggestions such as Duration::from_mins
+# and `incompatible_msrv` flags std APIs that are too new.
+msrv = "1.87"
