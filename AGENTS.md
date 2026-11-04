@@ -13,7 +13,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - Run one test by name: `cargo test can_register --all-features --all`
 - Run the playground example: `cargo playground`
 
-The `.cargo/config.toml` aliases `cargo loco` and `cargo loco-tool` to `cargo run --`; the default binary is `gpt_images-cli` at `src/bin/main.rs`.
+The `.cargo/config.toml` aliases `cargo loco` and `cargo loco-tool` to `cargo run --`; the default binary is `gpt_images-cli` at `src/bin/main.rs`. `gpt_images-cli-a` / `gpt_images-cli-b` (`src/bin/gpt_images-cli-{a,b}.rs`) `include!` the same `main.rs`, so one can be rebuilt with `--bin` while the service runs the other; keep CLI code in `main.rs`.
 
 Tests and local development expect PostgreSQL by default. `DATABASE_URL` overrides the configured defaults. CI also starts Redis and sets `REDIS_URL` for tests.
 

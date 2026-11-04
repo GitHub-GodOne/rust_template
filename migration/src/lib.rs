@@ -40,6 +40,19 @@ mod m20261011_000031_audit_log_rules;
 mod m20261011_000032_log_export_permission;
 mod m20261011_000033_log_retention_description;
 mod m20261018_000034_certificates_module;
+mod m20261019_000035_account_security;
+mod m20261019_000036_recycle_bin_and_exports;
+mod m20261019_000037_notification_reads;
+mod m20261019_000038_ssh_session_limits;
+mod m20261020_000039_remote_session_permissions;
+mod m20261022_000040_remote_reauth_setting;
+mod m20261025_000041_im_chat;
+mod m20261025_000042_ssh_keep_sessions;
+mod m20261025_000043_remote_audio;
+mod m20261025_000044_database_manager;
+mod m20261025_000045_ssh_scrollback_setting;
+mod m20261102_000046_flexible_database_backups;
+mod m20261102_000047_backup_telegram_destinations;
 
 pub struct Migrator;
 
@@ -82,6 +95,19 @@ impl MigratorTrait for Migrator {
             Box::new(m20261011_000032_log_export_permission::Migration),
             Box::new(m20261011_000033_log_retention_description::Migration),
             Box::new(m20261018_000034_certificates_module::Migration),
+            Box::new(m20261019_000035_account_security::Migration),
+            Box::new(m20261019_000036_recycle_bin_and_exports::Migration),
+            Box::new(m20261019_000037_notification_reads::Migration),
+            Box::new(m20261019_000038_ssh_session_limits::Migration),
+            Box::new(m20261020_000039_remote_session_permissions::Migration),
+            Box::new(m20261022_000040_remote_reauth_setting::Migration),
+            Box::new(m20261025_000041_im_chat::Migration),
+            Box::new(m20261025_000042_ssh_keep_sessions::Migration),
+            Box::new(m20261025_000043_remote_audio::Migration),
+            Box::new(m20261025_000044_database_manager::Migration),
+            Box::new(m20261025_000045_ssh_scrollback_setting::Migration),
+            Box::new(m20261102_000046_flexible_database_backups::Migration),
+            Box::new(m20261102_000047_backup_telegram_destinations::Migration),
             // inject-above (do not remove this comment)
         ]
     }

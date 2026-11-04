@@ -13,6 +13,7 @@ import {
   MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SnippetsOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import RFB from "@novnc/novnc";
@@ -60,8 +61,14 @@ import { PermissionButton } from "../../../components/admin/PermissionButton";
 import "./vnc.css";
 import { t } from "../../../i18n";
 import { createClientId } from "../../../utils/clientId";
-import { VncQuickBar, VncShortcutsDrawer } from "./VncQuickBar";
+import {
+  RemoteClipboardDrawer,
+  TrackpadCursor,
+  VncQuickBar,
+  VncShortcutsDrawer,
+} from "./VncQuickBar";
 import { useVncPointerModes } from "./useVncPointerModes";
+import { prefersTrackpad, storeFlag, storedFlag } from "./viewerPrefs";
 import {
   KEYS,
   type KeyStroke,
@@ -143,26 +150,6 @@ const vncTrackpadStorageKey = "gpt-images-admin-vnc-trackpad";
 const vncLocalPointerStorageKey = "gpt-images-admin-vnc-local-pointer";
 const vncQuickBarStorageKey = "gpt-images-admin-vnc-quickbar";
 
-function storedFlag(key: string, fallback: () => boolean) {
-  if (typeof localStorage === "undefined") {
-    return fallback();
-  }
-  const value = localStorage.getItem(key);
-  return value === null ? fallback() : value === "1";
-}
-
-function storeFlag(key: string, value: boolean) {
-  if (typeof localStorage !== "undefined") {
-    localStorage.setItem(key, value ? "1" : "0");
-  }
-}
-
-function prefersTrackpad() {
-  return (
-    typeof window !== "undefined" &&
-    Boolean(window.matchMedia?.("(pointer: coarse)").matches)
-  );
-}
 const insecureVncContextMessage = t(
   "VNC 需要 HTTPS 安全环境，请使用 HTTPS 域名访问，或在服务器本机通过 localhost 打开",
 );
@@ -338,27 +325,7 @@ const VncViewerHost = memo(function VncViewerHost({
     >
       <div ref={bindRef} className="vnc-viewer-host" />
       <span ref={pointerRef} className="vnc-local-pointer" aria-hidden="true" />
-      <span
-        ref={trackpadCursorRef}
-        className="vnc-trackpad-cursor"
-        aria-hidden="true"
-      >
-        <svg
-          viewBox="0 0 16 24"
-          width="18"
-          height="27"
-          focusable="false"
-          aria-hidden="true"
-        >
-          <path
-            d="M1.5 1.5v18.2l4.6-4.4 3.1 7.2 3-1.3-3.1-7.1h6.4z"
-            fill="#fff"
-            stroke="#151515"
-            strokeWidth="1.3"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
+      <TrackpadCursor ref={trackpadCursorRef} />
       {status !== "connected" ? (
         <div className="vnc-viewer-state" aria-live="polite">
           <DesktopOutlined />
@@ -418,6 +385,7 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
     storedFlag(vncQuickBarStorageKey, () => true),
   );
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [clipboardOpen, setClipboardOpen] = useState(false);
   const [rightClickArmed, setRightClickArmed] = useState(false);
   const [latched, setLatchedState] = useState<ModifierName[]>([]);
   const latchedRef = useRef<ModifierName[]>([]);
@@ -1381,12 +1349,22 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                     </Tooltip>
                   </Popconfirm>
                 ) : null}
-                <Tooltip title={t("快捷键与文本发送")}>
+                <Tooltip title={t("剪贴板：粘贴到远程 / 复制远程内容")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<SnippetsOutlined />}
+                    aria-label={t("剪贴板")}
+                    disabled={!activeConnected}
+                    onClick={() => setClipboardOpen(true)}
+                  />
+                </Tooltip>
+                <Tooltip title={t("快捷键")}>
                   <Button
                     type="text"
                     size="small"
                     icon={<AppstoreOutlined />}
-                    aria-label={t("快捷键与文本发送")}
+                    aria-label={t("快捷键")}
                     onClick={() => setShortcutsOpen(true)}
                   />
                 </Tooltip>
@@ -1481,6 +1459,8 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
                   }
                   onToggleModifier={toggleModifier}
                   onStrokes={sendStrokes}
+                  onPasteToRemote={pasteToRemote}
+                  onOpenClipboard={() => setClipboardOpen(true)}
                   onOpenShortcuts={() => setShortcutsOpen(true)}
                 />
               </div>
@@ -1567,6 +1547,16 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
             >
               {t("新建连接")}
             </PermissionButton>
+            <Button
+              icon={<SnippetsOutlined />}
+              disabled={!activeConnected}
+              onClick={() => {
+                setMobileControlsOpen(false);
+                setClipboardOpen(true);
+              }}
+            >
+              {t("剪贴板")}
+            </Button>
             <Button icon={<LinkOutlined />} onClick={addBlankSession}>
               {t("新建标签")}
             </Button>
@@ -1623,13 +1613,20 @@ export function VncPage({ visible = true }: { visible?: boolean }) {
         connected={activeConnected}
         trackpad={trackpad}
         showLocalPointer={showLocalPointer}
-        remoteClipboard={
-          activeSession ? (remoteClipboards[activeSession.id] ?? "") : ""
-        }
         onClose={() => setShortcutsOpen(false)}
         onStrokes={sendStrokes}
         onToggleTrackpad={toggleTrackpad}
         onToggleLocalPointer={toggleLocalPointer}
+        onOpenClipboard={() => setClipboardOpen(true)}
+      />
+      <RemoteClipboardDrawer
+        open={clipboardOpen}
+        connected={activeConnected}
+        remoteClipboard={
+          activeSession ? (remoteClipboards[activeSession.id] ?? "") : ""
+        }
+        onClose={() => setClipboardOpen(false)}
+        onStrokes={sendStrokes}
         onPasteToRemote={pasteToRemote}
         onTypeText={typeText}
       />

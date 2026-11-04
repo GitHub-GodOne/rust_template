@@ -4,6 +4,8 @@ import { App } from "./app/App";
 
 import "antd/dist/reset.css";
 import "./index.css";
+// Last: dark-mode overrides for every stylesheet (npm run theme:dark).
+import "./styles/dark-theme.css";
 
 function configureResponsiveViewport() {
   const mobileUserAgent =

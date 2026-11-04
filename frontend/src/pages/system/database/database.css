@@ -1,0 +1,653 @@
+/* 数据库管理: object tree on the left, tabbed workspace on the right. */
+.db-page {
+	display: flex;
+	height: calc(100dvh - var(--db-top, 120px) - 24px);
+	min-height: 480px;
+	overflow: hidden;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	background: #ffffff;
+}
+
+.db-sidebar {
+	display: flex;
+	width: 290px;
+	min-width: 220px;
+	max-width: 60%;
+	flex: 0 0 auto;
+	flex-direction: column;
+	border-right: 1px solid #e5e7eb;
+	background: #fafafa;
+	resize: horizontal;
+	overflow: hidden;
+}
+
+.db-sidebar-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 10px 10px 6px;
+}
+
+.db-sidebar-search {
+	padding: 0 10px 8px;
+}
+
+.db-tree {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 0 4px 12px;
+}
+
+.db-tree .ant-tree {
+	background: transparent;
+}
+
+.db-tree .ant-tree-node-content-wrapper {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	white-space: nowrap;
+}
+
+.db-tree .ant-tree-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.db-tree-title {
+	display: inline-block;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	vertical-align: middle;
+}
+
+.db-tree-connection {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.db-type-tag.ant-tag {
+	margin: 0;
+	padding: 0 4px;
+	font-size: 11px;
+	line-height: 16px;
+	color: #8c8c8c;
+	background: #f0f0f0;
+}
+
+.db-connection-icon {
+	position: relative;
+	display: inline-flex;
+}
+
+.db-connection-icon .anticon {
+	color: #8c8c8c;
+}
+
+.db-connection-icon .anticon.is-connected {
+	color: #52c41a;
+}
+
+.db-color-mark {
+	position: absolute;
+	right: -3px;
+	bottom: -2px;
+	width: 7px;
+	height: 7px;
+	border: 1px solid #ffffff;
+	border-radius: 50%;
+}
+
+.db-workspace {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+}
+
+.db-tabs {
+	display: flex;
+	height: 100%;
+	flex-direction: column;
+}
+
+.db-tabs > .ant-tabs-nav {
+	margin: 0;
+	padding: 6px 8px 0;
+	background: #fafafa;
+}
+
+.db-tabs > .ant-tabs-content-holder {
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.db-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+.db-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+	height: 100%;
+}
+
+.db-tab-label {
+	display: inline-flex;
+	max-width: 220px;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.db-tab-body {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+	flex-direction: column;
+}
+
+.db-welcome {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 32px;
+	text-align: center;
+}
+
+.db-welcome-icon {
+	margin-bottom: 12px;
+	font-size: 44px;
+	color: #1677ff;
+}
+
+.db-welcome-list {
+	display: grid;
+	width: min(640px, 100%);
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 10px;
+	margin-top: 8px;
+}
+
+.db-welcome-item {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	background: #ffffff;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.db-welcome-item:hover {
+	border-color: #1677ff;
+}
+
+.db-welcome-name {
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.db-welcome-item .ant-typography {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Shared toolbar of the data, structure and query tabs. */
+.db-toolbar {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px 12px;
+	padding: 8px 10px;
+	border-bottom: 1px solid #f0f0f0;
+}
+
+.db-toolbar-info {
+	font-size: 12px;
+}
+
+.db-inline-alert.ant-alert {
+	margin: 8px 10px 0;
+	padding: 4px 10px;
+}
+
+.db-center-spin {
+	display: block;
+	margin: 48px auto;
+}
+
+/* Table data */
+.db-data-view {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+	flex-direction: column;
+}
+
+.db-filter-panel {
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 8px 10px;
+	border-bottom: 1px solid #f0f0f0;
+	background: #fcfcfc;
+}
+
+.db-filter-row {
+	max-width: 100%;
+}
+
+.db-filter-column {
+	width: 180px;
+}
+
+.db-filter-op {
+	width: 110px;
+}
+
+.db-filter-value {
+	width: 220px;
+}
+
+.db-filter-where {
+	width: min(640px, 100%);
+}
+
+.db-data-grid {
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	padding: 8px 10px 0;
+}
+
+.db-data-grid .ant-table-cell,
+.db-result-grid .ant-table-cell {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.db-data-grid .ant-table-thead .ant-table-cell,
+.db-result-grid .ant-table-thead .ant-table-cell {
+	font-family: inherit;
+	font-weight: 600;
+}
+
+.db-grid-header {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.db-pk-icon {
+	color: #d4b106;
+}
+
+.db-cell-null {
+	color: #bfbfbf;
+	font-style: italic;
+}
+
+.db-cell-default {
+	color: #bfbfbf;
+}
+
+.db-cell-number {
+	color: #0958d9;
+}
+
+.db-data-grid .ant-table-cell.db-cell-changed {
+	background: #fff7e6;
+}
+
+.db-data-grid .db-row-new > .ant-table-cell {
+	background: #f6ffed;
+}
+
+.db-data-grid .db-row-deleted > .ant-table-cell {
+	color: #bfbfbf;
+	text-decoration: line-through;
+	background: #fff1f0;
+}
+
+.db-null-button.ant-btn {
+	height: 18px;
+	padding: 0 4px;
+	font-size: 11px;
+}
+
+.db-pagination {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 10px;
+	border-top: 1px solid #f0f0f0;
+}
+
+.db-sql-preview.ant-typography {
+	max-width: min(60%, 640px);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+}
+
+.db-context-anchor {
+	position: fixed;
+	width: 1px;
+	height: 1px;
+}
+
+/* Structure */
+.db-structure-view {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+	flex-direction: column;
+}
+
+.db-structure-tabs {
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow: auto;
+	padding: 0 10px 10px;
+}
+
+.db-yes {
+	color: #52c41a;
+}
+
+.db-ddl-view {
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
+	gap: 8px;
+	padding: 8px 10px 10px;
+}
+
+.db-ddl-view .db-sql-editor {
+	min-height: 240px;
+	border: 1px solid #f0f0f0;
+	border-radius: 6px;
+}
+
+.db-ddl-actions {
+	align-self: flex-start;
+}
+
+/* SQL editor */
+.db-query-view {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+	flex-direction: column;
+}
+
+.db-database-select {
+	width: 180px;
+}
+
+.db-tx-tag.ant-tag {
+	margin: 0;
+}
+
+.db-editor-pane {
+	display: flex;
+	min-height: 100px;
+	flex: 0 0 auto;
+	overflow: hidden;
+}
+
+.db-sql-editor {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+}
+
+.db-sql-editor .cm-editor {
+	height: 100%;
+	font-size: 13px;
+}
+
+.db-sql-editor .cm-editor.cm-focused {
+	outline: none;
+}
+
+.db-sql-editor .cm-scroller {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.db-splitter {
+	flex: 0 0 6px;
+	border-top: 1px solid #f0f0f0;
+	border-bottom: 1px solid #f0f0f0;
+	background: #fafafa;
+	cursor: row-resize;
+	touch-action: none;
+}
+
+.db-splitter:hover {
+	background: #e6f4ff;
+}
+
+.db-results {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+}
+
+.db-results > .ant-tabs-nav {
+	margin: 0;
+	padding: 0 10px;
+}
+
+.db-results > .ant-tabs-content-holder {
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.db-results > .ant-tabs-content-holder > .ant-tabs-content,
+.db-results > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+	height: 100%;
+}
+
+.db-result-pane {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+	flex-direction: column;
+}
+
+.db-result-toolbar {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 6px 10px;
+	font-size: 12px;
+}
+
+.db-result-grid {
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	padding: 0 10px 8px;
+}
+
+.db-grid-index {
+	color: #8c8c8c;
+}
+
+.db-messages {
+	display: flex;
+	height: 100%;
+	flex-direction: column;
+	gap: 8px;
+	overflow: auto;
+	padding: 10px;
+}
+
+.db-message {
+	padding: 8px 10px;
+	border: 1px solid #f0f0f0;
+	border-radius: 6px;
+}
+
+.db-message.is-error {
+	border-color: #ffccc7;
+	background: #fff2f0;
+}
+
+.db-message-head {
+	display: flex;
+	min-width: 0;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.db-message-ok-icon {
+	margin-top: 3px;
+	color: #52c41a;
+}
+
+.db-message-error-icon {
+	margin-top: 3px;
+	color: #ff4d4f;
+}
+
+.db-message-sql {
+	display: -webkit-box;
+	min-width: 0;
+	overflow: hidden;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-all;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+}
+
+.db-message-detail {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 4px 0 0 22px;
+	font-size: 12px;
+}
+
+.db-message-time {
+	flex: 0 0 auto;
+	color: #8c8c8c;
+}
+
+/* History */
+.db-history-search {
+	margin-bottom: 8px;
+}
+
+.db-history-body {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.db-history-meta {
+	margin-bottom: 4px;
+	font-size: 12px;
+}
+
+.db-history-sql.ant-typography {
+	margin-bottom: 0;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.db-history-error {
+	font-size: 12px;
+}
+
+.db-history-pagination {
+	margin-top: 12px;
+	text-align: right;
+}
+
+/* Connection form */
+.db-connection-footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.db-full-width {
+	width: 100%;
+}
+
+.db-color-options .ant-radio-button-wrapper {
+	padding: 0 8px;
+}
+
+.db-color-dot {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	vertical-align: -1px;
+}
+
+.db-confirm-sql {
+	display: block;
+	padding: 8px;
+	border-radius: 4px;
+	background: #f5f5f5;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+@media (max-width: 768px) {
+	.db-page {
+		height: auto;
+		min-height: calc(100dvh - var(--db-top, 96px) - 12px);
+		flex-direction: column;
+		border-radius: 0;
+	}
+
+	.db-sidebar {
+		width: 100%;
+		max-width: none;
+		max-height: 38vh;
+		border-right: 0;
+		border-bottom: 1px solid #e5e7eb;
+		resize: none;
+	}
+
+	.db-workspace {
+		min-height: 70vh;
+	}
+
+	.db-filter-column,
+	.db-filter-op,
+	.db-filter-value {
+		width: auto;
+		min-width: 90px;
+	}
+}

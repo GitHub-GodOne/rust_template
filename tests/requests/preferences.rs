@@ -98,3 +98,36 @@ async fn each_user_keeps_their_own_dock_preference() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn ssh_quick_commands_are_saved_per_user() {
+    request::<App, _, _>(|request, ctx| async move {
+        seed::<App>(&ctx).await.unwrap();
+        let admin = admin_token(&request).await;
+        let (admin_key, admin_value) = prepare_data::auth_header(&admin);
+        let path = "/api/user/preferences/ssh_commands";
+        let commands = serde_json::json!({
+            "version": 1,
+            "commands": [{ "id": "c1", "name": "磁盘", "command": "df -h", "auto_enter": true }]
+        });
+
+        let saved = request
+            .put(path)
+            .add_header(admin_key.clone(), admin_value.clone())
+            .json(&serde_json::json!({ "value": commands }))
+            .await;
+        assert_eq!(saved.status_code(), 200, "{}", saved.text());
+
+        let loaded = request.get(path).add_header(admin_key, admin_value).await;
+        let body: serde_json::Value = serde_json::from_str(&loaded.text()).unwrap();
+        assert_eq!(body["data"]["value"], commands);
+
+        let other = prepare_data::init_user_login(&request, &ctx).await;
+        let (other_key, other_value) = prepare_data::auth_header(&other.token);
+        let other_loaded = request.get(path).add_header(other_key, other_value).await;
+        let body: serde_json::Value = serde_json::from_str(&other_loaded.text()).unwrap();
+        assert!(body["data"]["value"].is_null());
+    })
+    .await;
+}

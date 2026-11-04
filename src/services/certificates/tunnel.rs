@@ -16,6 +16,11 @@ use serde::Serialize;
 use tokio::{io::AsyncBufReadExt, process::Command, sync::watch, task::JoinHandle};
 
 const MAX_LOG_LINES: usize = 80;
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const STABLE_RUN: Duration = Duration::from_secs(60);
+#[allow(clippy::duration_suboptimal_units)]
+const MAX_BACKOFF: Duration = Duration::from_secs(2 * 60);
 
 #[derive(Clone, Debug, Default, Serialize, utoipa::ToSchema)]
 pub struct TunnelStatus {
@@ -187,7 +192,7 @@ async fn run(binary: PathBuf, token: String, mut stopped: watch::Receiver<bool>)
                             state.last_error = Some(message);
                             state.restarts += 1;
                         });
-                        if started.elapsed() > Duration::from_mins(1) {
+                        if started.elapsed() > STABLE_RUN {
                             backoff = Duration::from_secs(5);
                         }
                     }
@@ -211,7 +216,7 @@ async fn run(binary: PathBuf, token: String, mut stopped: watch::Receiver<bool>)
             () = tokio::time::sleep(backoff) => {}
             _ = stopped.changed() => return,
         }
-        backoff = (backoff * 2).min(Duration::from_mins(2));
+        backoff = (backoff * 2).min(MAX_BACKOFF);
     }
 }
 

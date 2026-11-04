@@ -22,6 +22,8 @@ pub struct Model {
     pub delivery_targets: Option<String>,
     pub delivery_status: Option<String>,
     pub error_message: Option<String>,
+    pub database_connection_id: Option<i32>,
+    pub database_label: Option<String>,
     pub created_by: Option<i32>,
 }
 

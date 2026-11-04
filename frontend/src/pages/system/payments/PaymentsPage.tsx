@@ -1,5 +1,6 @@
 import {
   CheckCircleOutlined,
+  CloudDownloadOutlined,
   CreditCardOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -39,6 +40,7 @@ import {
   createPaymentOrder,
   createPaymentRefund,
   deletePaymentChannel,
+  exportPaymentOrders,
   fetchPaymentCallbacks,
   fetchPaymentChannels,
   fetchPaymentOrder,
@@ -204,6 +206,15 @@ export function PaymentsPage() {
         status: orderStatus,
         provider: orderProvider,
       }),
+  });
+  const exportOrdersMutation = useMutation({
+    mutationFn: () =>
+      exportPaymentOrders({
+        keyword: orderKeyword || undefined,
+        status: orderStatus,
+        provider: orderProvider,
+      }),
+    onSuccess: (count) => message.success(t("已导出 {0} 条", count)),
   });
   const refundsQuery = useQuery({
     queryKey: ["admin-payment-refunds", refundPage, refundStatus],
@@ -631,6 +642,16 @@ export function PaymentsPage() {
                           });
                           setOrderOpen(true);
                         },
+                      },
+                      {
+                        key: "export",
+                        label: exportOrdersMutation.isPending
+                          ? t("导出中...")
+                          : t("导出"),
+                        icon: <CloudDownloadOutlined />,
+                        permission: "system:payment_order:export",
+                        disabled: exportOrdersMutation.isPending,
+                        onClick: () => exportOrdersMutation.mutate(),
                       },
                     ]}
                   />

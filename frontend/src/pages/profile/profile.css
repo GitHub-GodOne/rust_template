@@ -1,0 +1,29 @@
+.profile-page {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.profile-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+}
+
+.profile-facts {
+	margin-bottom: 16px;
+}
+
+.profile-name-form {
+	row-gap: 8px;
+}
+
+.profile-sessions .ant-list-item-meta-title {
+	margin-bottom: 2px;
+}
+
+@media (max-width: 900px) {
+	.profile-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}

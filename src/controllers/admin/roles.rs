@@ -231,7 +231,14 @@ pub async fn delete(
         return Err(ApiError::bad_request("system role cannot be deleted"));
     }
 
-    roles::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("roles", id, &role.name, &actor),
+        "roles",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

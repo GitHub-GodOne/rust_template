@@ -9,6 +9,7 @@ pub mod mailers;
 pub mod middleware;
 pub mod models;
 pub mod openapi;
+pub mod rdp_manager;
 pub mod responses;
 pub mod service_manager;
 pub mod services;

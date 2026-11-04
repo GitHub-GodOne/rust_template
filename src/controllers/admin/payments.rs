@@ -17,6 +17,7 @@ use crate::{
         rbac,
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
+    services::csv_export,
 };
 
 const SECRET_MASK: &str = "******";
@@ -449,7 +450,7 @@ pub async fn delete_channel(
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:payment_channel:delete").await?;
-    find_visible_channel(&ctx, &actor, id).await?;
+    let channel = find_visible_channel(&ctx, &actor, id).await?;
     if payment_orders::Entity::find()
         .filter(payment_orders::Column::ChannelId.eq(id))
         .one(&ctx.db)
@@ -458,9 +459,14 @@ pub async fn delete_channel(
     {
         return Err(ApiError::bad_request("payment channel is used by orders"));
     }
-    payment_channels::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("payment_channels", id, &channel.name, &actor),
+        "payment_channels",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -481,10 +487,33 @@ pub async fn list_orders(
     let actor = authorize(&ctx, &auth, "system:payment_order:list").await?;
     let page = params.page();
     let page_size = params.page_size();
-    let mut query = payment_orders::Entity::find().order_by_desc(payment_orders::Column::Id);
+    let query = filtered_orders(&ctx, &actor, &params).await?;
 
+    let total = query.clone().count(&ctx.db).await?;
+    let items = query
+        .paginate(&ctx.db, page_size)
+        .fetch_page(page - 1)
+        .await?
+        .into_iter()
+        .map(PaymentOrderRecord::from)
+        .collect();
+
+    Ok(responses::ok(PageResponse {
+        items,
+        page,
+        page_size,
+        total,
+    }))
+}
+
+async fn filtered_orders(
+    ctx: &AppContext,
+    actor: &users::Model,
+    params: &PaymentOrderQueryParams,
+) -> ApiResult<sea_orm::Select<payment_orders::Entity>> {
+    let mut query = payment_orders::Entity::find().order_by_desc(payment_orders::Column::Id);
     if !rbac::is_super_admin(&ctx.db, actor.id).await? {
-        query = query.filter(order_visible_condition(&actor));
+        query = query.filter(order_visible_condition(actor));
     }
     if let Some(keyword) = params.keyword.as_deref().filter(|value| !value.is_empty()) {
         query = query.filter(
@@ -511,22 +540,82 @@ pub async fn list_orders(
     {
         query = query.filter(payment_orders::Column::MerchantOrderNo.eq(merchant_order_no));
     }
+    Ok(query)
+}
 
-    let total = query.clone().count(&ctx.db).await?;
-    let items = query
-        .paginate(&ctx.db, page_size)
-        .fetch_page(page - 1)
+#[utoipa::path(
+    get,
+    path = "/api/admin/payment-orders/export",
+    tag = "admin-payments",
+    security(("bearer_auth" = [])),
+    params(PaymentOrderQueryParams),
+    responses((status = 200, description = "CSV file (UTF-8 with BOM)", content_type = "text/csv"))
+)]
+#[debug_handler]
+pub async fn export_orders(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<PaymentOrderQueryParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:payment_order:export").await?;
+    let query = filtered_orders(&ctx, &actor, &params).await?;
+    csv_export::ensure_within_limit(query.clone().count(&ctx.db).await?)?;
+    let rows: Vec<Vec<String>> = query
+        .all(&ctx.db)
         .await?
         .into_iter()
-        .map(PaymentOrderRecord::from)
+        .map(|order| {
+            vec![
+                order.order_no,
+                order.merchant_order_no.unwrap_or_default(),
+                order.subject,
+                order.amount,
+                order.currency,
+                order.provider,
+                order.status,
+                order.trade_no.unwrap_or_default(),
+                order.payer_id.unwrap_or_default(),
+                order.client_ip.unwrap_or_default(),
+                csv_export::optional_time(order.paid_at.as_ref()),
+                csv_export::time(&order.created_at),
+            ]
+        })
         .collect();
-
-    Ok(responses::ok(PageResponse {
-        items,
-        page,
-        page_size,
-        total,
-    }))
+    crate::models::admin_logs::record(
+        &ctx.db,
+        crate::models::admin_logs::LogInput {
+            log_type: "operation",
+            level: "info",
+            module: "payments",
+            action: "export",
+            message: &format!("导出支付订单 {} 条", rows.len()),
+            user_id: Some(actor.id),
+            operator: Some(actor.email.clone()),
+            method: Some("GET"),
+            path: Some("/api/admin/payment-orders/export"),
+            status: Some(200),
+            error_message: None,
+        },
+    )
+    .await;
+    csv_export::response(
+        "payment-orders",
+        &[
+            "订单号",
+            "商户订单号",
+            "标题",
+            "金额",
+            "币种",
+            "支付渠道",
+            "状态",
+            "第三方流水号",
+            "付款方",
+            "客户端IP",
+            "支付时间",
+            "创建时间",
+        ],
+        &rows,
+    )
 }
 
 #[utoipa::path(

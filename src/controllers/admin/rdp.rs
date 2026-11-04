@@ -2,12 +2,13 @@
 #![allow(clippy::missing_errors_doc)]
 
 use crate::{
-    controllers::admin::authorize,
+    controllers::admin::{authorize, remote_sessions::RemoteSessionRecord},
     errors::{ApiError, ApiResult},
     models::{
         _entities::system_settings as settings, admin_logs, rdp_credentials, system_settings,
     },
     responses,
+    services::rdp_gateway,
 };
 use axum::{
     extract::{
@@ -23,20 +24,29 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, Query
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
+    sync::watch,
     time::timeout,
 };
 use uuid::Uuid;
 
 const TARGETS_KEY: &str = "rdp_manager.targets";
 const IO_TIMEOUT: Duration = Duration::from_secs(15);
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const TICKET_TTL: Duration = Duration::from_secs(60);
+#[allow(clippy::duration_suboptimal_units)]
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_INSTRUCTION: usize = 4 * 1024 * 1024;
 static TICKETS: OnceLock<Mutex<HashMap<String, Ticket>>> = OnceLock::new();
+static CONNECTIONS: OnceLock<Mutex<HashMap<String, Arc<RdpConnection>>>> = OnceLock::new();
+/// Returned for missing connections and for other users' connections alike.
+pub const SESSION_NOT_FOUND_CODE: &str = "RDP_SESSION_NOT_FOUND";
 
 #[derive(Clone, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct RdpTarget {
@@ -81,10 +91,15 @@ pub struct CredentialStatus {
 pub struct GatewayStatus {
     pub reachable: bool,
     pub message: String,
-}
-
-fn gateway_address() -> String {
-    std::env::var("RDP_GUACD_ADDRESS").unwrap_or_else(|_| "127.0.0.1:4822".to_string())
+    pub address: String,
+    /// Operating system of the backend: `windows`, `linux`, `macos`, ...
+    pub platform: String,
+    /// The gateway is on this machine, so the backend starts it itself.
+    pub local: bool,
+    /// Installed guacd the backend can start, e.g. `WSL (gpt-images-guacd)`.
+    pub runtime: Option<String>,
+    pub last_error: Option<String>,
+    pub recent_logs: Vec<String>,
 }
 
 fn endpoint(target: &RdpTarget) -> String {
@@ -97,15 +112,32 @@ pub async fn gateway_status(
     State(ctx): State<AppContext>,
 ) -> ApiResult<impl IntoResponse> {
     authorize(&ctx, &auth, "system:rdp:list").await?;
-    let reachable = matches!(
-        timeout(
-            Duration::from_secs(3),
-            TcpStream::connect(gateway_address())
-        )
-        .await,
-        Ok(Ok(_))
-    );
-    Ok(responses::ok(GatewayStatus { reachable, message: if reachable { "RDP 网关端口可达" } else { "RDP 网关未就绪：请在后端所在机器启动 guacd，或配置 RDP_GUACD_ADDRESS。此问题与 Windows 密码无关。" }.to_string() }))
+    let address = rdp_gateway::address();
+    let reachable = rdp_gateway::reachable(&address).await;
+    let local = rdp_gateway::local_bind(&address).is_some();
+    let supervisor = rdp_gateway::status().await;
+    let message = if reachable {
+        "RDP 网关端口可达".to_string()
+    } else if !local {
+        "RDP 网关未就绪：无法连接 RDP_GUACD_ADDRESS 指向的 guacd。此问题与 Windows 密码无关。"
+            .to_string()
+    } else if supervisor.runtime.is_none() {
+        "RDP 网关未安装：在「项目命令」中运行 rdp install 即可一键安装，无需 Docker".to_string()
+    } else if let Some(error) = &supervisor.last_error {
+        format!("RDP 网关启动失败：{error}")
+    } else {
+        "RDP 网关正在启动，请稍候重新检测".to_string()
+    };
+    Ok(responses::ok(GatewayStatus {
+        reachable,
+        message,
+        address,
+        platform: std::env::consts::OS.to_string(),
+        local,
+        runtime: supervisor.runtime,
+        last_error: supervisor.last_error,
+        recent_logs: supervisor.recent_logs,
+    }))
 }
 
 #[utoipa::path(get, path = "/api/admin/rdp/credentials/{key}", tag = "admin-rdp", security(("bearer_auth" = [])), params(("key" = String, Path)), responses((status = 200, body = crate::responses::ApiResponse<CredentialStatus>)))]
@@ -154,6 +186,191 @@ struct Ticket {
 
 fn tickets() -> &'static Mutex<HashMap<String, Ticket>> {
     TICKETS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct RdpSessionRecord {
+    pub id: String,
+    pub target_key: String,
+    pub target_name: String,
+    pub created_at: String,
+    pub last_active_at: String,
+}
+
+/// A live desktop connection; it belongs to the user whose ticket opened it.
+struct RdpConnection {
+    id: String,
+    user_id: i32,
+    target_key: String,
+    target_name: String,
+    endpoint: String,
+    created_at: DateTime<Utc>,
+    last_active_at: Mutex<DateTime<Utc>>,
+    /// Flips to `true` when the connection should end.
+    closed: watch::Sender<bool>,
+}
+
+impl RdpConnection {
+    fn touch(&self) {
+        if let Ok(mut last_active_at) = self.last_active_at.lock() {
+            *last_active_at = Utc::now();
+        }
+    }
+
+    fn last_active_at(&self) -> DateTime<Utc> {
+        self.last_active_at
+            .lock()
+            .map_or(self.created_at, |last_active_at| *last_active_at)
+    }
+
+    fn record(&self) -> RdpSessionRecord {
+        RdpSessionRecord {
+            id: self.id.clone(),
+            target_key: self.target_key.clone(),
+            target_name: self.target_name.clone(),
+            created_at: self.created_at.to_rfc3339(),
+            last_active_at: self.last_active_at().to_rfc3339(),
+        }
+    }
+
+    fn remote_record(&self) -> RemoteSessionRecord {
+        RemoteSessionRecord {
+            kind: "rdp".to_string(),
+            id: self.id.clone(),
+            user_id: self.user_id,
+            user_name: None,
+            user_email: None,
+            target_key: self.target_key.clone(),
+            target_name: self.target_name.clone(),
+            address: Some(self.endpoint.clone()),
+            status: "connected".to_string(),
+            viewers: 1,
+            created_at: self.created_at.to_rfc3339(),
+            last_active_at: self.last_active_at().to_rfc3339(),
+        }
+    }
+}
+
+fn connections() -> &'static Mutex<HashMap<String, Arc<RdpConnection>>> {
+    CONNECTIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Keeps a connection listed for as long as its proxy runs.
+struct ConnectionGuard(Arc<RdpConnection>);
+
+impl ConnectionGuard {
+    fn register(user_id: i32, target: &RdpTarget) -> Self {
+        let now = Utc::now();
+        let connection = Arc::new(RdpConnection {
+            id: Uuid::new_v4().to_string(),
+            user_id,
+            target_key: target.key.clone(),
+            target_name: target.name.clone(),
+            endpoint: endpoint(target),
+            created_at: now,
+            last_active_at: Mutex::new(now),
+            closed: watch::Sender::new(false),
+        });
+        if let Ok(mut store) = connections().lock() {
+            store.insert(connection.id.clone(), Arc::clone(&connection));
+        }
+        Self(connection)
+    }
+}
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        if let Ok(mut store) = connections().lock() {
+            store.remove(&self.0.id);
+        }
+    }
+}
+
+fn session_not_found() -> ApiError {
+    ApiError::not_found("rdp session not found").with_code(SESSION_NOT_FOUND_CODE)
+}
+
+fn close_connections_where(predicate: impl Fn(&RdpConnection) -> bool) -> Vec<Arc<RdpConnection>> {
+    let Ok(mut store) = connections().lock() else {
+        return Vec::new();
+    };
+    let ids: Vec<String> = store
+        .values()
+        .filter(|connection| predicate(connection))
+        .map(|connection| connection.id.clone())
+        .collect();
+    let closed: Vec<_> = ids.iter().filter_map(|id| store.remove(id)).collect();
+    drop(store);
+    for connection in &closed {
+        connection.closed.send_replace(true);
+    }
+    closed
+}
+
+/// Ends every RDP connection of a user (disabled or deleted account).
+#[must_use = "returns how many connections were closed"]
+pub fn close_user_sessions(user_id: i32) -> usize {
+    close_connections_where(|connection| connection.user_id == user_id).len()
+}
+
+/// Every user's live connections, for the 在线会话 admin page.
+#[must_use]
+pub fn remote_sessions() -> Vec<RemoteSessionRecord> {
+    connections().lock().map_or_else(
+        |_| Vec::new(),
+        |store| {
+            store
+                .values()
+                .map(|connection| connection.remote_record())
+                .collect()
+        },
+    )
+}
+
+/// Disconnects any user's connection.
+#[must_use = "returns the closed session, if it existed"]
+pub fn close_remote_session(id: &str) -> Option<RemoteSessionRecord> {
+    close_connections_where(|connection| connection.id == id)
+        .first()
+        .map(|connection| connection.remote_record())
+}
+
+#[utoipa::path(get, path = "/api/admin/rdp/sessions", tag = "admin-rdp", security(("bearer_auth" = [])), responses((status = 200, body = crate::responses::ApiResponse<Vec<RdpSessionRecord>>)))]
+pub async fn sessions(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+) -> ApiResult<impl IntoResponse> {
+    let user = authorize(&ctx, &auth, "system:rdp:list").await?;
+    // Each user only sees the desktops they opened.
+    let sessions: Vec<_> = connections()
+        .lock()
+        .map_err(|_| ApiError::internal("RDP 会话存储不可用"))?
+        .values()
+        .filter(|connection| connection.user_id == user.id)
+        .map(|connection| connection.record())
+        .collect();
+    Ok(responses::ok(sessions))
+}
+
+#[utoipa::path(delete, path = "/api/admin/rdp/sessions/{id}", tag = "admin-rdp", security(("bearer_auth" = [])), params(("id" = String, Path)), responses((status = 200, body = crate::responses::ApiResponse<RdpSessionRecord>)))]
+pub async fn close_session(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let user = authorize(&ctx, &auth, "system:rdp:connect").await?;
+    let connection =
+        close_connections_where(|connection| connection.id == id && connection.user_id == user.id)
+            .pop()
+            .ok_or_else(session_not_found)?;
+    log(
+        &ctx,
+        user.id,
+        "close",
+        &format!("关闭 RDP 连接：{}", connection.target_name),
+    )
+    .await;
+    Ok(responses::ok(connection.record()))
 }
 
 async fn configured_targets(ctx: &AppContext) -> ApiResult<Vec<RdpTarget>> {
@@ -240,9 +457,11 @@ pub async fn save_targets(
 pub async fn create_ticket(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Json(mut params): Json<ConnectParams>,
 ) -> ApiResult<impl IntoResponse> {
     let user = authorize(&ctx, &auth, "system:rdp:connect").await?;
+    crate::controllers::admin::require_remote_reauth(&ctx, &session).await?;
     let target = configured_targets(&ctx)
         .await?
         .into_iter()
@@ -303,7 +522,7 @@ pub async fn create_ticket(
     }
     let expiry_ticket = ticket.clone();
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_mins(1)).await;
+        tokio::time::sleep(TICKET_TTL).await;
         if let Ok(mut store) = tickets().lock() {
             store.remove(&expiry_ticket);
         }
@@ -424,7 +643,7 @@ async fn read_instruction<R: AsyncRead + Unpin>(reader: &mut R) -> std::io::Resu
 
 async fn handshake(ticket: &Ticket) -> ApiResult<BufReader<TcpStream>> {
     // Gateway location is server-controlled and never accepted from the browser.
-    let address = gateway_address();
+    let address = rdp_gateway::address();
     let stream = TcpStream::connect(address).await.map_err(|_| {
         ApiError::bad_request("无法连接 RDP 网关，请启动 guacd 并检查 RDP_GUACD_ADDRESS")
     })?;
@@ -453,15 +672,17 @@ async fn handshake_stream(ticket: &Ticket, stream: TcpStream) -> ApiResult<BufRe
         .clamp(240, 2160)
         .to_string();
     write_instruction(&mut reader, &["size", &width, &height, "96"]).await?;
-    write_instruction(&mut reader, &["audio"]).await?;
+    // Raw PCM is what guacamole-common-js can play without extra codecs.
+    write_instruction(&mut reader, &["audio", "audio/L8", "audio/L16"]).await?;
     write_instruction(&mut reader, &["video"]).await?;
     write_instruction(&mut reader, &["image", "image/png", "image/jpeg"]).await?;
     let port = ticket.target.port.to_string();
+    let hostname = rdp_gateway::dial_host(&ticket.target.host).await;
     let mut values = vec!["connect"];
     for arg in args.iter().skip(1) {
         values.push(match arg.as_str() {
             version if version.starts_with("VERSION_") => "VERSION_1_1_0",
-            "hostname" => &ticket.target.host,
+            "hostname" => &hostname,
             "port" => &port,
             "username" => &ticket.params.username,
             "password" => &ticket.params.password,
@@ -478,8 +699,8 @@ async fn handshake_stream(ticket: &Ticket, stream: TcpStream) -> ApiResult<BufRe
             "height" => &height,
             "dpi" => "96",
             "resize-method" => "display-update",
-            "disable-audio" => "true",
-            "enable-drive" | "enable-printing" | "enable-sftp" => "false",
+            // Audio stays on; drives, printing and SFTP stay off.
+            "disable-audio" | "enable-drive" | "enable-printing" | "enable-sftp" => "false",
             _ => "",
         });
     }
@@ -506,7 +727,8 @@ async fn write_instruction(reader: &mut BufReader<TcpStream>, fields: &[&str]) -
 async fn run(mut socket: WebSocket, ctx: AppContext, ticket: Ticket) {
     let result = timeout(IO_TIMEOUT, handshake(&ticket)).await;
     let user_id = ticket.user_id;
-    let target_name = ticket.target.name.clone();
+    let target = ticket.target.clone();
+    let target_name = target.name.clone();
     // Do not keep login credentials for the duration of the desktop session.
     drop(ticket);
     let reader = match result {
@@ -544,7 +766,17 @@ async fn run(mut socket: WebSocket, ctx: AppContext, ticket: Ticket) {
             instruction(&["", &Uuid::new_v4().to_string()]).into(),
         ))
         .await;
-    proxy(&mut socket, reader).await;
+    let connection = ConnectionGuard::register(user_id, &target);
+    if proxy(&mut socket, reader, &connection.0).await {
+        let _ = timeout(
+            IO_TIMEOUT,
+            socket.send(Message::Text(
+                instruction(&["error", "RDP 连接已被关闭", "521"]).into(),
+            )),
+        )
+        .await;
+    }
+    drop(connection);
     let _ = timeout(IO_TIMEOUT, socket.close()).await;
     log(
         &ctx,
@@ -555,7 +787,13 @@ async fn run(mut socket: WebSocket, ctx: AppContext, ticket: Ticket) {
     .await;
 }
 
-async fn proxy(socket: &mut WebSocket, mut reader: BufReader<TcpStream>) {
+/// Relays until either side disconnects; `true` when the connection was
+/// closed from the server (its owner, an admin, or a disabled account).
+async fn proxy(
+    socket: &mut WebSocket,
+    mut reader: BufReader<TcpStream>,
+    connection: &RdpConnection,
+) -> bool {
     // A dedicated reader task avoids cancelling partially-read instructions when input arrives.
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     let buffered = reader.buffer().to_vec();
@@ -570,15 +808,26 @@ async fn proxy(socket: &mut WebSocket, mut reader: BufReader<TcpStream>) {
             }
         }
     });
+    let mut closed = connection.closed.subscribe();
+    let closed_signal = async move {
+        let _ = closed.wait_for(|closed| *closed).await;
+    };
+    tokio::pin!(closed_signal);
+    let mut closed_by_server = false;
     loop {
         tokio::select! {
+            () = &mut closed_signal => {
+                closed_by_server = true;
+                break;
+            }
             data = rx.recv() => {
                 let Some(data) = data else { break; };
                 if !matches!(timeout(IO_TIMEOUT, socket.send(Message::Text(data.into()))).await, Ok(Ok(()))) { break; }
             }
-            message = timeout(Duration::from_mins(1), socket.recv()) => {
+            message = timeout(IDLE_TIMEOUT, socket.recv()) => {
                 match message {
                     Ok(Some(Ok(Message::Text(data)))) => {
+                        connection.touch();
                         // Internal WebSocket tunnel pings must not be forwarded to guacd.
                         if data.starts_with("0.,") {
                             if !matches!(timeout(IO_TIMEOUT, socket.send(Message::Text(data))).await, Ok(Ok(()))) { break; }
@@ -591,6 +840,7 @@ async fn proxy(socket: &mut WebSocket, mut reader: BufReader<TcpStream>) {
         }
     }
     read_task.abort();
+    closed_by_server
 }
 
 #[cfg(test)]
@@ -627,7 +877,11 @@ mod tests {
                 read_instruction(&mut reader).await.unwrap(),
                 vec!["size", "320", "2160", "96"]
             );
-            for opcode in ["audio", "video", "image"] {
+            assert_eq!(
+                read_instruction(&mut reader).await.unwrap(),
+                vec!["audio", "audio/L8", "audio/L16"]
+            );
+            for opcode in ["video", "image"] {
                 assert_eq!(read_instruction(&mut reader).await.unwrap()[0], opcode);
             }
             assert_eq!(
@@ -724,5 +978,41 @@ mod tests {
         assert!(validate_targets(&[target.clone(), target.clone()]).is_err());
         target.port = 0;
         assert!(validate_targets(&[target]).is_err());
+    }
+
+    #[test]
+    fn connections_are_listed_until_closed_or_dropped() {
+        let target = RdpTarget {
+            key: "desk".into(),
+            name: "Desk".into(),
+            host: "10.0.0.9".into(),
+            port: 3390,
+            enabled: true,
+            ignore_certificate: false,
+        };
+        let user_id = 900_001;
+        let listed = |id: &str| remote_sessions().iter().any(|record| record.id == id);
+
+        let first = ConnectionGuard::register(user_id, &target);
+        let mut closed = first.0.closed.subscribe();
+        let record = remote_sessions()
+            .into_iter()
+            .find(|record| record.id == first.0.id)
+            .unwrap();
+        assert_eq!(record.kind, "rdp");
+        assert_eq!(record.user_id, user_id);
+        assert_eq!(record.address.as_deref(), Some("10.0.0.9:3390"));
+        // A disabled account loses its desktops; the proxy sees the signal.
+        assert_eq!(close_user_sessions(user_id), 1);
+        assert!(!listed(&first.0.id));
+        assert!(*closed.borrow_and_update());
+
+        // A proxy that ends on its own unlists its connection.
+        let second = ConnectionGuard::register(user_id, &target);
+        let id = second.0.id.clone();
+        assert!(listed(&id));
+        drop(second);
+        assert!(!listed(&id));
+        assert!(close_remote_session(&id).is_none());
     }
 }

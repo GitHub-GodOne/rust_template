@@ -1,4 +1,8 @@
-use gpt_images::{app::App, models::users};
+use gpt_images::{
+    app::App,
+    models::{_entities::system_settings, users},
+    services::{captcha, security_settings},
+};
 use insta::{assert_debug_snapshot, with_settings};
 use loco_rs::testing::prelude::*;
 use rstest::rstest;
@@ -106,8 +110,14 @@ async fn can_login_with_verify(#[case] test_name: &str, #[case] password: &str) 
             .await;
 
         //verify user request
+        let client_ip = if password == "12341234" {
+            "127.0.9.1"
+        } else {
+            "127.0.9.2"
+        };
         let response = request
             .post("/api/auth/login")
+            .add_header("x-forwarded-for", client_ip)
             .json(&serde_json::json!({
                 "email": email,
                 "password": password
@@ -138,6 +148,8 @@ async fn can_login_with_verify(#[case] test_name: &str, #[case] password: &str) 
 #[serial]
 async fn login_fails_lock_account_until_end_of_day() {
     request::<App, _, _>(|request, ctx| async move {
+        // Repeated failures would otherwise ask for a captcha.
+        set_setting(&ctx, "security.login_captcha", "off").await;
         let email = "lockout@loco.com";
         let password = "12341234";
         let register_response = request
@@ -161,6 +173,7 @@ async fn login_fails_lock_account_until_end_of_day() {
         for attempt in 1..=3 {
             let response = request
                 .post("/api/auth/login")
+                .add_header("x-forwarded-for", "127.0.9.4")
                 .json(&serde_json::json!({
                     "email": email,
                     "password": "wrong-password"
@@ -178,6 +191,7 @@ async fn login_fails_lock_account_until_end_of_day() {
 
         let locked_response = request
             .post("/api/auth/login")
+            .add_header("x-forwarded-for", "127.0.9.4")
             .json(&serde_json::json!({
                 "email": email,
                 "password": password
@@ -199,6 +213,7 @@ async fn login_with_un_existing_email() {
     request::<App, _, _>(|request, _ctx| async move {
         let login_response = request
             .post("/api/auth/login")
+            .add_header("x-forwarded-for", "127.0.9.3")
             .json(&serde_json::json!({
                 "email": "un_existing@loco.rs",
                 "password":  "1234"
@@ -575,6 +590,86 @@ async fn cannot_resend_email_if_already_verified() {
             deliveries.count, 1,
             "Only the original welcome email should be sent"
         );
+    })
+    .await;
+}
+
+async fn set_setting(ctx: &loco_rs::app::AppContext, key: &str, value: &str) {
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set};
+    let existing = system_settings::Entity::find()
+        .filter(system_settings::Column::Key.eq(key))
+        .one(&ctx.db)
+        .await
+        .unwrap();
+    if let Some(existing) = existing {
+        let mut active = existing.into_active_model();
+        active.value = Set(value.to_string());
+        active.update(&ctx.db).await.unwrap();
+    } else {
+        system_settings::ActiveModel {
+            key: Set(key.to_string()),
+            name: Set(key.to_string()),
+            group_key: Set("security".to_string()),
+            value: Set(value.to_string()),
+            value_type: Set("string".to_string()),
+            is_public: Set(false),
+            is_builtin: Set(true),
+            is_encrypted: Set(false),
+            sort_order: Set(0),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+    }
+    security_settings::invalidate();
+}
+
+#[tokio::test]
+#[serial]
+async fn login_asks_for_a_captcha_when_configured() {
+    request::<App, _, _>(|request, ctx| async move {
+        set_setting(&ctx, "security.login_captcha", "always").await;
+        let email = "captcha@loco.com";
+        let password = "12341234";
+        request
+            .post("/api/auth/register")
+            .json(&serde_json::json!({ "name": "loco", "email": email, "password": password }))
+            .await;
+        let login = |captcha: serde_json::Value| {
+            let mut body = serde_json::json!({ "email": email, "password": password });
+            if let (Some(target), Some(extra)) = (body.as_object_mut(), captcha.as_object()) {
+                target.extend(extra.clone());
+            }
+            request
+                .post("/api/auth/login")
+                .add_header("x-forwarded-for", "127.0.9.5")
+                .json(&body)
+        };
+
+        let missing = login(serde_json::json!({})).await;
+        assert_eq!(missing.status_code(), 400);
+        assert!(missing.text().contains("CAPTCHA_REQUIRED"));
+
+        let captcha: serde_json::Value =
+            serde_json::from_str(&request.get("/api/auth/captcha").await.text()).unwrap();
+        assert_eq!(captcha["data"]["required"], true);
+        assert!(captcha["data"]["image"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/svg+xml;base64,"));
+        let id = captcha["data"]["captcha_id"].as_str().unwrap().to_string();
+        let wrong = login(serde_json::json!({ "captcha_id": id, "captcha_code": "zzzz" })).await;
+        assert!(wrong.text().contains("CAPTCHA_INVALID"));
+
+        let captcha: serde_json::Value =
+            serde_json::from_str(&request.get("/api/auth/captcha").await.text()).unwrap();
+        let id = captcha["data"]["captcha_id"].as_str().unwrap().to_string();
+        let answer = captcha::answer_for_tests(&id).unwrap();
+        let ok = login(serde_json::json!({ "captcha_id": id, "captcha_code": answer })).await;
+        assert_eq!(ok.status_code(), 200, "{}", ok.text());
+
+        set_setting(&ctx, "security.login_captcha", "after_failures").await;
     })
     .await;
 }

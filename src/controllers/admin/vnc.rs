@@ -2,7 +2,10 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, OnceLock,
+    },
 };
 
 use axum::{
@@ -26,11 +29,12 @@ use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
+    sync::watch,
 };
 use uuid::Uuid;
 
 use crate::{
-    controllers::admin::authorize,
+    controllers::admin::{authorize, remote_sessions::RemoteSessionRecord},
     errors::{ApiError, ApiResult},
     models::{_entities::vnc_credentials, admin_logs, system_settings},
     responses::{self, ApiResponse},
@@ -150,6 +154,10 @@ struct ManagedVncSession {
     status: Mutex<String>,
     created_at: DateTime<Utc>,
     updated_at: Mutex<DateTime<Utc>>,
+    /// Browser viewers currently proxied to the target.
+    viewers: AtomicUsize,
+    /// Flips to `true` when the session is closed; live viewers end on it.
+    closed: watch::Sender<bool>,
 }
 
 #[utoipa::path(
@@ -250,11 +258,13 @@ pub async fn delete_credentials(
 )]
 #[debug_handler]
 pub async fn sessions(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:vnc:list").await?;
+    let user = authorize(&ctx, &auth, "system:vnc:list").await?;
+    // Each user only sees the sessions they opened.
     let sessions = session_store()
         .lock()
         .map_err(|_| ApiError::internal("failed to lock vnc session store"))?
         .values()
+        .filter(|session| session.user_id == user.id)
         .map(|session| session.record())
         .collect::<Vec<_>>();
     Ok(responses::ok(sessions))
@@ -272,9 +282,11 @@ pub async fn sessions(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResu
 pub async fn create_session(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Json(params): Json<CreateVncSessionParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:vnc:connect").await?;
+    crate::controllers::admin::require_remote_reauth(&ctx, &session).await?;
     let target = find_target(&ctx, &params.target_key).await?;
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
@@ -307,7 +319,7 @@ pub async fn create_session_ticket(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:vnc:connect").await?;
-    let session = find_session(&id)?;
+    let session = find_session(&id, user.id)?;
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| user.email.clone());
@@ -353,6 +365,7 @@ pub async fn close_session(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:vnc:connect").await?;
+    find_session(&id, user.id)?;
     let session = remove_session(&id)?;
     session.mark_closed();
     record_vnc_log(
@@ -377,7 +390,7 @@ pub async fn session_ws(
     if ticket.session_id != id {
         return Err(ApiError::unauthorized("invalid vnc session ticket"));
     }
-    let session = find_session(&id)?;
+    let session = find_session(&id, ticket.user_id)?;
     Ok(ws
         .on_upgrade(move |socket| handle_vnc_socket(socket, session, ticket))
         .into_response())
@@ -544,6 +557,29 @@ impl ManagedVncSession {
 
     fn mark_closed(&self) {
         self.mark_status("closed");
+        self.closed.send_replace(true);
+    }
+
+    fn is_closed(&self) -> bool {
+        *self.closed.borrow()
+    }
+
+    fn remote_record(&self) -> RemoteSessionRecord {
+        let record = self.record();
+        RemoteSessionRecord {
+            kind: "vnc".to_string(),
+            id: record.id,
+            user_id: self.user_id,
+            user_name: None,
+            user_email: None,
+            target_key: record.target_key,
+            target_name: record.target_name,
+            address: Some(self.address()),
+            status: record.status,
+            viewers: self.viewers.load(Ordering::SeqCst),
+            created_at: record.created_at,
+            last_active_at: record.updated_at,
+        }
     }
 
     fn touch(&self) {
@@ -570,6 +606,8 @@ fn create_managed_session(target: &VncTarget, user_id: i32) -> ApiResult<Arc<Man
         status: Mutex::new("ready".to_string()),
         created_at: Utc::now(),
         updated_at: Mutex::new(Utc::now()),
+        viewers: AtomicUsize::new(0),
+        closed: watch::Sender::new(false),
     });
     session_store()
         .lock()
@@ -627,13 +665,23 @@ fn consume_ticket(ticket: &str) -> ApiResult<VncTicket> {
     Ok(ticket)
 }
 
-fn find_session(id: &str) -> ApiResult<Arc<ManagedVncSession>> {
+/// Returned for missing sessions and for other users' sessions alike.
+pub const SESSION_NOT_FOUND_CODE: &str = "VNC_SESSION_NOT_FOUND";
+
+fn session_not_found() -> ApiError {
+    ApiError::not_found("vnc session not found").with_code(SESSION_NOT_FOUND_CODE)
+}
+
+/// A session of `user_id`. Other users' sessions answer "not found" so their
+/// existence is not revealed.
+fn find_session(id: &str, user_id: i32) -> ApiResult<Arc<ManagedVncSession>> {
     session_store()
         .lock()
         .map_err(|_| ApiError::internal("failed to lock vnc session store"))?
         .get(id)
+        .filter(|session| session.user_id == user_id)
         .cloned()
-        .ok_or_else(|| ApiError::bad_request("vnc session not found"))
+        .ok_or_else(session_not_found)
 }
 
 fn remove_session(id: &str) -> ApiResult<Arc<ManagedVncSession>> {
@@ -641,10 +689,60 @@ fn remove_session(id: &str) -> ApiResult<Arc<ManagedVncSession>> {
         .lock()
         .map_err(|_| ApiError::internal("failed to lock vnc session store"))?
         .remove(id)
-        .ok_or_else(|| ApiError::bad_request("vnc session not found"))
+        .ok_or_else(session_not_found)
+}
+
+fn close_sessions_where(
+    predicate: impl Fn(&ManagedVncSession) -> bool,
+) -> Vec<Arc<ManagedVncSession>> {
+    let Ok(mut store) = session_store().lock() else {
+        return Vec::new();
+    };
+    let ids: Vec<String> = store
+        .values()
+        .filter(|session| predicate(session))
+        .map(|session| session.id.clone())
+        .collect();
+    let closed: Vec<_> = ids.iter().filter_map(|id| store.remove(id)).collect();
+    drop(store);
+    for session in &closed {
+        session.mark_closed();
+    }
+    closed
+}
+
+/// Ends every VNC session of a user (disabled or deleted account).
+#[must_use = "returns how many sessions were closed"]
+pub fn close_user_sessions(user_id: i32) -> usize {
+    close_sessions_where(|session| session.user_id == user_id).len()
+}
+
+/// Every user's sessions, for the 在线会话 admin page.
+#[must_use]
+pub fn remote_sessions() -> Vec<RemoteSessionRecord> {
+    session_store().lock().map_or_else(
+        |_| Vec::new(),
+        |store| {
+            store
+                .values()
+                .map(|session| session.remote_record())
+                .collect()
+        },
+    )
+}
+
+/// Closes any user's session and disconnects its viewers.
+#[must_use = "returns the closed session, if it existed"]
+pub fn close_remote_session(id: &str) -> Option<RemoteSessionRecord> {
+    close_sessions_where(|session| session.id == id)
+        .first()
+        .map(|session| session.remote_record())
 }
 
 async fn handle_vnc_socket(socket: WebSocket, session: Arc<ManagedVncSession>, ticket: VncTicket) {
+    if session.is_closed() {
+        return;
+    }
     match TcpStream::connect(session.address()).await {
         Ok(stream) => Box::pin(proxy_vnc_socket(socket, stream, &session)).await,
         Err(error) => {
@@ -667,13 +765,23 @@ async fn handle_vnc_socket(socket: WebSocket, session: Arc<ManagedVncSession>, t
 }
 
 async fn proxy_vnc_socket(socket: WebSocket, stream: TcpStream, session: &ManagedVncSession) {
+    session.viewers.fetch_add(1, Ordering::SeqCst);
     session.mark_status("connected");
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let (mut tcp_reader, mut tcp_writer) = stream.into_split();
     let mut buffer = [0_u8; 16_384];
+    let mut closed = session.closed.subscribe();
+    let closed_signal = async move {
+        let _ = closed.wait_for(|closed| *closed).await;
+    };
+    tokio::pin!(closed_signal);
 
     loop {
         tokio::select! {
+            () = &mut closed_signal => {
+                let _ = ws_sender.send(Message::Close(None)).await;
+                break;
+            }
             message = ws_receiver.next() => {
                 match message {
                     Some(Ok(Message::Binary(bytes))) => {
@@ -707,7 +815,10 @@ async fn proxy_vnc_socket(socket: WebSocket, stream: TcpStream, session: &Manage
         }
     }
 
-    session.mark_status("ready");
+    // The last viewer leaving puts an open session back to "ready".
+    if session.viewers.fetch_sub(1, Ordering::SeqCst) == 1 && !session.is_closed() {
+        session.mark_status("ready");
+    }
 }
 
 fn normalize_credentials(params: SaveVncCredentialsParams) -> ApiResult<SavedVncCredentials> {

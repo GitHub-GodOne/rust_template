@@ -205,7 +205,7 @@ pub async fn delete_type(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:dict:delete").await?;
+    let actor = authorize(&ctx, &auth, "system:dict:delete").await?;
     let dict_type = find_type(&ctx, id).await?;
     if dict_type.is_builtin {
         return Err(ApiError::bad_request("builtin dict type cannot be deleted"));
@@ -219,7 +219,14 @@ pub async fn delete_type(
         return Err(ApiError::bad_request("dict type has items"));
     }
 
-    dict_types::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("dict_types", id, &dict_type.name, &actor),
+        "dict_types",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -336,13 +343,20 @@ pub async fn delete_item(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:dict:delete").await?;
+    let actor = authorize(&ctx, &auth, "system:dict:delete").await?;
     let item = find_item(&ctx, id).await?;
     if item.is_default {
         return Err(ApiError::bad_request("default dict item cannot be deleted"));
     }
 
-    dict_items::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("dict_items", id, &item.label, &actor),
+        "dict_items",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

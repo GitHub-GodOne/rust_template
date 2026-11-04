@@ -1,4 +1,5 @@
 import {
+  CloudDownloadOutlined,
   CommentOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -33,6 +34,7 @@ import {
   createWorkOrderComment,
   deleteWorkOrder,
   deleteWorkOrderAttachment,
+  exportWorkOrders,
   fetchWorkOrder,
   fetchWorkOrders,
   transitionWorkOrder,
@@ -133,6 +135,11 @@ export function WorkOrdersPage() {
     queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] });
     queryClient.invalidateQueries({ queryKey: ["admin-work-order"] });
   };
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      exportWorkOrders({ keyword: keyword || undefined, status, priority }),
+    onSuccess: (count) => message.success(t("已导出 {0} 条", count)),
+  });
   const createMutation = useMutation({
     mutationFn: createWorkOrder,
     onSuccess: () => {
@@ -349,6 +356,14 @@ export function WorkOrdersPage() {
                 primary: true,
                 permission: "system:work_order:create",
                 onClick: () => openEditor(),
+              },
+              {
+                key: "export",
+                label: exportMutation.isPending ? t("导出中...") : t("导出"),
+                icon: <CloudDownloadOutlined />,
+                permission: "system:work_order:export",
+                disabled: exportMutation.isPending,
+                onClick: () => exportMutation.mutate(),
               },
             ]}
           />

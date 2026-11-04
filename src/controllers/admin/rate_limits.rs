@@ -235,11 +235,16 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:rate_limit:delete").await?;
-    find_rule(&ctx, id).await?;
-    rate_limit_rules::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:rate_limit:delete").await?;
+    let rule = find_rule(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("rate_limits", id, &rule.name, &actor),
+        "rate_limit_rules",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

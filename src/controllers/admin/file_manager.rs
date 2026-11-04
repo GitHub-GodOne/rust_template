@@ -421,10 +421,27 @@ pub async fn delete(
     let root = find_root(&ctx, &params.root_key).await?;
     let relative = normalize_required_path(&params.path)?;
     let target = resolve_existing_path(&root, &relative)?;
-    if target.is_dir() {
-        fs::remove_dir(&target).map_err(|_| ApiError::bad_request("folder is not empty"))?;
-    } else {
-        fs::remove_file(&target).map_err(|_| ApiError::internal("failed to delete file"))?;
+    if target.is_dir()
+        && fs::read_dir(&target)
+            .map_err(|_| ApiError::internal("failed to read folder"))?
+            .next()
+            .is_some()
+    {
+        return Err(ApiError::bad_request("folder is not empty"));
+    }
+    let is_file = target.is_file();
+    crate::services::recycle_bin::delete_files(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "files",
+            format!("{}:{relative}", root.key),
+            &relative,
+            &user,
+        ),
+        &[target],
+    )
+    .await?;
+    if is_file {
         delete_access_rule(&ctx, &root.key, &relative).await?;
     }
     record_file_log(
@@ -734,7 +751,7 @@ fn validate_editable_content(content: &str) -> ApiResult<()> {
 }
 
 #[derive(Clone, Copy)]
-enum FileDisposition {
+pub(crate) enum FileDisposition {
     Attachment,
     Inline,
 }
@@ -1105,7 +1122,7 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn content_disposition(disposition: FileDisposition, file_name: &str) -> String {
+pub(crate) fn content_disposition(disposition: FileDisposition, file_name: &str) -> String {
     let fallback = ascii_filename_fallback(file_name);
     format!(
         "{}; filename=\"{}\"; filename*=UTF-8''{}",
@@ -1145,7 +1162,7 @@ fn percent_encode_segment(segment: &str) -> String {
     encoded
 }
 
-async fn read_file_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<u8>> {
+pub(crate) async fn read_file_field(mut field: Field<'_>, max_bytes: i64) -> ApiResult<Vec<u8>> {
     let limit_message = system_settings::upload_limit_error_message(max_bytes);
     let max_bytes = usize::try_from(max_bytes.max(1)).unwrap_or(usize::MAX);
     let mut bytes = Vec::new();
@@ -1221,7 +1238,7 @@ fn file_extension(file_name: &str) -> Option<String> {
         .filter(|extension| !extension.is_empty())
 }
 
-fn mime_type(file_name: &str) -> Option<&'static str> {
+pub(crate) fn mime_type(file_name: &str) -> Option<&'static str> {
     match file_extension(file_name).as_deref() {
         Some("txt" | "log") => Some("text/plain; charset=utf-8"),
         Some("md" | "markdown") => Some("text/markdown; charset=utf-8"),
@@ -1252,7 +1269,7 @@ fn mime_type(file_name: &str) -> Option<&'static str> {
     }
 }
 
-fn sanitize_filename(file_name: &str) -> String {
+pub(crate) fn sanitize_filename(file_name: &str) -> String {
     let sanitized = file_name
         .trim()
         .chars()

@@ -316,12 +316,21 @@ pub async fn delete_config(
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:ai_image:config").await?;
     let mut configs = load_configs(&ctx).await?;
-    let original_len = configs.len();
-    configs.retain(|item| item.key != key);
-    if configs.len() == original_len {
+    let Some(removed) = configs.iter().find(|item| item.key == key).cloned() else {
         return Err(ApiError::bad_request("ai image config not found"));
-    }
+    };
+    configs.retain(|item| item.key != key);
     save_configs(&ctx, user.id, &configs).await?;
+    crate::services::recycle_bin::record(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("ai_image_configs", &key, &removed.name, &user),
+        crate::services::recycle_bin::Payload::ConfigItem {
+            collection: "ai_image_configs".to_string(),
+            item: serde_json::to_value(&removed)
+                .map_err(|_| ApiError::internal("failed to encode ai image config"))?,
+        },
+    )
+    .await?;
     record_ai_image_log(
         &ctx,
         &user,
@@ -1027,6 +1036,25 @@ async fn find_generation(
         .one(&ctx.db)
         .await?
         .ok_or_else(|| ApiError::bad_request("ai image generation not found"))
+}
+
+/// Puts an AI image config removed through the recycle bin back.
+pub(crate) async fn restore_config(
+    ctx: &AppContext,
+    user: &crate::models::_entities::users::Model,
+    item: serde_json::Value,
+) -> ApiResult<()> {
+    let config: AiImageConfig = serde_json::from_value(item)
+        .map_err(|_| ApiError::bad_request("回收站中的 AI 图片配置无法识别"))?;
+    let mut configs = load_configs(ctx).await?;
+    if configs.iter().any(|existing| existing.key == config.key) {
+        return Err(ApiError::bad_request(format!(
+            "无法恢复：已存在标识为 {} 的配置",
+            config.key
+        )));
+    }
+    configs.push(config);
+    save_configs(ctx, user.id, &configs).await
 }
 
 async fn load_configs(ctx: &AppContext) -> ApiResult<Vec<AiImageConfig>> {

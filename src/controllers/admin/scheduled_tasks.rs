@@ -13,7 +13,7 @@ use crate::{
     errors::{ApiError, ApiResult},
     models::{
         _entities::{scheduled_task_runs, scheduled_tasks},
-        database_backups::{self, deliver_backup, BackupTrigger},
+        database_backups::{self, deliver_backup, BackupOptions, BackupTrigger},
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
 };
@@ -106,6 +106,12 @@ pub struct SaveScheduledTaskParams {
     pub enabled: Option<bool>,
     pub status: Option<String>,
     pub next_run_at: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct BackupTaskPayload {
+    connection_id: Option<i32>,
+    delivery_targets: Option<Vec<String>>,
 }
 
 #[utoipa::path(
@@ -270,11 +276,16 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:scheduled_task:delete").await?;
-    find_task(&ctx, id).await?;
-    scheduled_tasks::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:scheduled_task:delete").await?;
+    let task = find_task(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("scheduled_tasks", id, &task.name, &actor),
+        "scheduled_tasks",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -389,11 +400,43 @@ async fn execute_task(
         "cleanup_logs" => Ok("cleanup_logs task acknowledged".to_string()),
         "webhook_notify" => Ok("webhook_notify task acknowledged".to_string()),
         "database_backup" => {
-            let backup = database_backups::create_postgres_backup(
+            let payload = task
+                .payload
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .map(serde_json::from_str::<BackupTaskPayload>)
+                .transpose()
+                .map_err(|error| format!("invalid database backup payload: {error}"))?
+                .unwrap_or_default();
+            let (database_url, database_connection_id, database_label) =
+                if let Some(connection_id) = payload.connection_id {
+                    let owner = task.created_by.or(actor_id).ok_or_else(|| {
+                        "backup task has no owner for saved connection".to_string()
+                    })?;
+                    crate::controllers::admin::backups::resolve_backup_database(
+                        ctx,
+                        owner,
+                        Some(connection_id),
+                    )
+                    .await
+                    .map_err(|error| format!("{error:?}"))?
+                } else {
+                    (ctx.config.database.uri.clone(), None, None)
+                };
+            let delivery_targets = crate::controllers::admin::backups::normalize_delivery_targets(
+                payload.delivery_targets,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+            let backup = database_backups::create_postgres_backup_with_options(
                 &ctx.db,
-                &ctx.config.database.uri,
+                &database_url,
                 actor_id,
                 BackupTrigger::Scheduled,
+                BackupOptions {
+                    database_connection_id,
+                    database_label,
+                    delivery_targets,
+                },
             )
             .await
             .map_err(|error| format!("{error:?}"))?;

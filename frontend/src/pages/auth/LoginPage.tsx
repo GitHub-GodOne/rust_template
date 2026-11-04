@@ -1,16 +1,26 @@
-import { LockOutlined, UserOutlined } from "@ant-design/icons";
+import { LockOutlined, SafetyOutlined, UserOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Form, Input, Typography, message } from "antd";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { current, login } from "../../api/auth";
+import {
+  type CaptchaChallenge,
+  current,
+  fetchCaptcha,
+  login,
+} from "../../api/auth";
+import { ApiRequestError } from "../../api/client";
 import { LanguageSwitch } from "../../components/LanguageSwitch";
 import { t } from "../../i18n";
+import { ThemeSwitch } from "../../layouts/ThemeSwitch";
 import { useAuthStore } from "../../stores/auth";
 
 type LoginForm = {
   email: string;
   password: string;
+  captcha_code?: string;
 };
+
+const CAPTCHA_CODES = ["CAPTCHA_REQUIRED", "CAPTCHA_INVALID"];
 
 type LocationState = {
   from?: {
@@ -21,6 +31,28 @@ type LocationState = {
 export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState<string>();
+  const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
+  const [form] = Form.useForm<LoginForm>();
+
+  const loadCaptcha = useCallback(
+    async (force: boolean) => {
+      try {
+        const challenge = await fetchCaptcha();
+        // Shown when the server asks for it up front, or after a rejection.
+        setCaptcha((current) =>
+          force || challenge.required || current ? challenge : null,
+        );
+        form.setFieldValue("captcha_code", undefined);
+      } catch {
+        // The form still works; the server will say if a captcha is needed.
+      }
+    },
+    [form],
+  );
+
+  useEffect(() => {
+    void loadCaptcha(false);
+  }, [loadCaptcha]);
   const signIn = useAuthStore((state) => state.signIn);
   const setSession = useAuthStore((state) => state.setSession);
   const navigate = useNavigate();
@@ -33,7 +65,12 @@ export function LoginPage() {
     setLoading(true);
     setLoginError(undefined);
     try {
-      const result = await login(values);
+      const result = await login({
+        email: values.email,
+        password: values.password,
+        captcha_id: captcha?.captcha_id,
+        captcha_code: values.captcha_code,
+      });
       signIn({
         token: result.token,
         refreshToken: result.refresh_token,
@@ -71,6 +108,15 @@ export function LoginPage() {
           : backendMessage;
       setLoginError(errorMessage);
       message.error(errorMessage);
+      // Every attempt uses up the captcha; failures may start requiring one.
+      const code = error instanceof ApiRequestError ? error.code : undefined;
+      if (
+        captcha ||
+        (code && CAPTCHA_CODES.includes(code)) ||
+        code === "UNAUTHORIZED"
+      ) {
+        void loadCaptcha(Boolean(code && CAPTCHA_CODES.includes(code)));
+      }
     } finally {
       setLoading(false);
     }
@@ -78,7 +124,10 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <LanguageSwitch className="page-language-switch" />
+      <div className="page-language-switch">
+        <ThemeSwitch />
+        <LanguageSwitch />
+      </div>
       <Card className="login-card">
         <div className="login-brand">
           <div className="admin-brand-mark">G</div>
@@ -90,6 +139,7 @@ export function LoginPage() {
           </div>
         </div>
         <Form<LoginForm>
+          form={form}
           layout="vertical"
           initialValues={{ email: "admin@example.com" }}
           onFinish={handleSubmit}
@@ -120,6 +170,37 @@ export function LoginPage() {
               placeholder={t("请输入密码")}
             />
           </Form.Item>
+          {captcha ? (
+            <Form.Item
+              label={t("验证码")}
+              required
+              className="login-captcha-item"
+            >
+              <div className="login-captcha">
+                <Form.Item
+                  name="captcha_code"
+                  noStyle
+                  rules={[{ required: true, message: t("请输入验证码") }]}
+                >
+                  <Input
+                    prefix={<SafetyOutlined />}
+                    placeholder={t("请输入右侧字符")}
+                    maxLength={8}
+                    autoComplete="off"
+                  />
+                </Form.Item>
+                <button
+                  type="button"
+                  className="login-captcha-image"
+                  title={t("看不清？点击换一张")}
+                  aria-label={t("看不清？点击换一张")}
+                  onClick={() => void loadCaptcha(true)}
+                >
+                  <img src={captcha.image} alt={t("验证码")} />
+                </button>
+              </div>
+            </Form.Item>
+          ) : null}
           <Button
             type="primary"
             htmlType="submit"

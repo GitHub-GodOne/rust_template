@@ -89,9 +89,11 @@ pub async fn list_runs(
 pub async fn run(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Json(params): Json<RunProjectCliParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:project_cli:run").await?;
+    crate::controllers::admin::require_reauth(&ctx, &session).await?;
     let environment = ctx.environment.to_string();
     Ok(responses::ok(
         project_cli::start_run(&ctx.db, &environment, &user, &params).await?,

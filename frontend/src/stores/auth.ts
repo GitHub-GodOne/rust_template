@@ -75,6 +75,8 @@ type AuthState = {
     effectiveDataScope: string;
   }) => void;
   setMenus: (menus: AdminMenuItem[]) => void;
+  /** Updates the signed-in user's own details (e.g. after editing the profile). */
+  setUser: (user: AuthUser) => void;
   signOut: () => void;
   hasPermission: (permission?: PermissionCode) => boolean;
 };
@@ -119,6 +121,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem(tokenKey, token);
     localStorage.setItem(refreshTokenKey, refreshToken);
     set({ accessToken: token, refreshToken });
+  },
+  setUser: (user) => {
+    localStorage.setItem(userKey, JSON.stringify(user));
+    set({ user });
   },
   setSession: ({
     user,

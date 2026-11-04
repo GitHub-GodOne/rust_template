@@ -1,5 +1,6 @@
 import { type ApiResponse, unwrap } from "../auth";
 import { apiClient } from "../client";
+import { downloadCsv } from "../download";
 
 export type PageResponse<T> = {
   items: T[];
@@ -16,8 +17,22 @@ export type UserRecord = {
   tenant_id?: number | null;
   current_department_id?: number | null;
   is_verified: boolean;
+  /** `active` or `disabled`. */
+  status: string;
+  /** Locked after too many failed logins. */
+  locked: boolean;
+  locked_until?: string | null;
+  last_login_at?: string | null;
+  last_login_ip?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type UserFilters = {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  status?: string;
 };
 
 export type AssignedRoleRecord = {
@@ -46,11 +61,7 @@ export type SaveUserParams = {
   tenant_id?: number | null;
 };
 
-export async function fetchUsers(params?: {
-  page?: number;
-  page_size?: number;
-  keyword?: string;
-}) {
+export async function fetchUsers(params?: UserFilters) {
   const response = await apiClient.get<ApiResponse<PageResponse<UserRecord>>>(
     "/admin/users",
     { params },
@@ -103,4 +114,31 @@ export async function saveUserDepartments(
   payload: SaveUserDepartmentsParams,
 ) {
   await apiClient.put(`/admin/users/${id}/departments`, payload);
+}
+
+export async function setUserStatus(id: number, status: "active" | "disabled") {
+  const response = await apiClient.put<ApiResponse<UserRecord>>(
+    `/admin/users/${id}/status`,
+    { status },
+  );
+  return unwrap(response.data);
+}
+
+export async function resetUserPassword(id: number, password: string) {
+  await apiClient.post(`/admin/users/${id}/reset-password`, { password });
+}
+
+export async function unlockUser(id: number) {
+  const response = await apiClient.post<ApiResponse<UserRecord>>(
+    `/admin/users/${id}/unlock`,
+  );
+  return unwrap(response.data);
+}
+
+export function exportUsers(filters: UserFilters) {
+  return downloadCsv(
+    "/admin/users/export",
+    { keyword: filters.keyword, status: filters.status },
+    "users.csv",
+  );
 }

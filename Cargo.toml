@@ -36,6 +36,7 @@ regex = { version = "1.11" }
 migration = { path = "migration" }
 sea-orm = { version = "1.1", features = [
   "sqlx-sqlite",
+  "sqlx-mysql",
   "sqlx-postgres",
   "runtime-tokio-rustls",
   "macros",
@@ -72,9 +73,28 @@ socket2 = { version = "0.6" }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+# WASAPI loopback capture for 远程音频 (Linux records through `parec` instead).
+cpal = "0.15"
+encoding_rs = "0.8"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Threading"] }
+
 [[bin]]
 name = "gpt_images-cli"
 path = "src/bin/main.rs"
+required-features = []
+
+# A/B copies of the same CLI: the service runs one while the other is rebuilt,
+# e.g. `cargo build --release --bin gpt_images-cli-b`, then switch the service
+# over with `target/release/gpt_images-cli-b service install`.
+[[bin]]
+name = "gpt_images-cli-a"
+path = "src/bin/gpt_images-cli-a.rs"
+required-features = []
+
+[[bin]]
+name = "gpt_images-cli-b"
+path = "src/bin/gpt_images-cli-b.rs"
 required-features = []
 
 [dev-dependencies]

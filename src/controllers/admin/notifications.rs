@@ -179,6 +179,7 @@ pub async fn create(
     }
     .insert(&ctx.db)
     .await?;
+    crate::controllers::user_notifications::publish_notification(&notification);
 
     Ok(responses::ok(NotificationRecord::from(notification)))
 }
@@ -219,11 +220,21 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:notification:delete").await?;
-    find_notification(&ctx, id).await?;
-    system_notifications::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:notification:delete").await?;
+    let notification = find_notification(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "notifications",
+            id,
+            &notification.title,
+            &actor,
+        ),
+        "system_notifications",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

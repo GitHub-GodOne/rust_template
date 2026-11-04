@@ -41,13 +41,24 @@ export async function deleteRdpCredentials(key: string) {
   );
 }
 
+export type RdpGatewayStatus = {
+  reachable: boolean;
+  message: string;
+  address: string;
+  /** Backend OS: `windows`, `linux`, `macos`, ... */
+  platform: string;
+  /** The gateway is on the backend machine, which starts it itself. */
+  local: boolean;
+  /** Installed guacd the backend can start; null when not installed. */
+  runtime?: string | null;
+  last_error?: string | null;
+  recent_logs: string[];
+};
+
 export async function fetchRdpGatewayStatus() {
   return unwrap(
-    (
-      await apiClient.get<ApiResponse<{ reachable: boolean; message: string }>>(
-        "/admin/rdp/gateway",
-      )
-    ).data,
+    (await apiClient.get<ApiResponse<RdpGatewayStatus>>("/admin/rdp/gateway"))
+      .data,
   );
 }
 

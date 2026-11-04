@@ -509,14 +509,23 @@ pub async fn delete_certificate(
         return Err(ApiError::bad_request("证书正在签发中，请稍后再删除"));
     }
     let domain = certificate.domain.clone();
-    if let Some(cert_path) = &certificate.cert_path {
-        if let Some(folder) = std::path::Path::new(cert_path).parent() {
-            if folder.starts_with(certs::storage_dir()) {
-                let _ = tokio::fs::remove_dir_all(folder).await;
-            }
-        }
-    }
-    certificate.into_active_model().delete(&ctx.db).await?;
+    // The key folder goes into the recycle bin with the record.
+    let key_folders: Vec<std::path::PathBuf> = certificate
+        .cert_path
+        .as_deref()
+        .and_then(|cert_path| std::path::Path::new(cert_path).parent())
+        .filter(|folder| folder.starts_with(certs::storage_dir()))
+        .map(std::path::Path::to_path_buf)
+        .into_iter()
+        .collect();
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("certificates", id, &domain, &user),
+        "tls_certificates",
+        i64::from(id),
+        &key_folders,
+    )
+    .await?;
     record_log(
         &ctx,
         &user,
@@ -894,7 +903,14 @@ pub async fn delete_mapping(
             record_types.push("AAAA");
         }
     }
-    mapping.into_active_model().delete(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("domain_mappings", id, &domain, &user),
+        "domain_mappings",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     if query.remove_dns.unwrap_or(true) && !record_types.is_empty() {
         let settings = certs::load_settings(&ctx.db).await?;
         let credentials = certs::cloudflare_credentials(&ctx.db, &settings).await?;

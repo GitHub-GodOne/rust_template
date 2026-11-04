@@ -8,10 +8,11 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    controllers::admin::authorize,
+    controllers::admin::{authorize, require_reauth, SessionExt},
     errors::{ApiError, ApiResult},
     models::_entities::system_settings,
     responses::{self, ApiResponse, EmptyData, PageResponse},
+    services::{client_info::ClientInfo, security_settings},
 };
 
 const SECRET_MASK: &str = "******";
@@ -159,10 +160,15 @@ pub async fn get(
 pub async fn create(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    client: ClientInfo,
+    session: SessionExt,
     Json(params): Json<SaveSettingParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:setting:create").await?;
-    validate_setting(&params.key, &params.value_type, &params.value)?;
+    if params.key.starts_with("security.") {
+        require_reauth(&ctx, &session).await?;
+    }
+    validate_setting(&params.key, &params.value_type, &params.value, &client)?;
 
     let setting = system_settings::ActiveModel {
         key: Set(params.key),
@@ -182,6 +188,8 @@ pub async fn create(
     }
     .insert(&ctx.db)
     .await?;
+    security_settings::invalidate();
+    setting_saved(&ctx, &setting.key).await;
 
     Ok(responses::ok(SettingRecord::from(setting)))
 }
@@ -200,14 +208,22 @@ pub async fn update(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
+    client: ClientInfo,
+    session: SessionExt,
     Json(params): Json<SaveSettingParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:setting:update").await?;
     let setting = find_setting(&ctx, id).await?;
+    // Changing a security setting is itself a sensitive operation.
+    if (setting.key.starts_with("security.") || params.key.starts_with("security."))
+        && (setting.value != params.value || setting.key != params.key)
+    {
+        require_reauth(&ctx, &session).await?;
+    }
     let value = if setting.value_type == "secret" && params.value == SECRET_MASK {
         setting.value.clone()
     } else {
-        validate_setting(&params.key, &params.value_type, &params.value)?;
+        validate_setting(&params.key, &params.value_type, &params.value, &client)?;
         params.value
     };
 
@@ -225,6 +241,8 @@ pub async fn update(
     active.sort_order = Set(params.sort_order.unwrap_or_default());
     active.updated_by = Set(Some(user.id));
     let setting = active.update(&ctx.db).await?;
+    security_settings::invalidate();
+    setting_saved(&ctx, &setting.key).await;
 
     Ok(responses::ok(SettingRecord::from(setting)))
 }
@@ -243,16 +261,37 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:setting:delete").await?;
+    let actor = authorize(&ctx, &auth, "system:setting:delete").await?;
     let setting = find_setting(&ctx, id).await?;
     if setting.is_builtin {
         return Err(ApiError::bad_request("builtin setting cannot be deleted"));
     }
 
-    system_settings::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "settings",
+            id,
+            format!("{}（{}）", setting.name, setting.key),
+            &actor,
+        ),
+        "system_settings",
+        i64::from(id),
+        &[],
+    )
+    .await?;
+    security_settings::invalidate();
     Ok(responses::empty())
+}
+
+/// Settings that running components pick up right away.
+async fn setting_saved(ctx: &AppContext, key: &str) {
+    if key == crate::controllers::admin::ssh::KEEP_ON_RESTART_SETTING {
+        crate::controllers::admin::ssh::apply_keep_setting(&ctx.db).await;
+    }
+    if key == crate::controllers::admin::ssh::SCROLLBACK_SETTING {
+        crate::controllers::admin::ssh::apply_scrollback_setting(&ctx.db).await;
+    }
 }
 
 async fn find_setting(ctx: &AppContext, id: i32) -> ApiResult<system_settings::Model> {
@@ -262,8 +301,18 @@ async fn find_setting(ctx: &AppContext, id: i32) -> ApiResult<system_settings::M
         .ok_or_else(|| ApiError::bad_request("setting not found"))
 }
 
-fn validate_setting(key: &str, value_type: &str, value: &str) -> ApiResult<()> {
+fn validate_setting(
+    key: &str,
+    value_type: &str,
+    value: &str,
+    client: &ClientInfo,
+) -> ApiResult<()> {
     crate::services::cloudflare_ddns::validate_setting(key, value)?;
+    security_settings::validate_setting(
+        key,
+        value,
+        client.ip.as_deref().and_then(|ip| ip.parse().ok()),
+    )?;
     if key == "upload.max_size_mb" {
         let max_mb = value
             .trim()
@@ -324,13 +373,14 @@ impl From<system_settings::Model> for SettingRecord {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_setting;
+    use super::{validate_setting, ClientInfo};
 
     #[test]
     fn upload_size_setting_has_no_artificial_upper_bound() {
-        assert!(validate_setting("upload.max_size_mb", "number", "10241").is_ok());
-        assert!(validate_setting("upload.max_size_mb", "number", "50000000").is_ok());
-        assert!(validate_setting("upload.max_size_mb", "number", "0").is_err());
-        assert!(validate_setting("upload.max_size_mb", "number", "1.5").is_err());
+        let client = ClientInfo::default();
+        assert!(validate_setting("upload.max_size_mb", "number", "10241", &client).is_ok());
+        assert!(validate_setting("upload.max_size_mb", "number", "50000000", &client).is_ok());
+        assert!(validate_setting("upload.max_size_mb", "number", "0", &client).is_err());
+        assert!(validate_setting("upload.max_size_mb", "number", "1.5", &client).is_err());
     }
 }

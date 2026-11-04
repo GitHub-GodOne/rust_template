@@ -4,6 +4,8 @@ import type { PageResponse } from "./users";
 
 export type BackupRecord = {
   id: number;
+  database_connection_id?: number | null;
+  database_label?: string | null;
   filename: string;
   storage_path: string;
   size_bytes: number;
@@ -37,6 +39,19 @@ export type RestoreRecord = {
   updated_at: string;
 };
 
+export type BackupDestination = {
+  id: string;
+  name?: string | null;
+  enabled: boolean;
+};
+
+export async function fetchBackupDestinations() {
+  const response = await apiClient.get<ApiResponse<BackupDestination[]>>(
+    "/admin/backups/destinations",
+  );
+  return unwrap(response.data);
+}
+
 export async function fetchBackups(params?: {
   page?: number;
   page_size?: number;
@@ -50,9 +65,16 @@ export async function fetchBackups(params?: {
   return unwrap(response.data);
 }
 
-export async function createBackup() {
-  const response =
-    await apiClient.post<ApiResponse<BackupRecord>>("/admin/backups");
+export async function createBackup(
+  payload: {
+    connection_id?: number | null;
+    delivery_targets?: string[];
+  } = {},
+) {
+  const response = await apiClient.post<ApiResponse<BackupRecord>>(
+    "/admin/backups",
+    payload,
+  );
   return unwrap(response.data);
 }
 

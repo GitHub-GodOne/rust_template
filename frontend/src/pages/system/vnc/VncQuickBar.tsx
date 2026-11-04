@@ -16,7 +16,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import { t } from "../../../i18n";
 import {
   KEYS,
@@ -27,7 +27,39 @@ import {
   SHORTCUT_GROUP_LABELS,
   VNC_SHORTCUTS,
   type VncShortcutGroup,
+  letterKey,
 } from "./vncInput";
+
+/** Pressed on the remote computer once its clipboard holds the text. */
+const PASTE_KEYS: KeyStroke[] = [KEYS.ctrl, letterKey("v")];
+/** Gives the server time to apply the new clipboard before Ctrl+V. */
+const PASTE_DELAY_MS = 200;
+
+/** Puts `text` on the remote clipboard and presses Ctrl+V there. */
+function pasteIntoRemote(
+  text: string,
+  onPasteToRemote: (text: string) => boolean,
+  onStrokes: (strokes: KeyStroke[]) => void,
+) {
+  if (!onPasteToRemote(text)) {
+    return false;
+  }
+  window.setTimeout(() => onStrokes(PASTE_KEYS), PASTE_DELAY_MS);
+  return true;
+}
+
+/**
+ * Text on this device's clipboard, or null when the browser refuses (no
+ * permission, or plain HTTP where `navigator.clipboard` is missing). iOS asks
+ * with its own "Paste" bubble, so call this straight from a tap.
+ */
+async function readLocalClipboard() {
+  try {
+    return (await navigator.clipboard?.readText()) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 type QuickBarProps = {
   connected: boolean;
@@ -39,7 +71,11 @@ type QuickBarProps = {
   onToggleRightClick: () => void;
   onToggleModifier: (name: ModifierName) => void;
   onStrokes: (strokes: KeyStroke[]) => void;
+  onPasteToRemote: (text: string) => boolean;
+  onOpenClipboard: () => void;
   onOpenShortcuts: () => void;
+  /** Toolbar name for screen readers; the RDP page passes its own. */
+  label?: string;
 };
 
 function RightClickIcon() {
@@ -66,6 +102,31 @@ function RightClickIcon() {
   );
 }
 
+/** The arrow drawn over the remote screen in trackpad mode. */
+export const TrackpadCursor = forwardRef<HTMLSpanElement>(
+  function TrackpadCursor(_, ref) {
+    return (
+      <span ref={ref} className="vnc-trackpad-cursor" aria-hidden="true">
+        <svg
+          viewBox="0 0 16 24"
+          width="18"
+          height="27"
+          focusable="false"
+          aria-hidden="true"
+        >
+          <path
+            d="M1.5 1.5v18.2l4.6-4.4 3.1 7.2 3-1.3-3.1-7.1h6.4z"
+            fill="#fff"
+            stroke="#151515"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    );
+  },
+);
+
 /** Bottom bar with the remote-control helpers phones lack a keyboard for. */
 export function VncQuickBar({
   connected,
@@ -77,13 +138,25 @@ export function VncQuickBar({
   onToggleRightClick,
   onToggleModifier,
   onStrokes,
+  onPasteToRemote,
+  onOpenClipboard,
   onOpenShortcuts,
+  label = t("VNC 快捷操作"),
 }: QuickBarProps) {
+  const paste = async () => {
+    const text = await readLocalClipboard();
+    if (text && pasteIntoRemote(text, onPasteToRemote, onStrokes)) {
+      message.success(t("已粘贴到远程电脑"));
+    } else {
+      onOpenClipboard();
+    }
+  };
+
   return (
     <div
       className="vnc-quickbar"
       role="toolbar"
-      aria-label={t("VNC 快捷操作")}
+      aria-label={label}
       // Keep focus (and the phone keyboard) where it is while tapping keys.
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -175,7 +248,18 @@ export function VncQuickBar({
       >
         Ctrl+Alt+Del
       </Button>
-      <Tooltip title={t("更多快捷键与文本发送")}>
+      <Tooltip title={t("把本机复制的文字粘贴到远程电脑")}>
+        <Button
+          type="text"
+          icon={<SnippetsOutlined />}
+          aria-label={t("粘贴到远程")}
+          disabled={!connected}
+          onClick={() => void paste()}
+        >
+          <span className="vnc-quickbar-label">{t("粘贴")}</span>
+        </Button>
+      </Tooltip>
+      <Tooltip title={t("更多快捷键")}>
         <Button
           type="text"
           icon={<AppstoreOutlined />}
@@ -194,13 +278,11 @@ type ShortcutsDrawerProps = {
   connected: boolean;
   trackpad: boolean;
   showLocalPointer: boolean;
-  remoteClipboard: string;
   onClose: () => void;
   onStrokes: (strokes: KeyStroke[]) => void;
   onToggleTrackpad: () => void;
   onToggleLocalPointer: () => void;
-  onPasteToRemote: (text: string) => boolean;
-  onTypeText: (text: string) => boolean;
+  onOpenClipboard: () => void;
 };
 
 const GROUP_ORDER: VncShortcutGroup[] = [
@@ -215,33 +297,12 @@ export function VncShortcutsDrawer({
   connected,
   trackpad,
   showLocalPointer,
-  remoteClipboard,
   onClose,
   onStrokes,
   onToggleTrackpad,
   onToggleLocalPointer,
-  onPasteToRemote,
-  onTypeText,
+  onOpenClipboard,
 }: ShortcutsDrawerProps) {
-  const [text, setText] = useState("");
-
-  const readLocalClipboard = async () => {
-    try {
-      setText(await navigator.clipboard.readText());
-    } catch {
-      message.warning(t("浏览器未允许读取剪贴板，请直接粘贴到输入框"));
-    }
-  };
-
-  const copyRemoteClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(remoteClipboard);
-      message.success(t("已复制远程剪贴板内容"));
-    } catch {
-      message.warning(t("浏览器未允许写入剪贴板"));
-    }
-  };
-
   return (
     <Drawer
       title={t("快捷操作")}
@@ -308,19 +369,108 @@ export function VncShortcutsDrawer({
         </section>
       ))}
       <section className="vnc-shortcut-group">
-        <h4>{t("发送文本")}</h4>
+        <h4>{t("剪贴板")}</h4>
+        <Button
+          block
+          icon={<SnippetsOutlined />}
+          onClick={() => {
+            onClose();
+            onOpenClipboard();
+          }}
+        >
+          {t("粘贴到远程 / 复制远程内容 / 发送文本")}
+        </Button>
+      </section>
+    </Drawer>
+  );
+}
+
+type ClipboardDrawerProps = {
+  open: boolean;
+  connected: boolean;
+  /** Last text the remote computer copied. */
+  remoteClipboard: string;
+  onClose: () => void;
+  onStrokes: (strokes: KeyStroke[]) => void;
+  onPasteToRemote: (text: string) => boolean;
+  onTypeText: (text: string) => boolean;
+};
+
+/** Moves text between this device's clipboard and the remote computer's. */
+export function RemoteClipboardDrawer({
+  open,
+  connected,
+  remoteClipboard,
+  onClose,
+  onStrokes,
+  onPasteToRemote,
+  onTypeText,
+}: ClipboardDrawerProps) {
+  const [text, setText] = useState("");
+
+  const readClipboard = async () => {
+    const local = await readLocalClipboard();
+    if (local === null) {
+      message.warning(t("浏览器未允许读取剪贴板，请长按输入框选择“粘贴”"));
+    } else {
+      setText(local);
+    }
+  };
+
+  const copyRemoteClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(remoteClipboard);
+      message.success(t("已复制远程剪贴板内容"));
+    } catch {
+      message.warning(t("浏览器未允许写入剪贴板"));
+    }
+  };
+
+  const finish = () => {
+    setText("");
+    onClose();
+  };
+
+  return (
+    <Drawer
+      title={t("剪贴板")}
+      open={open}
+      placement="bottom"
+      height="auto"
+      zIndex={1600}
+      rootClassName="vnc-mobile-controls-drawer-root"
+      className="vnc-shortcuts-drawer"
+      onClose={onClose}
+    >
+      <section className="vnc-shortcut-group">
+        <h4>{t("发送到远程电脑")}</h4>
         <Input.TextArea
           value={text}
-          autoSize={{ minRows: 2, maxRows: 6 }}
-          placeholder={t("输入或粘贴要发送到远程电脑的文字")}
+          autoSize={{ minRows: 3, maxRows: 8 }}
+          placeholder={t(
+            "粘贴或输入要发送到远程电脑的文字（长按此处选择“粘贴”）",
+          )}
           onChange={(event) => setText(event.target.value)}
         />
         <Space wrap className="vnc-shortcut-text-actions">
           <Button
             icon={<SnippetsOutlined />}
-            onClick={() => void readLocalClipboard()}
+            onClick={() => void readClipboard()}
           >
             {t("读取本机剪贴板")}
+          </Button>
+          <Button
+            type="primary"
+            icon={<SendOutlined />}
+            disabled={!connected || !text}
+            onClick={() => {
+              if (pasteIntoRemote(text, onPasteToRemote, onStrokes)) {
+                message.success(t("已粘贴到远程电脑"));
+                finish();
+              }
+            }}
+          >
+            {t("粘贴到远程")}
           </Button>
           <Button
             icon={<CopyOutlined />}
@@ -331,29 +481,31 @@ export function VncShortcutsDrawer({
               }
             }}
           >
-            {t("写入远程剪贴板")}
+            {t("仅写入远程剪贴板")}
           </Button>
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            disabled={!connected || !text}
-            onClick={() => {
-              if (onTypeText(text)) {
-                setText("");
-                onClose();
-              }
-            }}
+          <Tooltip
+            title={t("逐字输入，适合登录界面等不同步剪贴板的地方；只支持文字")}
           >
-            {t("模拟键入")}
-          </Button>
+            <Button
+              icon={<FontSizeOutlined />}
+              disabled={!connected || !text}
+              onClick={() => {
+                if (onTypeText(text)) {
+                  finish();
+                }
+              }}
+            >
+              {t("模拟键入")}
+            </Button>
+          </Tooltip>
         </Space>
+      </section>
+      <section className="vnc-shortcut-group">
+        <h4>{t("远程剪贴板")}</h4>
         {remoteClipboard ? (
           <div className="vnc-remote-clipboard">
-            <Typography.Text type="secondary">
-              {t("远程剪贴板")}
-            </Typography.Text>
             <Typography.Paragraph
-              ellipsis={{ rows: 2 }}
+              ellipsis={{ rows: 3 }}
               className="vnc-remote-clipboard-text"
             >
               {remoteClipboard}
@@ -366,7 +518,11 @@ export function VncShortcutsDrawer({
               {t("复制到本机")}
             </Button>
           </div>
-        ) : null}
+        ) : (
+          <Typography.Text type="secondary">
+            {t("在远程电脑上复制文字后，会显示在这里")}
+          </Typography.Text>
+        )}
       </section>
     </Drawer>
   );

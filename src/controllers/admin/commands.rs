@@ -395,6 +395,19 @@ pub struct RunCommandWorkflowParams {
 
 #[utoipa::path(
     get,
+    path = "/api/admin/commands/environment",
+    tag = "admin-commands",
+    security(("bearer_auth" = [])),
+    responses((status = 200, body = ApiResponse<command_runner::CommandEnvironment>))
+)]
+#[debug_handler]
+pub async fn environment(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:command:list").await?;
+    Ok(responses::ok(command_runner::command_environment()))
+}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/commands",
     tag = "admin-commands",
     security(("bearer_auth" = [])),
@@ -552,11 +565,16 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:command:delete").await?;
-    find_template(&ctx, id).await?;
-    command_templates::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:command:delete").await?;
+    let template = find_template(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("commands", id, &template.name, &actor),
+        "command_templates",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -683,11 +701,16 @@ pub async fn delete_api_key(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:api_key:delete").await?;
-    find_api_key(&ctx, id).await?;
-    command_api_keys::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:api_key:delete").await?;
+    let api_key = find_api_key(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("api_keys", id, &api_key.name, &actor),
+        "command_api_keys",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -837,11 +860,21 @@ pub async fn delete_workflow(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:command:delete").await?;
-    find_workflow(&ctx, id).await?;
-    command_workflows::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:command:delete").await?;
+    let workflow = find_workflow(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "command_workflows",
+            id,
+            &workflow.name,
+            &actor,
+        ),
+        "command_workflows",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -858,10 +891,12 @@ pub async fn delete_workflow(
 pub async fn run_workflow(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Path(id): Path<i32>,
     Json(params): Json<RunCommandWorkflowParams>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:run").await?;
+    crate::controllers::admin::require_reauth(&ctx, &session).await?;
     let workflow = find_workflow(&ctx, id).await?;
     if !workflow.enabled {
         return Err(ApiError::bad_request("command workflow is disabled"));
@@ -954,10 +989,12 @@ pub async fn get_workflow_run(
 pub async fn run_template(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Path(id): Path<i32>,
     Json(params): Json<RunCommandParams>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:run").await?;
+    crate::controllers::admin::require_reauth(&ctx, &session).await?;
     let template = find_template(&ctx, id).await?;
     if !template.enabled {
         return Err(ApiError::bad_request("command template is disabled"));
@@ -1003,17 +1040,17 @@ pub async fn run_template(
 pub async fn run_ad_hoc(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Json(params): Json<RunCommandParams>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:command:run").await?;
+    crate::controllers::admin::require_reauth(&ctx, &session).await?;
     let command_line = params
         .command_line
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| ApiError::bad_request("command line is required"))?;
-    let working_directory = params
-        .working_directory
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| ApiError::bad_request("working directory is required"))?;
+    // Empty runs in the server's default directory (the service account's home).
+    let working_directory = params.working_directory.unwrap_or_default();
     let request = CommandRunRequest {
         template_id: None,
         name: params.name.unwrap_or_else(|| "临时命令".to_string()),
@@ -1426,10 +1463,8 @@ async fn build_api_command_request(
         .command_line
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| ApiError::bad_request("command line is required"))?;
-    let working_directory = params
-        .working_directory
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| ApiError::bad_request("working directory is required"))?;
+    // Empty runs in the server's default directory (the service account's home).
+    let working_directory = params.working_directory.unwrap_or_default();
     Ok(CommandRunRequest {
         template_id: None,
         name: params.name.unwrap_or_else(|| "API 命令".to_string()),
@@ -1608,12 +1643,9 @@ async fn save_workflow_steps(
 fn validate_template(params: &SaveCommandTemplateParams) -> ApiResult<()> {
     if params.name.trim().is_empty()
         || params.code.trim().is_empty()
-        || params.working_directory.trim().is_empty()
         || params.command.trim().is_empty()
     {
-        return Err(ApiError::bad_request(
-            "name, code, working directory and command are required",
-        ));
+        return Err(ApiError::bad_request("name, code and command are required"));
     }
     validate_json_object(params.env_vars.as_deref(), "env_vars")?;
     if params.timeout_seconds.is_some_and(|value| value <= 0) {

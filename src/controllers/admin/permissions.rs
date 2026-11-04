@@ -174,8 +174,8 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:permission:delete").await?;
-    find_permission(&ctx, id).await?;
+    let actor = authorize(&ctx, &auth, "system:permission:delete").await?;
+    let permission = find_permission(&ctx, id).await?;
 
     let grant_count = role_permissions::Entity::find()
         .filter(role_permissions::Column::PermissionId.eq(id))
@@ -185,7 +185,19 @@ pub async fn delete(
         return Err(ApiError::bad_request("permission is assigned to roles"));
     }
 
-    permissions::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "permissions",
+            id,
+            format!("{}（{}）", permission.name, permission.code),
+            &actor,
+        ),
+        "permissions",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

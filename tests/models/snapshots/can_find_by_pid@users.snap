@@ -1,6 +1,5 @@
 ---
 source: tests/models/users.rs
-assertion_line: 128
 expression: existing_user
 ---
 Ok(
@@ -27,5 +26,9 @@ Ok(
             1,
         ),
         current_department_id: None,
+        status: "active",
+        last_login_at: None,
+        last_login_ip: None,
+        password_changed_at: None,
     },
 )

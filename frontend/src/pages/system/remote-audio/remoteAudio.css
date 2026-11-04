@@ -1,0 +1,250 @@
+.remote-audio-layout {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.remote-audio-card {
+	border: 1px solid #ececec;
+	border-radius: 10px;
+}
+
+.remote-audio-alert {
+	margin-bottom: 16px;
+}
+
+/* Play button, title and level meter. */
+.remote-audio-player {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+}
+
+.remote-audio-toggle.ant-btn {
+	width: 64px;
+	min-width: 64px;
+	height: 64px;
+	font-size: 30px;
+}
+
+.remote-audio-toggle.ant-btn.is-active {
+	background: #d4380d;
+	border-color: #d4380d;
+}
+
+.remote-audio-player-main {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.remote-audio-title {
+	display: flex;
+	min-width: 0;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+}
+
+.remote-audio-device {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.remote-audio-meter {
+	height: 6px;
+	overflow: hidden;
+	background: #f0f0f0;
+	border-radius: 3px;
+}
+
+.remote-audio-meter span {
+	display: block;
+	height: 100%;
+	background: linear-gradient(90deg, #52c41a, #faad14 75%, #f5222d);
+	border-radius: 3px;
+	transition: width 0.4s ease-out;
+}
+
+.remote-audio-hint {
+	font-size: 12px;
+}
+
+.remote-audio-controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px 32px;
+	margin-top: 20px;
+}
+
+.remote-audio-field {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.remote-audio-quality {
+	font-size: 12px;
+}
+
+.remote-audio-volume {
+	flex: 1 1 220px;
+	max-width: 360px;
+}
+
+.remote-audio-volume-row {
+	width: 100%;
+}
+
+.remote-audio-volume-row > .ant-space-item:last-child {
+	flex: 1 1 auto;
+}
+
+.remote-audio-slider {
+	min-width: 120px;
+	margin: 0;
+}
+
+/* This session's duration, traffic and bitrate. */
+.remote-audio-stats {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+	margin: 20px 0 4px;
+}
+
+.remote-audio-stats > div {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 10px 12px;
+	background: #fafafa;
+	border-radius: 8px;
+}
+
+.remote-audio-stats span {
+	color: #8c8c8c;
+	font-size: 12px;
+}
+
+.remote-audio-stats strong {
+	font-size: 18px;
+	font-variant-numeric: tabular-nums;
+}
+
+.remote-audio-filters {
+	margin-bottom: 12px;
+}
+
+.remote-audio-status-select {
+	width: 130px;
+}
+
+/* Header pill while listening on another page. */
+.remote-audio-indicator {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 2px;
+	color: #d4380d;
+	background: #fff2e8;
+	border: 1px solid #ffbb96;
+	border-radius: 14px;
+}
+
+.remote-audio-indicator .ant-btn.ant-btn-text {
+	color: inherit;
+	border-radius: 12px;
+}
+
+.remote-audio-indicator-open.ant-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 6px;
+}
+
+.remote-audio-indicator-stop.ant-btn {
+	width: 22px;
+	min-width: 22px;
+}
+
+.remote-audio-indicator-bars {
+	display: inline-flex;
+	align-items: flex-end;
+	gap: 2px;
+	height: 12px;
+}
+
+.remote-audio-indicator-bars i {
+	width: 3px;
+	background: currentColor;
+	border-radius: 1px;
+	animation: remote-audio-bars 0.9s ease-in-out infinite;
+}
+
+.remote-audio-indicator-bars i:nth-child(2) {
+	animation-delay: 0.15s;
+}
+
+.remote-audio-indicator-bars i:nth-child(3) {
+	animation-delay: 0.3s;
+}
+
+@keyframes remote-audio-bars {
+	0%,
+	100% {
+		height: 4px;
+	}
+	50% {
+		height: 12px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.remote-audio-indicator-bars i {
+		height: 8px;
+		animation: none;
+	}
+
+	.remote-audio-meter span {
+		transition: none;
+	}
+}
+
+@media (max-width: 768px) {
+	.remote-audio-player {
+		gap: 14px;
+	}
+
+	.remote-audio-toggle.ant-btn {
+		width: 56px;
+		min-width: 56px;
+		height: 56px;
+		font-size: 26px;
+	}
+
+	.remote-audio-volume {
+		max-width: none;
+	}
+
+	.remote-audio-stats {
+		gap: 8px;
+	}
+
+	.remote-audio-stats > div {
+		padding: 8px;
+	}
+
+	.remote-audio-stats strong {
+		font-size: 15px;
+	}
+
+	.remote-audio-indicator-label {
+		display: none;
+	}
+}

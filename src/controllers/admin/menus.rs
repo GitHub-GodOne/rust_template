@@ -165,8 +165,8 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:menu:delete").await?;
-    find_menu(&ctx, id).await?;
+    let actor = authorize(&ctx, &auth, "system:menu:delete").await?;
+    let menu = find_menu(&ctx, id).await?;
 
     let child_count = menus::Entity::find()
         .filter(menus::Column::ParentId.eq(id))
@@ -184,7 +184,14 @@ pub async fn delete(
         return Err(ApiError::bad_request("menu is assigned to roles"));
     }
 
-    menus::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("menus", id, &menu.title, &actor),
+        "menus",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

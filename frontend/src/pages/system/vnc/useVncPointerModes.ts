@@ -39,7 +39,7 @@ function mouseInit(
  * capture proxy or the invisible capture overlay would swallow the next touch.
  */
 function releaseAt(
-  canvas: HTMLCanvasElement,
+  canvas: HTMLElement,
   clientX: number,
   clientY: number,
   button: number,
@@ -55,7 +55,7 @@ function releaseAt(
 }
 
 function pressAt(
-  canvas: HTMLCanvasElement,
+  canvas: HTMLElement,
   clientX: number,
   clientY: number,
   button: number,
@@ -69,7 +69,7 @@ function pressAt(
 }
 
 export function clickAt(
-  canvas: HTMLCanvasElement,
+  canvas: HTMLElement,
   clientX: number,
   clientY: number,
   button: number,
@@ -85,6 +85,47 @@ function touchPoints(list: TouchList): Point[] {
   return Array.from(list, (touch) => ({ x: touch.clientX, y: touch.clientY }));
 }
 
+/**
+ * The remote screen the pointer modes drive. Coordinates are client
+ * (viewport) pixels; `element` is the on-screen remote display whose box
+ * bounds the trackpad cursor.
+ */
+export type PointerSurface = {
+  element: (stage: HTMLElement) => HTMLElement | null | undefined;
+  move: (target: HTMLElement, x: number, y: number, buttons: number) => void;
+  press: (target: HTMLElement, x: number, y: number, button: number) => void;
+  release: (target: HTMLElement, x: number, y: number, button: number) => void;
+  click: (target: HTMLElement, x: number, y: number, button: number) => void;
+  scroll: (
+    target: HTMLElement,
+    x: number,
+    y: number,
+    deltaX: number,
+    deltaY: number,
+  ) => void;
+};
+
+/** noVNC: synthetic mouse events on its canvas. */
+const NOVNC_SURFACE: PointerSurface = {
+  element: remoteCanvas,
+  move: (canvas, x, y, buttons) =>
+    canvas.dispatchEvent(
+      new MouseEvent("mousemove", mouseInit(x, y, 0, buttons)),
+    ),
+  press: pressAt,
+  release: releaseAt,
+  click: clickAt,
+  scroll: (canvas, x, y, deltaX, deltaY) =>
+    canvas.dispatchEvent(
+      new WheelEvent("wheel", {
+        ...mouseInit(x, y, 0, 0),
+        deltaX,
+        deltaY,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      }),
+    ),
+};
+
 type PointerModeOptions = {
   stageRef: RefObject<HTMLDivElement | null>;
   cursorRef: RefObject<HTMLSpanElement | null>;
@@ -93,11 +134,27 @@ type PointerModeOptions = {
   trackpad: boolean;
   rightClickArmed: boolean;
   onRightClickUsed: () => void;
+  /** The viewer to drive; noVNC's canvas unless given. Keep it stable. */
+  surface?: PointerSurface;
+  /**
+   * Trackpad pinch: zoom by `scale` around the client point and pan by the
+   * midpoint's movement. Without it two fingers only scroll.
+   */
+  onPinch?: (
+    x: number,
+    y: number,
+    scale: number,
+    deltaX: number,
+    deltaY: number,
+  ) => void;
+  /** The trackpad cursor moved to this client point, e.g. to keep it in view. */
+  onCursorMove?: (x: number, y: number) => void;
 };
 
 /**
- * Touch/mouse handling layered over noVNC: a trackpad mode with a visible
- * cursor for touch screens, and a one-shot "next click is a right click".
+ * Touch/mouse handling layered over a remote viewer: a trackpad mode with a
+ * visible cursor for touch screens, and a one-shot "next click is a right
+ * click".
  */
 export function useVncPointerModes({
   stageRef,
@@ -106,12 +163,19 @@ export function useVncPointerModes({
   trackpad,
   rightClickArmed,
   onRightClickUsed,
+  surface = NOVNC_SURFACE,
+  onPinch,
+  onCursorMove,
 }: PointerModeOptions) {
   const gestureRef = useRef<TrackpadGesture | null>(null);
   const armedRef = useRef(rightClickArmed);
   const usedRef = useRef(onRightClickUsed);
+  const pinchRef = useRef(onPinch);
+  const cursorMoveRef = useRef(onCursorMove);
   armedRef.current = rightClickArmed;
   usedRef.current = onRightClickUsed;
+  pinchRef.current = onPinch;
+  cursorMoveRef.current = onCursorMove;
 
   // Trackpad mode: one finger moves the cursor, taps click at the cursor.
   useEffect(() => {
@@ -120,67 +184,86 @@ export function useVncPointerModes({
     if (!enabled || !trackpad || !stage || !cursor) {
       return;
     }
-    const gesture = gestureRef.current ?? new TrackpadGesture();
+    const gesture =
+      gestureRef.current ??
+      new TrackpadGesture({ pinch: Boolean(pinchRef.current) });
     gestureRef.current = gesture;
     let longPressTimer: number | undefined;
     let boundsReady = false;
 
     const placeCursor = () => {
-      const canvas = remoteCanvas(stage);
-      if (!canvas) {
+      const target = surface.element(stage);
+      if (!target) {
         return;
       }
-      const canvasBox = canvas.getBoundingClientRect();
+      const targetBox = target.getBoundingClientRect();
       const stageBox = stage.getBoundingClientRect();
-      cursor.style.transform = `translate3d(${canvasBox.left - stageBox.left + gesture.cursor.x}px, ${canvasBox.top - stageBox.top + gesture.cursor.y}px, 0)`;
+      cursor.style.transform = `translate3d(${targetBox.left - stageBox.left + gesture.cursor.x}px, ${targetBox.top - stageBox.top + gesture.cursor.y}px, 0)`;
       cursor.classList.toggle("is-dragging", gesture.isDragging);
       cursor.classList.add("is-visible");
     };
 
     const syncBounds = () => {
-      const canvas = remoteCanvas(stage);
-      if (!canvas) {
+      const target = surface.element(stage);
+      if (!target) {
         return null;
       }
-      const box = canvas.getBoundingClientRect();
+      const box = target.getBoundingClientRect();
       gesture.setBounds(box.width, box.height, !boundsReady);
       boundsReady = box.width > 0 && box.height > 0;
-      return { canvas, box };
+      return { target, box };
     };
 
     const apply = (actions: TrackpadAction[]) => {
-      const target = syncBounds();
-      if (!target) {
+      const bounds = syncBounds();
+      if (!bounds) {
         return;
       }
-      const { canvas, box } = target;
+      const { target, box } = bounds;
+      let rescaled = false;
+      let moved = false;
       for (const action of actions) {
+        if (action.type === "pinch") {
+          pinchRef.current?.(
+            action.x,
+            action.y,
+            action.scale,
+            action.deltaX,
+            action.deltaY,
+          );
+          rescaled = true;
+          continue;
+        }
+        moved = true;
         const clientX = box.left + action.x;
         const clientY = box.top + action.y;
         if (action.type === "move") {
-          canvas.dispatchEvent(
-            new MouseEvent(
-              "mousemove",
-              mouseInit(clientX, clientY, 0, action.buttons),
-            ),
-          );
+          surface.move(target, clientX, clientY, action.buttons);
         } else if (action.type === "down") {
-          pressAt(canvas, clientX, clientY, action.button);
+          surface.press(target, clientX, clientY, action.button);
           navigator.vibrate?.(12);
         } else if (action.type === "up") {
-          releaseAt(canvas, clientX, clientY, action.button);
+          surface.release(target, clientX, clientY, action.button);
         } else if (action.type === "click") {
-          clickAt(canvas, clientX, clientY, action.button);
+          surface.click(target, clientX, clientY, action.button);
         } else {
-          canvas.dispatchEvent(
-            new WheelEvent("wheel", {
-              ...mouseInit(clientX, clientY, 0, 0),
-              deltaX: action.deltaX,
-              deltaY: action.deltaY,
-              deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-            }),
+          surface.scroll(
+            target,
+            clientX,
+            clientY,
+            action.deltaX,
+            action.deltaY,
           );
         }
+      }
+      if (rescaled) {
+        syncBounds();
+      } else if (moved) {
+        const after = target.getBoundingClientRect();
+        cursorMoveRef.current?.(
+          after.left + gesture.cursor.x,
+          after.top + gesture.cursor.y,
+        );
       }
       placeCursor();
     };
@@ -191,13 +274,13 @@ export function useVncPointerModes({
     };
 
     const swallow = (event: TouchEvent) => {
-      // Keep noVNC's own touch gestures (direct touch) out of trackpad mode.
+      // Keep the viewer's own touch gestures (direct touch) out of trackpad mode.
       event.preventDefault();
       event.stopPropagation();
     };
 
     const handleStart = (event: TouchEvent) => {
-      if (!remoteCanvas(stage)) {
+      if (!surface.element(stage)) {
         return;
       }
       swallow(event);
@@ -262,13 +345,13 @@ export function useVncPointerModes({
       placeCursor();
     };
     window.addEventListener("resize", handleResize);
-    // The canvas also moves or rescales without a window resize (layout,
-    // remote resolution changes), so follow it directly.
+    // The remote screen also moves or rescales without a window resize
+    // (layout, remote resolution changes), so follow it directly.
     const observer = new ResizeObserver(handleResize);
     observer.observe(stage);
-    const observedCanvas = remoteCanvas(stage);
-    if (observedCanvas) {
-      observer.observe(observedCanvas);
+    const observedTarget = surface.element(stage);
+    if (observedTarget) {
+      observer.observe(observedTarget);
     }
     const frame = requestAnimationFrame(handleResize);
     return () => {
@@ -284,7 +367,7 @@ export function useVncPointerModes({
       stage.removeEventListener("touchcancel", handleEnd, options);
       window.removeEventListener("resize", handleResize);
     };
-  }, [cursorRef, enabled, stageRef, trackpad]);
+  }, [cursorRef, enabled, stageRef, surface, trackpad]);
 
   // Direct mode with right click armed: the next tap or click becomes a right click.
   useEffect(() => {
@@ -295,14 +378,14 @@ export function useVncPointerModes({
     let touchStart: Point | null = null;
 
     const fire = (clientX: number, clientY: number) => {
-      const canvas = remoteCanvas(stage);
-      if (canvas) {
-        clickAt(canvas, clientX, clientY, RIGHT_BUTTON);
+      const target = surface.element(stage);
+      if (target) {
+        surface.click(target, clientX, clientY, RIGHT_BUTTON);
       }
       usedRef.current();
     };
     const handleTouchStart = (event: TouchEvent) => {
-      if (!remoteCanvas(stage) || event.touches.length !== 1) {
+      if (!surface.element(stage) || event.touches.length !== 1) {
         return;
       }
       event.preventDefault();
@@ -323,7 +406,7 @@ export function useVncPointerModes({
       if (
         event.button !== LEFT_BUTTON ||
         !event.isTrusted ||
-        !remoteCanvas(stage)
+        !surface.element(stage)
       ) {
         return;
       }
@@ -334,7 +417,7 @@ export function useVncPointerModes({
       if (
         event.button !== LEFT_BUTTON ||
         !event.isTrusted ||
-        !remoteCanvas(stage)
+        !surface.element(stage)
       ) {
         return;
       }
@@ -354,5 +437,5 @@ export function useVncPointerModes({
       stage.removeEventListener("mousedown", handleMouseDown, options);
       stage.removeEventListener("mouseup", handleMouseUp, options);
     };
-  }, [enabled, rightClickArmed, stageRef, trackpad]);
+  }, [enabled, rightClickArmed, stageRef, surface, trackpad]);
 }

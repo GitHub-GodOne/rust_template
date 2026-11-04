@@ -13,6 +13,7 @@ use chrono::{offset::Local, Datelike};
 use loco_rs::prelude::*;
 use reqwest::multipart;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -33,6 +34,16 @@ pub enum BackupTrigger {
     Scheduled,
 }
 
+/// Optional metadata selected by the caller when a backup is created.
+/// `None` keeps the historical behavior: the application's configured
+/// database is backed up and delivery targets come from system settings.
+#[derive(Debug, Default, Clone)]
+pub struct BackupOptions {
+    pub database_connection_id: Option<i32>,
+    pub database_label: Option<String>,
+    pub delivery_targets: Option<Vec<String>>,
+}
+
 impl BackupTrigger {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -48,6 +59,23 @@ pub async fn create_postgres_backup(
     database_url: &str,
     created_by: Option<i32>,
     trigger: BackupTrigger,
+) -> ApiResult<Model> {
+    create_postgres_backup_with_options(
+        db,
+        database_url,
+        created_by,
+        trigger,
+        BackupOptions::default(),
+    )
+    .await
+}
+
+pub async fn create_postgres_backup_with_options(
+    db: &DatabaseConnection,
+    database_url: &str,
+    created_by: Option<i32>,
+    trigger: BackupTrigger,
+    options: BackupOptions,
 ) -> ApiResult<Model> {
     let started_at = Local::now();
     let timer = Instant::now();
@@ -111,9 +139,11 @@ pub async fn create_postgres_backup(
         started_at: Set(started_at.into()),
         finished_at: Set(Some(Local::now().into())),
         duration_ms: Set(Some(duration_ms)),
-        delivery_targets: Set(None),
+        delivery_targets: Set(options.delivery_targets.as_ref().map(json_string)),
         delivery_status: Set(None),
         error_message: Set(error_message),
+        database_connection_id: Set(options.database_connection_id),
+        database_label: Set(options.database_label),
         created_by: Set(created_by),
         ..Default::default()
     }
@@ -193,7 +223,11 @@ pub async fn restore_postgres_backup(
 
 pub async fn deliver_backup(db: &DatabaseConnection, backup: Model) -> ApiResult<Model> {
     let settings = BackupDeliverySettings::load(db).await?;
-    let targets = settings.targets();
+    let targets = backup
+        .delivery_targets
+        .as_deref()
+        .map(parse_targets)
+        .unwrap_or_else(|| settings.targets());
     let delivery_timeout_seconds =
         u64::try_from(settings.delivery_timeout_seconds.clamp(1, 300)).unwrap_or(10);
     let client = http_client::build_http_client_with_overrides(
@@ -214,6 +248,14 @@ pub async fn deliver_backup(db: &DatabaseConnection, backup: Model) -> ApiResult
     }
 
     for target in &targets {
+        if let Some(selector) = target.strip_prefix("telegram:") {
+            let result = send_telegram_selected(&client, &settings, &backup, Some(selector)).await;
+            statuses.insert(
+                target.clone(),
+                result.unwrap_or_else(|error| trim_message(&error)),
+            );
+            continue;
+        }
         let result = match target.as_str() {
             "telegram" => send_telegram(&client, &settings, &backup).await,
             "wecom" => send_text_webhook(&client, &settings.wecom_webhook_url, &backup).await,
@@ -241,6 +283,29 @@ struct BackupDeliverySettings {
     dingtalk_webhook_url: String,
     custom_webhook_url: String,
     delivery_timeout_seconds: i64,
+    telegram_destinations: Vec<TelegramDestination>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TelegramDestination {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub bot_token: String,
+    pub chat_id: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub struct TelegramDestinationSummary {
+    pub id: String,
+    pub name: Option<String>,
+    pub enabled: bool,
 }
 
 impl BackupDeliverySettings {
@@ -264,6 +329,11 @@ impl BackupDeliverySettings {
             delivery_timeout_seconds: setting_value(&values, "backup.delivery_timeout_seconds")
                 .parse()
                 .unwrap_or(10),
+            telegram_destinations: serde_json::from_str(&setting_value(
+                &values,
+                "backup.telegram_destinations",
+            ))
+            .unwrap_or_default(),
         })
     }
 
@@ -272,27 +342,117 @@ impl BackupDeliverySettings {
     }
 }
 
+pub async fn telegram_destination_summaries(
+    db: &DatabaseConnection,
+) -> ApiResult<Vec<TelegramDestinationSummary>> {
+    let settings = BackupDeliverySettings::load(db).await?;
+    Ok(settings
+        .telegram_destinations
+        .into_iter()
+        .map(|destination| TelegramDestinationSummary {
+            id: destination.id,
+            name: destination.name,
+            enabled: destination.enabled,
+        })
+        .collect())
+}
+
 async fn send_telegram(
     client: &reqwest::Client,
     settings: &BackupDeliverySettings,
     backup: &Model,
 ) -> Result<String, String> {
-    if settings.telegram_bot_token.trim().is_empty() || settings.telegram_chat_id.trim().is_empty()
-    {
-        return Err("skipped: missing telegram token or chat id".to_string());
-    }
+    send_telegram_selected(client, settings, backup, None).await
+}
 
-    let url = format!(
-        "https://api.telegram.org/bot{}/sendMessage",
-        settings.telegram_bot_token
-    );
+async fn send_telegram_selected(
+    client: &reqwest::Client,
+    settings: &BackupDeliverySettings,
+    backup: &Model,
+    selector: Option<&str>,
+) -> Result<String, String> {
+    let destinations = settings
+        .telegram_destinations
+        .clone()
+        .into_iter()
+        .filter(|destination| destination.enabled)
+        .filter(|destination| {
+            selector.is_none_or(|selector| {
+                destination.id == selector || destination.name.as_deref() == Some(selector)
+            })
+        })
+        .collect::<Vec<_>>();
+    let destinations = if destinations.is_empty()
+        && selector.is_none()
+        && !settings.telegram_bot_token.trim().is_empty()
+        && !settings.telegram_chat_id.trim().is_empty()
+    {
+        vec![TelegramDestination {
+            id: "legacy".to_string(),
+            name: Some("legacy".to_string()),
+            bot_token: settings.telegram_bot_token.clone(),
+            chat_id: settings.telegram_chat_id.clone(),
+            enabled: true,
+        }]
+    } else {
+        destinations
+    };
+    if destinations.is_empty() {
+        return Err("skipped: telegram destination is not configured".to_string());
+    }
+    let mut results = Vec::new();
+    let mut failed = false;
+    for destination in destinations {
+        let label = destination
+            .name
+            .clone()
+            .unwrap_or_else(|| destination.id.clone());
+        match send_telegram_to(client, &destination, backup).await {
+            Ok(status) => results.push(format!("{label}: {status}")),
+            Err(error) => {
+                failed = true;
+                results.push(format!("{label}: {}", trim_message(&error)));
+            }
+        }
+    }
+    if failed {
+        Err(results.join(", "))
+    } else {
+        Ok(results.join(", "))
+    }
+}
+
+async fn send_telegram_to(
+    client: &reqwest::Client,
+    destination: &TelegramDestination,
+    backup: &Model,
+) -> Result<String, String> {
+    let base = format!("https://api.telegram.org/bot{}", destination.bot_token);
+    let path = PathBuf::from(&backup.storage_path);
+    if backup.status == "success" && path.is_file() {
+        let bytes =
+            fs::read(&path).map_err(|error| format!("failed to read backup file: {error}"))?;
+        let file = multipart::Part::bytes(bytes)
+            .file_name(backup.filename.clone())
+            .mime_str("application/octet-stream")
+            .map_err(|error| error.to_string())?;
+        let response = client
+            .post(format!("{base}/sendDocument"))
+            .multipart(
+                multipart::Form::new()
+                    .text("chat_id", destination.chat_id.clone())
+                    .text("caption", backup_message(backup))
+                    .part("document", file),
+            )
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+        return response_status(&response);
+    }
     post_json(
         client,
-        &url,
-        json!({
-            "chat_id": settings.telegram_chat_id,
-            "text": backup_message(backup),
-        }),
+        &format!("{base}/sendMessage"),
+        json!({"chat_id": destination.chat_id, "text": backup_message(backup)}),
     )
     .await
 }
@@ -376,8 +536,9 @@ fn response_status(response: &reqwest::Response) -> Result<String, String> {
 
 fn backup_message(backup: &Model) -> String {
     format!(
-        "数据库备份 #{id}\n文件：{filename}\n状态：{status}\n大小：{size} B\nSHA-256：{sha}\n开始：{started}\n结束：{finished}\n错误：{error}",
+        "数据库备份 #{id}\n数据库：{database}\n文件：{filename}\n状态：{status}\n大小：{size} B\nSHA-256：{sha}\n开始：{started}\n结束：{finished}\n错误：{error}",
         id = backup.id,
+        database = backup.database_label.as_deref().unwrap_or("当前项目数据库"),
         filename = backup.filename,
         status = backup.status,
         size = backup.size_bytes,
@@ -403,6 +564,8 @@ fn backup_metadata(backup: &Model) -> serde_json::Value {
         "finished_at": backup.finished_at.map(|value| value.to_rfc3339()),
         "duration_ms": backup.duration_ms,
         "error_message": backup.error_message,
+        "database_connection_id": backup.database_connection_id,
+        "database_label": backup.database_label,
     })
 }
 

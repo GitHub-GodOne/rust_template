@@ -17,6 +17,7 @@ pub struct Model {
     pub created_by_ip: Option<String>,
     pub user_agent: Option<String>,
     pub user_id: i32,
+    pub session_id: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

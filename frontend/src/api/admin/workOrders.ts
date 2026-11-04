@@ -1,5 +1,6 @@
 import { type ApiResponse, unwrap } from "../auth";
 import { apiClient } from "../client";
+import { downloadCsv } from "../download";
 import type { PageResponse } from "./users";
 
 export type WorkOrderRecord = {
@@ -190,4 +191,13 @@ export async function deleteWorkOrderAttachment(
   await apiClient.delete(
     `/admin/work-orders/${id}/attachments/${attachmentId}`,
   );
+}
+
+/** Downloads the work orders matching the filters as CSV. */
+export function exportWorkOrders(filters: {
+  keyword?: string;
+  status?: string;
+  priority?: string;
+}) {
+  return downloadCsv("/admin/work-orders/export", filters, "work-orders.csv");
 }

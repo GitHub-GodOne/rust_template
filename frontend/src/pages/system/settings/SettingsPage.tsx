@@ -47,6 +47,7 @@ import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { t } from "../../../i18n";
+import { PrimaryDatabasePanel } from "./PrimaryDatabasePanel";
 
 const valueTypeOptions = [
   { value: "string", label: t("字符串") },
@@ -346,6 +347,7 @@ export function SettingsPage() {
             label: t("系统配置"),
             children: (
               <Space direction="vertical" size="middle" className="full-width">
+                <PrimaryDatabasePanel />
                 <Space wrap>
                   <Input.Search
                     allowClear

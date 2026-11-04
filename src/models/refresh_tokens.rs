@@ -6,7 +6,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use sha2::{Digest, Sha256};
 
 pub use super::_entities::refresh_tokens::{self, ActiveModel, Entity, Model};
-use super::{_entities::users, system_settings};
+use super::{_entities::users, system_settings, user_sessions};
 
 #[derive(Debug, Clone)]
 pub struct IssuedRefreshToken {
@@ -27,6 +27,7 @@ impl Model {
     pub async fn issue(
         db: &DatabaseConnection,
         user: &users::Model,
+        session: &user_sessions::Model,
     ) -> ModelResult<IssuedRefreshToken> {
         let token_length = usize::try_from(
             system_settings::number_i64(db, "auth.refresh_token_length", 64)
@@ -43,8 +44,11 @@ impl Model {
 
         let model = refresh_tokens::ActiveModel {
             user_id: Set(user.id),
+            session_id: Set(Some(session.id)),
             token_hash: Set(token_hash),
             expires_at: Set(expires_at.into()),
+            created_by_ip: Set(session.ip.clone()),
+            user_agent: Set(session.user_agent.clone()),
             ..Default::default()
         }
         .insert(db)

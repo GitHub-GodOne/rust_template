@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Keys clients may store; extend when a new preference is introduced.
-const ALLOWED_KEYS: &[&str] = &["dock"];
+const ALLOWED_KEYS: &[&str] = &["dock", "ssh_commands"];
 const MAX_VALUE_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]

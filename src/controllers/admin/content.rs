@@ -265,8 +265,8 @@ pub async fn delete_category(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:content_category:delete").await?;
-    find_category(&ctx, id).await?;
+    let actor = authorize(&ctx, &auth, "system:content_category:delete").await?;
+    let category = find_category(&ctx, id).await?;
     let article_count = content_articles::Entity::find()
         .filter(content_articles::Column::CategoryId.eq(id))
         .count(&ctx.db)
@@ -275,9 +275,19 @@ pub async fn delete_category(
         return Err(ApiError::bad_request("content category has articles"));
     }
 
-    content_categories::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "content_categories",
+            id,
+            &category.name,
+            &actor,
+        ),
+        "content_categories",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -504,11 +514,16 @@ pub async fn delete_article(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:content_article:delete").await?;
-    find_article(&ctx, id).await?;
-    content_articles::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:content_article:delete").await?;
+    let article = find_article(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("content_articles", id, &article.title, &actor),
+        "content_articles",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

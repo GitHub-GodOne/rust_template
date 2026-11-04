@@ -395,6 +395,17 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 48
+  parent_id: 43
+  title: 远程音频
+  path: /admin/system/remote-audio
+  icon: sound
+  permission_code: system:remote_audio:list
+  sort_order: 35
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 33
   parent_id: 2
   title: IPv6 动态解析
@@ -435,6 +446,50 @@
   icon: safety-certificate
   permission_code: system:certificate:list
   sort_order: 40
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 45
+  parent_id: 2
+  title: 在线会话
+  path: /admin/system/sessions
+  icon: laptop
+  permission_code: system:session:list
+  sort_order: 55
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 46
+  parent_id: 2
+  title: 回收站
+  path: /admin/system/recycle-bin
+  icon: rest
+  permission_code: system:recycle:list
+  sort_order: 65
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 47
+  parent_id: 41
+  title: 在线聊天
+  path: /admin/system/im
+  icon: comment
+  permission_code: system:im:chat
+  sort_order: 5
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 49
+  parent_id: 41
+  title: 数据库管理
+  path: /admin/system/database
+  icon: database
+  permission_code: system:database:list
+  sort_order: 15
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"

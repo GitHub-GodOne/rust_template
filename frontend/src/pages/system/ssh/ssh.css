@@ -245,14 +245,18 @@
 
 /* An always-visible bottom dock gets its own strip below the terminal
    window instead of covering the last lines (--dock-space comes from the
-   dock). Side docks are handled by the layout's side margin. */
-body.dock-reserve.dock-pos-bottom .ssh-workspace {
-	height: calc(
-		100dvh -
-		var(--ssh-workspace-top, 140px) -
-		var(--dock-space, 72px) -
-		40px
-	);
+   dock). Side docks are handled by the layout's side margin. Phones hide the
+   dock on this page and fill the screen, so the command bar sits at the
+   bottom edge. */
+@media (min-width: 769px) {
+	body.dock-reserve.dock-pos-bottom .ssh-workspace {
+		height: calc(
+			100dvh -
+			var(--ssh-workspace-top, 140px) -
+			var(--dock-space, 72px) -
+			40px
+		);
+	}
 }
 
 @keyframes ssh-dot-pulse {
@@ -347,6 +351,128 @@ body.dock-reserve.dock-pos-bottom .ssh-workspace {
 	display: none;
 }
 
+/* Saved commands, one click each; scrolls sideways instead of wrapping. */
+.ssh-quick-commands {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 0 0 auto;
+	padding: 6px 10px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	background: #11110f;
+	border-bottom: 1px solid #1f1d1a;
+	scrollbar-width: none;
+}
+
+.ssh-quick-commands::-webkit-scrollbar {
+	display: none;
+}
+
+.ssh-quick-commands .ant-btn {
+	flex: 0 0 auto;
+	max-width: 180px;
+	overflow: hidden;
+	color: #ddd8d0;
+	font-size: 12px;
+	text-overflow: ellipsis;
+	background: #25231f;
+	border-color: #37342f;
+}
+
+.ssh-quick-commands .ant-btn:not(:disabled):hover {
+	color: #fff;
+	background: #2f2c27;
+	border-color: #4a463f;
+}
+
+.ssh-quick-commands .ant-btn:disabled {
+	color: #5d5952;
+	background: #1a1916;
+	border-color: #2a2824;
+}
+
+.ssh-quick-commands .ant-btn.ant-btn-text {
+	color: #a8a39b;
+	background: transparent;
+	border-color: transparent;
+}
+
+.ssh-quick-command-tip {
+	font-family: Menlo, Monaco, Consolas, monospace;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.ssh-commands-tip {
+	font-size: 12px;
+}
+
+.ssh-rename-hint {
+	display: block;
+	margin-top: 8px;
+	font-size: 12px;
+}
+
+/* Full-screen editor for long command bar input. */
+.ssh-command-editor .ant-drawer-body {
+	display: flex;
+	flex-direction: column;
+	padding: 12px;
+}
+
+.ssh-command-editor textarea.ssh-command-editor-input {
+	min-height: 0;
+	flex: 1 1 auto;
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	/* 16px keeps iOS Safari from zooming in on focus. */
+	font-size: 16px;
+	line-height: 1.5;
+	resize: none;
+}
+
+.ssh-command-item .ant-list-item-action {
+	align-self: flex-start;
+	margin-inline-start: 12px;
+}
+
+.ssh-command-item-body {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ssh-command-item-title {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+}
+
+.ssh-command-item-code {
+	display: block;
+	max-height: 7.5em;
+	overflow: auto;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.ssh-command-item-tools {
+	display: flex;
+	gap: 2px;
+	margin-left: -6px;
+}
+
+.ssh-command-input textarea,
+textarea.ssh-command-input {
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	font-size: 13px;
+}
+
 .ssh-copy-text textarea {
 	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
 	font-size: 12px;
@@ -429,10 +555,31 @@ body.dock-reserve.dock-pos-bottom .ssh-workspace {
 		order: 1;
 	}
 
+	.ssh-session-panel > .ssh-quick-commands {
+		order: 2;
+		border-top: 1px solid #292824;
+		border-bottom: 0;
+	}
+
+	.ssh-quick-commands .ant-btn {
+		height: 30px;
+	}
+
 	.ssh-session-panel > .ssh-mobile-keybar {
 		order: 2;
 		border-top: 1px solid #292824;
 		border-bottom: 0;
+	}
+
+	/* Keys and quick commands stay folded away until the bar's toggle asks
+	   for them, so the terminal keeps the room. */
+	.ssh-session-panel:not(.is-mobile-tools-open) > .ssh-quick-commands,
+	.ssh-session-panel:not(.is-mobile-tools-open) > .ssh-mobile-keybar {
+		display: none;
+	}
+
+	.ssh-session-panel > .ssh-quick-commands + .ssh-mobile-keybar {
+		border-top-color: #1f1d1a;
 	}
 
 	.ssh-session-panel > .ssh-command-bar {
@@ -469,6 +616,44 @@ body.dock-reserve.dock-pos-bottom .ssh-workspace {
 		flex: 0 0 42px;
 	}
 
+	.ssh-command-bar .ssh-command-tools-toggle.ant-btn {
+		width: 34px;
+		flex-basis: 34px;
+		color: #8b867e;
+	}
+
+	.ssh-command-bar .ssh-command-tools-toggle.ant-btn.is-active {
+		color: #e8875f;
+		background: #25231f;
+	}
+
+	/* Input with the full-screen button inside it. */
+	.ssh-command-bar .ant-input-affix-wrapper {
+		min-width: 0;
+		height: 38px;
+		flex: 1 1 auto;
+		padding: 0 2px 0 11px;
+		background: #1b1a18;
+		border-color: #33302b;
+	}
+
+	.ssh-command-bar .ant-input-affix-wrapper .ant-input {
+		height: auto;
+		background: transparent;
+		border: 0;
+	}
+
+	.ssh-command-bar .ant-input-affix-wrapper-disabled {
+		background: #161513;
+	}
+
+	.ssh-command-bar .ant-input-affix-wrapper .ssh-command-expand.ant-btn {
+		width: 32px;
+		height: 32px;
+		flex: 0 0 32px;
+		color: #8b867e;
+	}
+
 	.ssh-status-card {
 		padding: 20px 16px 16px;
 	}
@@ -479,6 +664,64 @@ body.dock-reserve.dock-pos-bottom .ssh-workspace {
 	.ssh-status-dot.is-connecting {
 		animation: none;
 	}
+}
+
+/* Draggable scrollbar for touch screens (see TerminalScrollbar); a mouse
+   uses the terminal's own scrollbar. */
+.ssh-terminal-scrollbar {
+	display: none;
+}
+
+@media (max-width: 768px) {
+	/* A wide, invisible strip to grab; only the slim thumb shows. */
+	.ssh-terminal-scrollbar {
+		position: absolute;
+		top: 4px;
+		right: 0;
+		bottom: 4px;
+		z-index: 4;
+		display: block;
+		width: 22px;
+		touch-action: none;
+		user-select: none;
+		-webkit-user-select: none;
+	}
+
+	.ssh-terminal-scrollbar-thumb {
+		position: absolute;
+		top: 0;
+		right: 3px;
+		width: 5px;
+		background: rgba(214, 211, 205, 0.4);
+		border-radius: 3px;
+		transition: width 0.15s ease, background-color 0.15s ease;
+	}
+
+	.ssh-terminal-scrollbar.is-dragging .ssh-terminal-scrollbar-thumb {
+		width: 8px;
+		background: rgba(232, 135, 95, 0.85);
+	}
+
+	/* The terminal's own scrollbar would sit under the draggable one. */
+	.ssh-terminal-host .xterm-viewport {
+		scrollbar-width: none;
+	}
+
+	.ssh-terminal-host .xterm-viewport::-webkit-scrollbar {
+		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ssh-terminal-scrollbar-thumb {
+		transition: none;
+	}
+}
+
+/* Scrolling past the top or end of the scrollback stays in the terminal
+   instead of dragging the page along. */
+.ssh-terminal-host .xterm-viewport {
+	overscroll-behavior: contain;
 }
 
 /* The window sizes itself to the viewport; the layout's generic min-height

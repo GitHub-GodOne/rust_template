@@ -18,7 +18,23 @@ export type ApiResponse<T> = {
 export type LoginRequest = {
   email: string;
   password: string;
+  captcha_id?: string;
+  captcha_code?: string;
 };
+
+export type CaptchaChallenge = {
+  /** The form should show the captcha before the first attempt. */
+  required: boolean;
+  captcha_id: string;
+  /** `data:image/svg+xml;base64,…` */
+  image: string;
+};
+
+export async function fetchCaptcha() {
+  const response =
+    await apiClient.get<ApiResponse<CaptchaChallenge>>("/auth/captcha");
+  return unwrap(response.data);
+}
 
 export type LoginResponse = {
   token: string;

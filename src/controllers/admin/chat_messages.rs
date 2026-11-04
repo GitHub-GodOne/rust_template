@@ -283,15 +283,17 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:chat:delete").await?;
-    find_message(&ctx, id).await?;
-    chat_message_attachments::Entity::delete_many()
-        .filter(chat_message_attachments::Column::ChatMessageId.eq(id))
-        .exec(&ctx.db)
-        .await?;
-    chat_messages::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:chat:delete").await?;
+    let message = find_message(&ctx, id).await?;
+    // Attachments cascade and are kept with the message.
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("chat_messages", id, &message.title, &actor),
+        "chat_messages",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

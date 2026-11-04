@@ -8,14 +8,20 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    controllers::admin::authorize,
+    controllers::{
+        admin::{authorize, require_reauth, SessionExt},
+        profile::{hash_password, validate_new_password},
+    },
     errors::{ApiError, ApiResult},
     models::{
         _entities::{departments, roles, user_departments, user_roles, users},
+        admin_logs,
         rbac::{self, EffectiveDataScope, SUPER_ADMIN_ROLE},
+        user_sessions::{self, USER_ACTIVE, USER_DISABLED},
         users::RegisterParams,
     },
-    responses::{self, ApiResponse, EmptyData, PageParams, PageResponse},
+    responses::{self, ApiResponse, EmptyData, PageResponse},
+    services::csv_export,
 };
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -27,8 +33,35 @@ pub struct UserRecord {
     pub tenant_id: Option<i32>,
     pub current_department_id: Option<i32>,
     pub is_verified: bool,
+    /// `active` or `disabled`.
+    pub status: String,
+    /// Locked after too many failed logins, until `locked_until`.
+    pub locked: bool,
+    pub locked_until: Option<String>,
+    pub last_login_at: Option<String>,
+    pub last_login_ip: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct UserQueryParams {
+    pub page: Option<u64>,
+    pub page_size: Option<u64>,
+    pub keyword: Option<String>,
+    /// `active` or `disabled`.
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct UserStatusParams {
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct ResetPasswordParams {
+    pub password: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -78,34 +111,19 @@ pub struct SaveUserDepartmentsParams {
     path = "/api/admin/users",
     tag = "admin-users",
     security(("bearer_auth" = [])),
-    params(PageParams),
+    params(UserQueryParams),
     responses((status = 200, body = ApiResponse<PageResponse<UserRecord>>))
 )]
 #[debug_handler]
 pub async fn list(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
-    Query(params): Query<PageParams>,
+    Query(params): Query<UserQueryParams>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:user:list").await?;
-    let scope = rbac::resolve_data_scope(&ctx.db, &actor).await?;
-
-    let page = params.page();
-    let page_size = params.page_size();
-    let mut query =
-        apply_user_scope(users::Entity::find(), &scope).order_by_desc(users::Column::Id);
-
-    if let Some(keyword) = params
-        .keyword
-        .as_deref()
-        .filter(|keyword| !keyword.is_empty())
-    {
-        query = query.filter(
-            Condition::any()
-                .add(users::Column::Name.contains(keyword))
-                .add(users::Column::Email.contains(keyword)),
-        );
-    }
+    let page = params.page.unwrap_or(1).max(1);
+    let page_size = params.page_size.unwrap_or(10).clamp(1, 100);
+    let query = filtered_users(&ctx, &actor, &params).await?;
 
     let total = query.clone().count(&ctx.db).await?;
     let items = query
@@ -228,7 +246,23 @@ pub async fn delete(
         return Err(ApiError::bad_request("cannot delete current user"));
     }
 
-    users::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    // Roles, departments and preferences cascade and come back on
+    // restore; login sessions do not.
+    user_sessions::revoke_user(&ctx.db, id, "deleted", None).await?;
+    let _ = crate::controllers::admin::remote_sessions::close_user_sessions(id);
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "users",
+            id,
+            format!("{}（{}）", user.name, user.email),
+            &actor,
+        ),
+        "users",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -394,6 +428,254 @@ pub async fn save_departments(
     active.update(&ctx.db).await?;
 
     Ok(responses::empty())
+}
+
+async fn filtered_users(
+    ctx: &AppContext,
+    actor: &users::Model,
+    params: &UserQueryParams,
+) -> ApiResult<sea_orm::Select<users::Entity>> {
+    let scope = rbac::resolve_data_scope(&ctx.db, actor).await?;
+    let mut query =
+        apply_user_scope(users::Entity::find(), &scope).order_by_desc(users::Column::Id);
+    if let Some(keyword) = params
+        .keyword
+        .as_deref()
+        .map(str::trim)
+        .filter(|keyword| !keyword.is_empty())
+    {
+        query = query.filter(
+            Condition::any()
+                .add(users::Column::Name.contains(keyword))
+                .add(users::Column::Email.contains(keyword)),
+        );
+    }
+    if let Some(status) = params.status.as_deref().filter(|status| !status.is_empty()) {
+        query = query.filter(users::Column::Status.eq(status));
+    }
+    Ok(query)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/export",
+    tag = "admin-users",
+    security(("bearer_auth" = [])),
+    params(UserQueryParams),
+    responses((status = 200, description = "CSV file (UTF-8 with BOM)", content_type = "text/csv"))
+)]
+#[debug_handler]
+pub async fn export(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<UserQueryParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:user:export").await?;
+    let query = filtered_users(&ctx, &actor, &params).await?;
+    csv_export::ensure_within_limit(query.clone().count(&ctx.db).await?)?;
+    let rows: Vec<Vec<String>> = query
+        .all(&ctx.db)
+        .await?
+        .into_iter()
+        .map(|user| {
+            vec![
+                user.id.to_string(),
+                user.name.clone(),
+                user.email.clone(),
+                if user.is_disabled() {
+                    "已禁用"
+                } else {
+                    "正常"
+                }
+                .to_string(),
+                if user.email_verified_at.is_some() {
+                    "是"
+                } else {
+                    "否"
+                }
+                .to_string(),
+                user.tenant_id.map(|id| id.to_string()).unwrap_or_default(),
+                csv_export::optional_time(user.last_login_at.as_ref()),
+                user.last_login_ip.clone().unwrap_or_default(),
+                csv_export::time(&user.created_at),
+            ]
+        })
+        .collect();
+    record_user_action(
+        &ctx,
+        &actor,
+        "export",
+        &format!("导出用户 {} 条", rows.len()),
+    )
+    .await;
+    csv_export::response(
+        "users",
+        &[
+            "ID",
+            "姓名",
+            "邮箱",
+            "状态",
+            "邮箱已验证",
+            "租户ID",
+            "最后登录时间",
+            "最后登录IP",
+            "创建时间",
+        ],
+        &rows,
+    )
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/users/{id}/status",
+    tag = "admin-users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    request_body = UserStatusParams,
+    responses((status = 200, body = ApiResponse<UserRecord>))
+)]
+#[debug_handler]
+pub async fn update_status(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+    Json(params): Json<UserStatusParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:user:status").await?;
+    let status = match params.status.as_str() {
+        USER_ACTIVE => USER_ACTIVE,
+        USER_DISABLED => USER_DISABLED,
+        _ => return Err(ApiError::bad_request("status 只能是 active 或 disabled")),
+    };
+    let user = find_user(&ctx, id).await?;
+    assert_user_visible(&ctx, &actor, &user).await?;
+    if status == USER_DISABLED {
+        if actor.id == id {
+            return Err(ApiError::bad_request("不能禁用当前登录的账号"));
+        }
+        assert_can_manage_super_admin(&ctx, &actor, &user).await?;
+    }
+    let mut active = user.into_active_model();
+    active.status = Set(status.to_string());
+    let user = active.update(&ctx.db).await?;
+    if status == USER_DISABLED {
+        user_sessions::revoke_user(&ctx.db, id, "disabled", None).await?;
+        let _ = crate::controllers::admin::remote_sessions::close_user_sessions(id);
+    }
+    let (action, verb) = if status == USER_DISABLED {
+        ("disable", "禁用")
+    } else {
+        ("enable", "启用")
+    };
+    record_user_action(&ctx, &actor, action, &format!("{verb}用户：{}", user.email)).await;
+    Ok(responses::ok(UserRecord::from(user)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/users/{id}/reset-password",
+    tag = "admin-users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    request_body = ResetPasswordParams,
+    responses((status = 200, body = ApiResponse<EmptyData>))
+)]
+#[debug_handler]
+pub async fn reset_password(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    session: SessionExt,
+    Path(id): Path<i32>,
+    Json(params): Json<ResetPasswordParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:user:reset_password").await?;
+    let user = find_user(&ctx, id).await?;
+    assert_user_visible(&ctx, &actor, &user).await?;
+    assert_can_manage_super_admin(&ctx, &actor, &user).await?;
+    validate_new_password(&params.password)?;
+    require_reauth(&ctx, &session).await?;
+
+    let email = user.email.clone();
+    let mut active = user.into_active_model();
+    active.password = Set(hash_password(&params.password)?);
+    active.password_changed_at = Set(Some(chrono::Local::now().into()));
+    active.failed_login_attempts = Set(0);
+    active.locked_until = Set(None);
+    active.last_failed_login_at = Set(None);
+    active.update(&ctx.db).await?;
+    // Resetting your own password keeps the session doing it.
+    let keep = (actor.id == id)
+        .then(|| session.as_ref().map(|axum::Extension(session)| session.id))
+        .flatten();
+    user_sessions::revoke_user(&ctx.db, id, "password_reset", keep).await?;
+    record_user_action(
+        &ctx,
+        &actor,
+        "reset_password",
+        &format!("重置用户密码：{email}"),
+    )
+    .await;
+    Ok(responses::empty())
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/users/{id}/unlock",
+    tag = "admin-users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path)),
+    responses((status = 200, body = ApiResponse<UserRecord>))
+)]
+#[debug_handler]
+pub async fn unlock(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<i32>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:user:unlock").await?;
+    let user = find_user(&ctx, id).await?;
+    assert_user_visible(&ctx, &actor, &user).await?;
+    let mut active = user.into_active_model();
+    active.failed_login_attempts = Set(0);
+    active.locked_until = Set(None);
+    active.last_failed_login_at = Set(None);
+    let user = active.update(&ctx.db).await?;
+    record_user_action(&ctx, &actor, "unlock", &format!("解锁用户：{}", user.email)).await;
+    Ok(responses::ok(UserRecord::from(user)))
+}
+
+/// Only a super admin may disable or reset the password of a super admin.
+async fn assert_can_manage_super_admin(
+    ctx: &AppContext,
+    actor: &users::Model,
+    target: &users::Model,
+) -> ApiResult<()> {
+    if rbac::is_super_admin(&ctx.db, target.id).await?
+        && !rbac::is_super_admin(&ctx.db, actor.id).await?
+    {
+        return Err(ApiError::forbidden("只有超级管理员可以管理超级管理员账号"));
+    }
+    Ok(())
+}
+
+async fn record_user_action(ctx: &AppContext, actor: &users::Model, action: &str, message: &str) {
+    admin_logs::record(
+        &ctx.db,
+        admin_logs::LogInput {
+            log_type: "operation",
+            level: "info",
+            module: "users",
+            action,
+            message,
+            user_id: Some(actor.id),
+            operator: Some(actor.email.clone()),
+            method: None,
+            path: Some("/api/admin/users"),
+            status: Some(200),
+            error_message: None,
+        },
+    )
+    .await;
 }
 
 async fn find_user(ctx: &AppContext, id: i32) -> ApiResult<users::Model> {
@@ -608,6 +890,13 @@ impl From<users::Model> for UserRecord {
             tenant_id: user.tenant_id,
             current_department_id: user.current_department_id,
             is_verified: user.email_verified_at.is_some(),
+            locked: user
+                .locked_until
+                .is_some_and(|until| until > chrono::Local::now()),
+            locked_until: user.locked_until.map(|until| until.to_rfc3339()),
+            last_login_at: user.last_login_at.map(|at| at.to_rfc3339()),
+            last_login_ip: user.last_login_ip.clone(),
+            status: user.status.clone(),
             created_at: user.created_at.to_rfc3339(),
             updated_at: user.updated_at.to_rfc3339(),
         }

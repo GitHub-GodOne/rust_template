@@ -1,7 +1,12 @@
 import { Tabs } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { defaultAdminMenus, findMenuByPath, mergeMenuItems } from "../app/menu";
+import {
+  defaultAdminMenus,
+  findMenuByPath,
+  mergeMenuItems,
+  standalonePageTitle,
+} from "../app/menu";
 import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 
@@ -20,6 +25,7 @@ function normalizeAdminPath(pathname: string) {
 
 function fallbackLabel(pathname: string) {
   return (
+    standalonePageTitle(pathname) ??
     pathname.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ") ??
     t("页面")
   );

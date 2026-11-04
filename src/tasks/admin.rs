@@ -657,11 +657,11 @@ mod tests {
             .await
             .unwrap()
             .is_some());
-        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 40);
-        assert_eq!(role_menus::Entity::find().count(&db).await.unwrap(), 40);
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 45);
+        assert_eq!(role_menus::Entity::find().count(&db).await.unwrap(), 45);
         assert_eq!(apply_layout(&db, &rows).await, ids);
-        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 40);
-        assert_eq!(role_menus::Entity::find().count(&db).await.unwrap(), 40);
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 45);
+        assert_eq!(role_menus::Entity::find().count(&db).await.unwrap(), 45);
     }
 
     #[tokio::test]
@@ -744,9 +744,9 @@ mod tests {
             .await
             .unwrap()
             .is_some());
-        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 42);
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 47);
         assert_eq!(apply_layout(&db, &rows).await, ids);
-        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 42);
+        assert_eq!(menus::Entity::find().count(&db).await.unwrap(), 47);
     }
 
     #[test]

@@ -21,6 +21,8 @@ export type CreateSshSessionParams = {
   target_key: string;
   cols?: number;
   rows?: number;
+  /** Tab name; the target name when empty. */
+  title?: string;
 };
 
 export type SshTicketRecord = {
@@ -40,6 +42,8 @@ export type SshSessionRecord = {
   cols: number;
   rows: number;
   current_directory: string;
+  /** Tab name chosen by the user. */
+  title?: string | null;
   created_by: number;
   created_at: string;
   updated_at: string;
@@ -58,6 +62,8 @@ export type SshFileBrowserRecord = {
   session_id: string;
   current_directory: string;
   path: string;
+  /** `null` at a filesystem root (`/`, `C:\`). */
+  parent_path?: string | null;
   directories: SshFileRecord[];
   files: SshFileRecord[];
 };
@@ -79,6 +85,15 @@ export async function createSshSession(payload: CreateSshSessionParams) {
   const response = await apiClient.post<ApiResponse<SshSessionRecord>>(
     "/admin/ssh/sessions",
     payload,
+  );
+  return unwrap(response.data);
+}
+
+/** Renames a tab; an empty title restores the default name. */
+export async function renameSshSession(id: string, title: string) {
+  const response = await apiClient.put<ApiResponse<SshSessionRecord>>(
+    `/admin/ssh/sessions/${id}`,
+    { title },
   );
   return unwrap(response.data);
 }

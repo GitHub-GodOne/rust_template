@@ -225,7 +225,14 @@ pub async fn delete(
         return Err(ApiError::bad_request("department has children or users"));
     }
 
-    departments::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("departments", id, &department.name, &actor),
+        "departments",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

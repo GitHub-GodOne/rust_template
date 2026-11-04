@@ -299,9 +299,14 @@ pub async fn delete(
             "storage profile has buckets or files",
         ));
     }
-    storage_profiles::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("storage_profiles", id, &profile.name, &actor),
+        "storage_profiles",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -458,9 +463,14 @@ pub async fn delete_bucket(
     if file_count > 0 {
         return Err(ApiError::bad_request("storage bucket has files"));
     }
-    storage_buckets::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("storage_buckets", id, &bucket.name, &actor),
+        "storage_buckets",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

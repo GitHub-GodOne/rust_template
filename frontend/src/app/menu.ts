@@ -24,6 +24,15 @@ export type AdminMenuItem = {
   children?: AdminMenuItem[];
 };
 
+/** Titles of pages reached outside the menu (header, account menu). */
+const standalonePageTitles: Record<string, () => string> = {
+  "/admin/profile": () => t("个人中心"),
+};
+
+export function standalonePageTitle(pathname: string) {
+  return standalonePageTitles[pathname]?.();
+}
+
 export const defaultAdminMenus: AdminMenuItem[] = [
   {
     key: "home",
@@ -87,6 +96,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:log:list",
       },
       {
+        key: "system-sessions",
+        label: t("在线会话"),
+        path: "/admin/system/sessions",
+        icon: "laptop",
+        permission: "system:session:list",
+      },
+      {
         key: "system-uploads",
         label: t("素材库"),
         path: "/admin/system/uploads",
@@ -122,6 +138,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:chat:list",
       },
       {
+        key: "system-im",
+        label: t("在线聊天"),
+        path: "/admin/system/im",
+        icon: "comment",
+        permission: "system:im:chat",
+      },
+      {
         key: "system-storage",
         label: t("存储配置"),
         path: "/admin/system/storage",
@@ -134,6 +157,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         path: "/admin/system/settings",
         icon: "control",
         permission: "system:setting:list",
+      },
+      {
+        key: "system-recycle-bin",
+        label: t("回收站"),
+        path: "/admin/system/recycle-bin",
+        icon: "rest",
+        permission: "system:recycle:list",
       },
       {
         key: "system-http-client",
@@ -185,6 +215,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:command:list",
       },
       {
+        key: "system-database",
+        label: t("数据库管理"),
+        path: "/admin/system/database",
+        icon: "database",
+        permission: "system:database:list",
+      },
+      {
         key: "system-project-cli",
         label: t("项目命令"),
         path: "/admin/system/project-cli",
@@ -218,6 +255,13 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         path: "/admin/system/rdp",
         icon: "monitor",
         permission: "system:rdp:list",
+      },
+      {
+        key: "system-remote-audio",
+        label: t("远程音频"),
+        path: "/admin/system/remote-audio",
+        icon: "sound",
+        permission: "system:remote_audio:list",
       },
       {
         key: "system-certificates",

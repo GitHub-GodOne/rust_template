@@ -209,7 +209,14 @@ pub async fn delete(
         return Err(ApiError::bad_request("tenant has users or roles"));
     }
 
-    tenants::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("tenants", id, &tenant.name, &actor),
+        "tenants",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

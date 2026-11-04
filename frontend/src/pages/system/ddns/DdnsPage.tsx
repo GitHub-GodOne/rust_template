@@ -44,7 +44,16 @@ import { isValidManualIpv6 } from "./ipv6";
 import "./ddns.css";
 import { t } from "../../../i18n";
 
-type FormValues = Omit<DdnsConfig, "token_configured"> & { api_token?: string };
+type FormValues = Omit<DdnsConfig, "token_configured" | "record_names"> & {
+  api_token?: string;
+  record_names: string[];
+};
+
+const splitRecordNames = (value: string) =>
+  value
+    .split(/[\s,，]+/)
+    .map((name) => name.trim())
+    .filter(Boolean);
 
 const sourceOptions = [
   { value: "auto", label: t("自动（优先读取网卡，失败再外部查询）") },
@@ -106,7 +115,11 @@ export function DdnsPage() {
 
   useEffect(() => {
     if (configQuery.data) {
-      form.setFieldsValue({ ...configQuery.data, api_token: "" });
+      form.setFieldsValue({
+        ...configQuery.data,
+        api_token: "",
+        record_names: splitRecordNames(configQuery.data.record_names),
+      });
     }
   }, [form, configQuery.data]);
 
@@ -116,6 +129,7 @@ export function DdnsPage() {
       const all = { ...form.getFieldsValue(true), ...values } as FormValues;
       const payload: SaveDdnsConfigParams = {
         ...all,
+        record_names: (all.record_names ?? []).join(","),
         api_token: all.api_token?.trim() || undefined,
       };
       return saveDdnsConfig(payload);
@@ -479,10 +493,16 @@ export function DdnsPage() {
                 name="record_names"
                 label={t("解析域名")}
                 extra={t(
-                  "完整域名，多个用逗号分隔，例如 home.example.com,nas.example.com",
+                  "可填写多个完整域名，回车、逗号或空格分隔，例如 home.example.com、nas.example.com；跨多个 Zone 时请把 Zone ID 留空",
                 )}
               >
-                <Input placeholder="home.example.com" />
+                <Select
+                  mode="tags"
+                  open={false}
+                  suffixIcon={null}
+                  tokenSeparators={[",", "，", " "]}
+                  placeholder="home.example.com, nas.example.com"
+                />
               </Form.Item>
               <Form.Item
                 name="zone_id"

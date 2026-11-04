@@ -296,7 +296,20 @@ export type TrackpadAction =
   | { type: "down"; x: number; y: number; button: number }
   | { type: "up"; x: number; y: number; button: number }
   | { type: "click"; x: number; y: number; button: number }
-  | { type: "scroll"; x: number; y: number; deltaX: number; deltaY: number };
+  | { type: "scroll"; x: number; y: number; deltaX: number; deltaY: number }
+  /**
+   * Two fingers spreading or pinching: `x`/`y` is their midpoint in client
+   * pixels, `scale` the spread ratio since the last action and `deltaX`/`deltaY`
+   * how far the midpoint moved.
+   */
+  | {
+      type: "pinch";
+      x: number;
+      y: number;
+      scale: number;
+      deltaX: number;
+      deltaY: number;
+    };
 
 export type TrackpadOptions = {
   /** Pointer travel per finger pixel. */
@@ -309,6 +322,8 @@ export type TrackpadOptions = {
   tapMaxMs: number;
   /** Holding still this long (ms) starts a left-button drag. */
   longPressMs: number;
+  /** Two fingers spreading apart or closing in zoom instead of scrolling. */
+  pinch: boolean;
 };
 
 export const DEFAULT_TRACKPAD_OPTIONS: TrackpadOptions = {
@@ -317,12 +332,13 @@ export const DEFAULT_TRACKPAD_OPTIONS: TrackpadOptions = {
   tapSlop: 8,
   tapMaxMs: 260,
   longPressMs: 450,
+  pinch: false,
 };
 
 export const LEFT_BUTTON = 0;
 export const RIGHT_BUTTON = 2;
 
-function centroid(points: readonly Point[]): Point {
+export function centroid(points: readonly Point[]): Point {
   const total = points.reduce(
     (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
     { x: 0, y: 0 },
@@ -330,10 +346,18 @@ function centroid(points: readonly Point[]): Point {
   return { x: total.x / points.length, y: total.y / points.length };
 }
 
+/** Distance between the first two touches. */
+export function spread(points: readonly Point[]) {
+  return points.length < 2
+    ? 0
+    : Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+}
+
 /**
  * Laptop-trackpad style touch control, like remote-desktop apps on phones:
  * one finger moves a visible cursor, a tap clicks where the cursor is, a
  * two-finger tap right-clicks, two fingers scroll and a long press drags.
+ * With `pinch`, two fingers spreading or closing zoom the view instead.
  */
 export class TrackpadGesture {
   readonly options: TrackpadOptions;
@@ -346,6 +370,10 @@ export class TrackpadGesture {
   private maxTouches = 0;
   private startedAt = 0;
   private last: Point = { x: 0, y: 0 };
+  private lastSpread = 0;
+  private spreadTravel = 0;
+  /** What the current two-finger gesture turned out to be. */
+  private twoFinger: "scroll" | "pinch" | undefined;
 
   constructor(options: Partial<TrackpadOptions> = {}) {
     this.options = { ...DEFAULT_TRACKPAD_OPTIONS, ...options };
@@ -388,10 +416,13 @@ export class TrackpadGesture {
       this.travel = 0;
       this.maxTouches = 0;
       this.startedAt = now;
+      this.spreadTravel = 0;
+      this.twoFinger = undefined;
     }
     this.maxTouches = Math.max(this.maxTouches, points.length);
     // A finger joining or leaving shifts the centroid; never treat that as movement.
     this.last = centroid(points);
+    this.lastSpread = spread(points);
     return [];
   }
 
@@ -405,6 +436,20 @@ export class TrackpadGesture {
     this.last = next;
     this.travel += Math.hypot(dx, dy);
     if (points.length >= 2 && !this.dragging) {
+      const nextSpread = spread(points);
+      const scale = this.lastSpread > 0 ? nextSpread / this.lastSpread : 1;
+      this.spreadTravel += Math.abs(nextSpread - this.lastSpread);
+      this.lastSpread = nextSpread;
+      if (
+        this.options.pinch &&
+        !this.twoFinger &&
+        Math.max(this.travel, this.spreadTravel) > this.options.tapSlop
+      ) {
+        this.twoFinger = this.spreadTravel > this.travel ? "pinch" : "scroll";
+      }
+      if (this.twoFinger === "pinch") {
+        return [{ type: "pinch", ...next, scale, deltaX: dx, deltaY: dy }];
+      }
       if (!this.hasMoved) {
         return [];
       }
@@ -416,6 +461,10 @@ export class TrackpadGesture {
           deltaY: -dy * this.options.scrollSpeed,
         },
       ];
+    }
+    // The finger left on the glass after a pinch does not move the cursor.
+    if (this.twoFinger === "pinch") {
+      return [];
     }
     this.cursor = this.clamp({
       x: this.cursor.x + dx * this.options.speed,
@@ -447,6 +496,7 @@ export class TrackpadGesture {
     }
     if (remaining.length > 0) {
       this.last = centroid(remaining);
+      this.lastSpread = spread(remaining);
       return [];
     }
     this.active = false;
@@ -454,7 +504,11 @@ export class TrackpadGesture {
       this.dragging = false;
       return [{ type: "up", ...this.cursor, button: LEFT_BUTTON }];
     }
-    if (this.hasMoved || now - this.startedAt > this.options.tapMaxMs) {
+    if (
+      this.hasMoved ||
+      this.spreadTravel > this.options.tapSlop ||
+      now - this.startedAt > this.options.tapMaxMs
+    ) {
       return [];
     }
     return [

@@ -33,7 +33,9 @@ async fn login_admin(request: &TestServer) -> String {
         .await;
     assert_eq!(response.status_code(), 200, "{}", response.text());
     let login: ApiResponse<LoginResponse> = serde_json::from_str(&response.text()).unwrap();
-    login.data.unwrap().token
+    let token = login.data.unwrap().token;
+    super::prepare_data::confirm_password(request, &token, "1234").await;
+    token
 }
 
 async fn get_json(request: &TestServer, token: &str, path: &str) -> (u16, Value) {

@@ -42,7 +42,9 @@ pub(crate) fn frontend_response(path: &str, immutable: bool) -> Response {
     );
     headers.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(if immutable {
+        // Only the bundles under `static/` have content hashes in their names;
+        // the manifest and icons keep their URL across builds.
+        HeaderValue::from_static(if immutable && path.starts_with("static/") {
             "public, max-age=31536000, immutable"
         } else {
             "no-cache"
@@ -73,8 +75,26 @@ fn content_type(path: &str) -> &'static str {
         Some("png") => "image/png",
         Some("svg") => "image/svg+xml",
         Some("txt") => "text/plain; charset=utf-8",
+        Some("webmanifest") => "application/manifest+json; charset=utf-8",
         Some("woff") => "font/woff",
         Some("woff2") => "font/woff2",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::header;
+
+    use super::frontend_response;
+
+    #[test]
+    fn manifest_is_served_as_json_and_revalidated() {
+        let response = frontend_response("manifest.webmanifest", true);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "application/manifest+json; charset=utf-8"
+        );
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-cache");
     }
 }

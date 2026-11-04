@@ -63,9 +63,10 @@ const fn feature(
 
 pub const FEATURES: &[AuditFeature] = &[
     feature("auth", "登录认证", "账号", &["/api/auth"]),
-    feature("user_preferences", "个人偏好", "账号", &["/api/user/"]),
+    feature("user_preferences", "个人中心", "账号", &["/api/user/"]),
     feature("setup", "安装向导", "账号", &["/api/setup"]),
     feature("users", "用户管理", "权限管理", &["/api/admin/users"]),
+    feature("sessions", "在线会话", "权限管理", &["/api/admin/sessions"]),
     feature("roles", "角色管理", "权限管理", &["/api/admin/roles"]),
     feature("menus", "菜单管理", "权限管理", &["/api/admin/menus"]),
     feature(
@@ -89,6 +90,13 @@ pub const FEATURES: &[AuditFeature] = &[
     ),
     feature("dashboard", "首页", "系统管理", &["/api/admin/dashboard"]),
     feature("settings", "系统设置", "系统管理", &["/api/admin/settings"]),
+    feature("api_docs", "接口文档", "系统管理", &["/api/admin/docs"]),
+    feature(
+        "recycle_bin",
+        "回收站",
+        "系统管理",
+        &["/api/admin/recycle-bin"],
+    ),
     feature(
         "dicts",
         "字典管理",
@@ -189,6 +197,18 @@ pub const FEATURES: &[AuditFeature] = &[
     feature("vnc", "VNC 管理", "运维工具", &["/api/admin/vnc"]),
     feature("rdp", "RDP 管理", "运维工具", &["/api/admin/rdp"]),
     feature(
+        "remote_audio",
+        "远程音频",
+        "运维工具",
+        &["/api/admin/remote-audio"],
+    ),
+    feature(
+        "db_manager",
+        "数据库管理",
+        "运维工具",
+        &["/api/admin/db-manager"],
+    ),
+    feature(
         "certificates",
         "证书与域名",
         "运维工具",
@@ -232,6 +252,7 @@ pub const FEATURES: &[AuditFeature] = &[
         "业务",
         &["/api/admin/chat-messages"],
     ),
+    feature("im", "在线聊天", "业务", &["/api/admin/im"]),
     feature(
         "ai_images",
         "AI 生图",

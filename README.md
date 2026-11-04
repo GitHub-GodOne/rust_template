@@ -43,6 +43,18 @@ npm --prefix frontend run build
 cargo build --release --bin gpt_images-cli
 ```
 
+服务运行时（尤其 Windows 会锁住正在运行的 .exe）可以用 A/B 两个同源二进制轮流编译：
+`gpt_images-cli-a` 与 `gpt_images-cli-b` 和 `gpt_images-cli` 完全相同。服务跑着 A 时只编译 B，
+再用 B 重新安装服务即可切换（`service install` 记录的是执行它的那个二进制），下次反过来：
+
+```sh
+cargo build --release --bin gpt_images-cli-b
+./target/release/gpt_images-cli-b service stop
+./target/release/gpt_images-cli-b service install --environment development
+```
+
+注意不带 `--bin` 的 `cargo build` 会编译全部二进制，正在运行的那个会因被占用而失败。
+
 安装后会立即启动、随系统开机启动，并在进程异常退出后自动重启。默认服务名为
 `gpt-images`，默认运行 `server` 模式；命令中的端口和监听地址优先于配置文件。
 

@@ -10,7 +10,7 @@ use loco_rs::{app::AppContext, controller::middleware::MiddlewareLayer, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set};
 
 use crate::{
-    models::{_entities::command_api_keys, users},
+    models::{_entities::command_api_keys, user_sessions, users},
     responses,
 };
 
@@ -108,7 +108,14 @@ async fn authenticate_api_key(
             );
         }
     };
-    let jwt = match owner.generate_jwt(&jwt_config.secret, jwt_config.expiration) {
+    if owner.is_disabled() {
+        return unauthorized("API key owner is disabled");
+    }
+    let jwt = match owner.generate_jwt(
+        &jwt_config.secret,
+        jwt_config.expiration,
+        (user_sessions::API_KEY_CLAIM, serde_json::json!(key.id)),
+    ) {
         Ok(jwt) => jwt,
         Err(error) => {
             tracing::error!(error = error.to_string(), "API key JWT generation failed");
@@ -139,7 +146,7 @@ async fn authenticate_api_key(
     next.run(request).await
 }
 
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer_token(headers: &HeaderMap) -> Option<&str> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?.trim();
     value
         .strip_prefix("Bearer ")
@@ -148,7 +155,7 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
-fn looks_like_jwt(token: &str) -> bool {
+pub(crate) fn looks_like_jwt(token: &str) -> bool {
     let mut segments = token.split('.');
     matches!(
         (segments.next(), segments.next(), segments.next(), segments.next()),

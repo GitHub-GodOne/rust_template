@@ -2,6 +2,8 @@ pub mod access_log;
 pub mod api_key_auth;
 pub mod audit;
 pub mod compression;
+pub mod ip_allowlist;
 pub mod locale;
 pub mod rate_limit;
+pub mod session_guard;
 pub mod static_hosting;

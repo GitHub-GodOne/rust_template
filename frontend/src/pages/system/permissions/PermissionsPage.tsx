@@ -75,6 +75,7 @@ const permissionGroupLabels: Record<string, string> = {
   "system:file": t("文件管理"),
   "system:static_host": t("静态托管"),
   "system:chat": t("聊天管理"),
+  "system:im": t("在线聊天"),
   "system:storage": t("存储配置"),
   "system:setting": t("系统设置"),
   "system:dict": t("字典管理"),

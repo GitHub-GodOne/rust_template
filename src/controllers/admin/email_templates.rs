@@ -248,7 +248,7 @@ pub async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:email_template:delete").await?;
+    let actor = authorize(&ctx, &auth, "system:email_template:delete").await?;
     let template = find_template(&ctx, id).await?;
     if template.is_builtin {
         return Err(ApiError::bad_request(
@@ -256,9 +256,14 @@ pub async fn delete(
         ));
     }
 
-    email_templates::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("email_templates", id, &template.name, &actor),
+        "email_templates",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

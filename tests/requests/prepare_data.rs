@@ -60,6 +60,18 @@ pub async fn init_user_login(request: &TestServer, ctx: &AppContext) -> LoggedIn
     }
 }
 
+/// Confirms the password for this login session so sensitive operations
+/// (remote shells, running commands…) are allowed.
+pub async fn confirm_password(request: &TestServer, token: &str, password: &str) {
+    let (key, value) = auth_header(token);
+    let response = request
+        .post("/api/auth/reauth")
+        .add_header(key, value)
+        .json(&serde_json::json!({ "password": password }))
+        .await;
+    assert_eq!(response.status_code(), 200, "{}", response.text());
+}
+
 pub fn auth_header(token: &str) -> (HeaderName, HeaderValue) {
     let auth_header_value = HeaderValue::from_str(&format!("Bearer {}", &token)).unwrap();
 

@@ -45,7 +45,9 @@ async fn admin_token(request: &TestServer) -> String {
 
     let login_response: ApiResponse<LoginResponse> =
         serde_json::from_str(&response.text()).unwrap();
-    login_response.data.unwrap().token
+    let token = login_response.data.unwrap().token;
+    prepare_data::confirm_password(request, &token, "1234").await;
+    token
 }
 
 async fn wait_for_command_run(
@@ -193,9 +195,9 @@ async fn embedded_frontend_serves_spa_without_hiding_api_routes() {
         assert_eq!(spa_response.status_code(), 200);
         assert!(spa_response.text().contains("id=\"root\""));
 
+        // API docs need a signed-in admin by default (security.api_docs_access).
         let swagger_response = request.get("/swagger-ui").await;
-        assert_eq!(swagger_response.status_code(), 200);
-        assert!(swagger_response.text().contains("SwaggerUIBundle"));
+        assert_eq!(swagger_response.status_code(), 401);
 
         let api_response = request.get("/api/admin/users").await;
         assert_eq!(api_response.status_code(), 401);
@@ -2308,19 +2310,32 @@ async fn super_admin_can_manage_command_runs() {
         let finished = wait_for_command_run(&request, &auth_key, &auth_value, run_id).await;
         assert_eq!(finished["data"]["status"], "success");
         assert_eq!(finished["data"]["exit_code"], 0);
+        // Bash adds the common binary directories; PowerShell switches to
+        // the working directory itself.
+        let expected_prelude = if cfg!(windows) {
+            "Set-Location -LiteralPath"
+        } else {
+            "/opt/homebrew/bin"
+        };
         assert!(finished["data"]["effective_script"]
             .as_str()
             .unwrap_or_default()
-            .contains("/opt/homebrew/bin"));
-        assert!(finished["data"]["output_tail"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("template-updated"));
+            .contains(expected_prelude));
+        assert!(
+            finished["data"]["output_tail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("template-updated"),
+            "{finished}"
+        );
         assert_eq!(
             finished["data"]["preview_path_template"],
             "storage/command-preview-tests/template-{{random:6}}.txt"
         );
-        let preview_path = finished["data"]["preview_path"].as_str().unwrap_or_default();
+        let preview_path = finished["data"]["preview_path"]
+            .as_str()
+            .unwrap_or_default()
+            .replace('\\', "/");
         assert!(preview_path.contains("storage/command-preview-tests/template-"));
         assert!(preview_path.ends_with(".txt"));
         assert!(!preview_path.contains("{{random"));
@@ -2516,7 +2531,8 @@ async fn super_admin_can_manage_command_runs() {
         );
         let rerun_preview_path = rerun_finished["data"]["preview_path"]
             .as_str()
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .replace('\\', "/");
         assert!(rerun_preview_path.contains("storage/command-preview-tests/rerun-"));
         assert!(!rerun_preview_path.contains("{{random"));
         assert!(!rerun_finished["data"]["effective_script"]

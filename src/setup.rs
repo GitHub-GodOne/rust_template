@@ -34,7 +34,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{
     io::AsyncWriteExt,
-    net::TcpListener,
     sync::{oneshot, Mutex},
 };
 use url::Url;
@@ -130,7 +129,7 @@ struct InstallResult {
 }
 
 #[derive(Debug)]
-struct SetupError {
+pub(crate) struct SetupError {
     status: StatusCode,
     code: &'static str,
     message: String,
@@ -260,12 +259,14 @@ fn validate_environment_name(environment: &str) -> Result<(), &'static str> {
 
 async fn run_setup_server(launch: SetupLaunch) -> Result<(), SetupError> {
     let address = format!("{}:{}", launch.binding, launch.port);
-    let listener = TcpListener::bind(&address).await.map_err(|error| {
-        SetupError::internal(
-            "SETUP_BIND_FAILED",
-            format!("failed to bind setup server to {address}: {error}"),
-        )
-    })?;
+    let listener = crate::services::listener::bind(&address)
+        .await
+        .map_err(|error| {
+            SetupError::internal(
+                "SETUP_BIND_FAILED",
+                format!("failed to bind setup server to {address}: {error}"),
+            )
+        })?;
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let state = SetupState {
         launch: Arc::new(launch),
@@ -826,7 +827,7 @@ fn generated_config(launch: &SetupLaunch, database_uri: &str) -> Result<String, 
     })
 }
 
-async fn seed_embedded_defaults(context: &AppContext) -> Result<(), SetupError> {
+pub(crate) async fn seed_embedded_defaults(context: &AppContext) -> Result<(), SetupError> {
     let fixture_root = env::temp_dir().join(format!(
         "gpt-images-setup-fixtures-{}",
         Uuid::new_v4().simple()

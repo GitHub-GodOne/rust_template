@@ -127,6 +127,22 @@
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 49
+  key: backup.telegram_destinations
+  name: Telegram 备份目标
+  group_key: backup
+  value: "[]"
+  value_type: secret
+  default_value: "[]"
+  description: JSON 数组；每项包含 id、name、bot_token、chat_id、enabled，可配置多个群组
+  is_public: false
+  is_builtin: true
+  is_encrypted: true
+  sort_order: 85
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 9
   key: backup.wecom_webhook_url
   name: 企业微信 Webhook
@@ -587,6 +603,182 @@
   is_builtin: true
   is_encrypted: false
   sort_order: 265
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 38
+  key: security.reauth_enabled
+  name: 敏感操作二次确认
+  group_key: security
+  value: "true"
+  value_type: boolean
+  default_value: "true"
+  description: 开启后，执行命令、删除备份、重置密码等敏感操作前需要重新输入登录密码；连接 SSH/VNC/RDP 另由「远程连接二次确认」控制
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 50
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 46
+  key: security.remote_reauth_enabled
+  name: 远程连接二次确认
+  group_key: security
+  value: "false"
+  value_type: boolean
+  default_value: "false"
+  description: 开启后，连接 SSH/VNC/RDP 前也需要重新输入登录密码（需同时开启「敏感操作二次确认」）
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 52
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 39
+  key: security.reauth_minutes
+  name: 二次确认有效分钟数
+  group_key: security
+  value: "10"
+  value_type: number
+  default_value: "10"
+  description: 确认密码后，在这段时间内同一登录会话再做敏感操作不再重复询问
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 55
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 40
+  key: security.admin_ip_allowlist
+  name: 后台访问 IP 白名单
+  group_key: security
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 只允许这些 IP 或网段登录和访问后台接口，多个用逗号或换行分隔，例如 203.0.113.8,192.168.1.0/24；留空表示不限制，本机地址始终允许
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 60
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 41
+  key: security.api_docs_access
+  name: 接口文档访问
+  group_key: security
+  value: "login"
+  value_type: string
+  default_value: "login"
+  description: public：任何人可访问；login：需登录且有接口文档权限（默认）；disabled：完全关闭
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 65
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 42
+  key: security.login_captcha
+  name: 登录验证码
+  group_key: security
+  value: "after_failures"
+  value_type: string
+  default_value: "after_failures"
+  description: off：不需要；after_failures：同一账号或 IP 登录失败后需要（默认）；always：每次登录都需要
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 70
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 43
+  key: security.recycle_bin_retention_days
+  name: 回收站保留天数
+  group_key: security
+  value: "30"
+  value_type: number
+  default_value: "30"
+  description: 删除的数据在回收站保留的天数，到期后自动彻底删除；0 表示永久保留
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 75
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 47
+  key: ssh_manager.keep_sessions_on_restart
+  name: 服务重启后保留 SSH 会话
+  group_key: ssh_manager
+  value: "true"
+  value_type: boolean
+  default_value: "true"
+  description: 开启后，停止或重启服务时 SSH 会话继续在后台运行，服务再次启动后可以接着连接；关闭后，服务退出时一并结束所有 SSH 会话
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 190
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 48
+  key: ssh_manager.scrollback_lines
+  name: SSH 终端保留行数
+  group_key: ssh_manager
+  value: "0"
+  value_type: number
+  default_value: "0"
+  description: 终端能往回翻看、断开重连后能恢复的输出行数；0 表示不限制（最多保留最近 100000 行，避免浏览器内存耗尽），也可填 1 到 100000
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 193
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 44
+  key: ssh_manager.idle_timeout_minutes
+  name: SSH 会话空闲超时（分钟）
+  group_key: ssh_manager
+  value: "0"
+  value_type: number
+  default_value: "0"
+  description: 没有页面接入且没有输入输出超过这么多分钟后自动关闭 SSH 会话；0 表示不自动关闭
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 191
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 45
+  key: ssh_manager.max_session_hours
+  name: SSH 会话最长保持（小时）
+  group_key: ssh_manager
+  value: "0"
+  value_type: number
+  default_value: "0"
+  description: SSH 会话从创建起最多保持多少小时，到时自动关闭；0 表示不限制
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 192
   created_by:
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"

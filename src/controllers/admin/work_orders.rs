@@ -19,6 +19,7 @@ use crate::{
         rbac,
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
+    services::csv_export,
 };
 
 const PRIORITIES: &[&str] = &["low", "normal", "high", "urgent"];
@@ -182,10 +183,33 @@ pub async fn list(
     let actor = authorize(&ctx, &auth, "system:work_order:list").await?;
     let page = params.page();
     let page_size = params.page_size();
-    let mut query = work_orders::Entity::find().order_by_desc(work_orders::Column::Id);
+    let query = filtered_work_orders(&ctx, &actor, &params).await?;
 
+    let total = query.clone().count(&ctx.db).await?;
+    let items = query
+        .paginate(&ctx.db, page_size)
+        .fetch_page(page - 1)
+        .await?
+        .into_iter()
+        .map(WorkOrderRecord::from)
+        .collect();
+
+    Ok(responses::ok(PageResponse {
+        items,
+        page,
+        page_size,
+        total,
+    }))
+}
+
+async fn filtered_work_orders(
+    ctx: &AppContext,
+    actor: &users::Model,
+    params: &WorkOrderQueryParams,
+) -> ApiResult<sea_orm::Select<work_orders::Entity>> {
+    let mut query = work_orders::Entity::find().order_by_desc(work_orders::Column::Id);
     if !rbac::is_super_admin(&ctx.db, actor.id).await? {
-        query = query.filter(visible_condition(&actor));
+        query = query.filter(visible_condition(actor));
     }
     if let Some(keyword) = params.keyword.as_deref().filter(|value| !value.is_empty()) {
         query = query.filter(
@@ -210,22 +234,85 @@ pub async fn list(
     if let Some(creator_id) = params.creator_id {
         query = query.filter(work_orders::Column::CreatorId.eq(creator_id));
     }
+    Ok(query)
+}
 
-    let total = query.clone().count(&ctx.db).await?;
-    let items = query
-        .paginate(&ctx.db, page_size)
-        .fetch_page(page - 1)
+#[utoipa::path(
+    get,
+    path = "/api/admin/work-orders/export",
+    tag = "admin-work-orders",
+    security(("bearer_auth" = [])),
+    params(WorkOrderQueryParams),
+    responses((status = 200, description = "CSV file (UTF-8 with BOM)", content_type = "text/csv"))
+)]
+#[debug_handler]
+pub async fn export(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Query(params): Query<WorkOrderQueryParams>,
+) -> ApiResult<Response> {
+    let actor = authorize(&ctx, &auth, "system:work_order:export").await?;
+    let query = filtered_work_orders(&ctx, &actor, &params).await?;
+    csv_export::ensure_within_limit(query.clone().count(&ctx.db).await?)?;
+    let rows: Vec<Vec<String>> = query
+        .all(&ctx.db)
         .await?
         .into_iter()
-        .map(WorkOrderRecord::from)
+        .map(|order| {
+            let id = |value: Option<i32>| value.map(|id| id.to_string()).unwrap_or_default();
+            vec![
+                order.order_no,
+                order.title,
+                order.category.unwrap_or_default(),
+                order.priority,
+                order.status,
+                order.source,
+                id(order.creator_id),
+                id(order.assignee_id),
+                csv_export::optional_time(order.due_at.as_ref()),
+                csv_export::optional_time(order.resolved_at.as_ref()),
+                csv_export::optional_time(order.closed_at.as_ref()),
+                csv_export::time(&order.created_at),
+                order.description,
+            ]
+        })
         .collect();
-
-    Ok(responses::ok(PageResponse {
-        items,
-        page,
-        page_size,
-        total,
-    }))
+    crate::models::admin_logs::record(
+        &ctx.db,
+        crate::models::admin_logs::LogInput {
+            log_type: "operation",
+            level: "info",
+            module: "work_orders",
+            action: "export",
+            message: &format!("导出工单 {} 条", rows.len()),
+            user_id: Some(actor.id),
+            operator: Some(actor.email.clone()),
+            method: Some("GET"),
+            path: Some("/api/admin/work-orders/export"),
+            status: Some(200),
+            error_message: None,
+        },
+    )
+    .await;
+    csv_export::response(
+        "work-orders",
+        &[
+            "工单号",
+            "标题",
+            "分类",
+            "优先级",
+            "状态",
+            "来源",
+            "创建人ID",
+            "处理人ID",
+            "截止时间",
+            "解决时间",
+            "关闭时间",
+            "创建时间",
+            "描述",
+        ],
+        &rows,
+    )
 }
 
 #[utoipa::path(
@@ -374,20 +461,21 @@ pub async fn delete(
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:work_order:delete").await?;
-    find_visible_work_order(&ctx, &actor, id).await?;
-    work_order_attachments::Entity::delete_many()
-        .filter(work_order_attachments::Column::WorkOrderId.eq(id))
-        .exec(&ctx.db)
-        .await?;
-    work_order_assignments::Entity::delete_many()
-        .filter(work_order_assignments::Column::WorkOrderId.eq(id))
-        .exec(&ctx.db)
-        .await?;
-    work_order_comments::Entity::delete_many()
-        .filter(work_order_comments::Column::WorkOrderId.eq(id))
-        .exec(&ctx.db)
-        .await?;
-    work_orders::Entity::delete_by_id(id).exec(&ctx.db).await?;
+    let order = find_visible_work_order(&ctx, &actor, id).await?;
+    // Comments, assignments and attachments cascade and are kept with it.
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "work_orders",
+            id,
+            format!("{} {}", order.order_no, order.title),
+            &actor,
+        ),
+        "work_orders",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -610,9 +698,19 @@ pub async fn delete_attachment(
         .one(&ctx.db)
         .await?
         .ok_or_else(|| ApiError::bad_request("work order attachment not found"))?;
-    work_order_attachments::Entity::delete_by_id(attachment.id)
-        .exec(&ctx.db)
-        .await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "work_order_attachments",
+            attachment.id,
+            format!("工单 #{id} 的附件 #{}", attachment.id),
+            &actor,
+        ),
+        "work_order_attachments",
+        i64::from(attachment.id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

@@ -10,9 +10,11 @@ import {
   Alert,
   Descriptions,
   Drawer,
+  Form,
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Tag,
   message,
@@ -24,10 +26,12 @@ import {
   createBackup,
   deleteBackup,
   deliverBackup,
+  fetchBackupDestinations,
   fetchBackupRestores,
   fetchBackups,
   restoreBackup,
 } from "../../../api/admin/backups";
+import { fetchDbConnections } from "../../../api/admin/dbManager";
 import { CrudPage } from "../../../components/admin/CrudPage";
 import { CrudToolbar } from "../../../components/admin/CrudToolbar";
 import { DataTable } from "../../../components/admin/DataTable";
@@ -59,7 +63,22 @@ export function BackupsPage() {
   const [detail, setDetail] = useState<BackupRecord | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<BackupRecord | null>(null);
   const [confirmPhrase, setConfirmPhrase] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createConnectionId, setCreateConnectionId] = useState<number>();
+  const [createDeliveryTargets, setCreateDeliveryTargets] = useState("");
+  const [createSelectedTargets, setCreateSelectedTargets] = useState<string[]>(
+    [],
+  );
   const queryClient = useQueryClient();
+
+  const connectionsQuery = useQuery({
+    queryKey: ["db-connections"],
+    queryFn: fetchDbConnections,
+  });
+  const destinationsQuery = useQuery({
+    queryKey: ["backup-destinations"],
+    queryFn: fetchBackupDestinations,
+  });
 
   const backupsQuery = useQuery({
     queryKey: ["admin-backups", page],
@@ -110,6 +129,12 @@ export function BackupsPage() {
 
   const columns: ColumnsType<BackupRecord> = [
     { title: "ID", dataIndex: "id", width: 80 },
+    {
+      title: t("数据库"),
+      dataIndex: "database_label",
+      width: 180,
+      render: (value) => value || t("当前项目数据库"),
+    },
     { title: t("文件名"), dataIndex: "filename", width: 220 },
     {
       title: t("大小"),
@@ -206,7 +231,12 @@ export function BackupsPage() {
               icon: <PlusOutlined />,
               primary: true,
               permission: "system:backup:create",
-              onClick: () => createMutation.mutate(),
+              onClick: () => {
+                setCreateConnectionId(undefined);
+                setCreateDeliveryTargets("");
+                setCreateSelectedTargets([]);
+                setCreateOpen(true);
+              },
             },
           ]}
         />
@@ -222,6 +252,101 @@ export function BackupsPage() {
           onChange: setPage,
         }}
       />
+      <Modal
+        title={t("创建数据库备份")}
+        open={createOpen}
+        okText={t("立即备份")}
+        confirmLoading={createMutation.isPending}
+        onCancel={() => setCreateOpen(false)}
+        onOk={() => {
+          createMutation.mutate(
+            {
+              ...(createConnectionId
+                ? { connection_id: createConnectionId }
+                : {}),
+              ...(createDeliveryTargets.trim() || createSelectedTargets.length
+                ? {
+                    delivery_targets: [
+                      ...createSelectedTargets,
+                      ...createDeliveryTargets
+                        .split(/[\n,，]/)
+                        .map((value) => value.trim())
+                        .filter(Boolean),
+                    ].filter(
+                      (value, index, values) => values.indexOf(value) === index,
+                    ),
+                  }
+                : {}),
+            },
+            { onSuccess: () => setCreateOpen(false) },
+          );
+        }}
+      >
+        <Form layout="vertical">
+          <Form.Item label={t("备份数据库")}>
+            <Select
+              allowClear
+              value={createConnectionId}
+              loading={connectionsQuery.isLoading}
+              placeholder={t("当前项目数据库（默认）")}
+              options={(connectionsQuery.data ?? [])
+                .filter((connection) => connection.db_type === "postgres")
+                .map((connection) => ({
+                  value: connection.id,
+                  label: `${connection.name} (${connection.db_type})`,
+                }))}
+              onChange={(value: number | undefined) =>
+                setCreateConnectionId(value)
+              }
+            />
+          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            message={t(
+              "留空时备份当前项目数据库；选择已保存的连接后，将按该连接执行 PostgreSQL 备份。",
+            )}
+          />
+          <Form.Item label={t("推送目标")}>
+            <Select
+              mode="multiple"
+              allowClear
+              value={createSelectedTargets}
+              loading={destinationsQuery.isLoading}
+              placeholder={t("选择已配置的 Telegram 目标")}
+              options={[
+                { value: "telegram", label: t("Telegram（全部目标）") },
+                ...(destinationsQuery.data ?? [])
+                  .filter((destination) => destination.enabled)
+                  .map((destination) => ({
+                    value: `telegram:${destination.id}`,
+                    label: `${destination.name ?? destination.id} (Telegram)`,
+                  })),
+                { value: "wecom", label: "WeCom" },
+                { value: "dingtalk", label: "DingTalk" },
+                { value: "custom", label: t("自定义 Webhook") },
+              ]}
+              onChange={(values: string[]) => setCreateSelectedTargets(values)}
+              style={{ width: "100%", marginBottom: 8 }}
+            />
+            <Input.TextArea
+              value={createDeliveryTargets}
+              autoSize={{ minRows: 2, maxRows: 4 }}
+              placeholder={t(
+                "可选：telegram:目标ID、wecom、dingtalk 或 custom；多个目标用逗号或换行分隔",
+              )}
+              onChange={(event) => setCreateDeliveryTargets(event.target.value)}
+            />
+          </Form.Item>
+          <Alert
+            type="warning"
+            showIcon
+            message={t(
+              "Telegram 目标在系统设置的 backup.telegram_destinations JSON 中配置；国内网络可在 http_client.runtime JSON 中将 proxy_enabled 设为 true 并填写 proxy_url（HTTP/HTTPS/SOCKS5）。",
+            )}
+          />
+        </Form>
+      </Modal>
       <Drawer
         title={t("备份详情")}
         open={Boolean(detail)}
@@ -231,6 +356,9 @@ export function BackupsPage() {
         {detail && (
           <Space direction="vertical" size="middle" style={{ width: "100%" }}>
             <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label={t("数据库")}>
+                {detail.database_label ?? t("当前项目数据库")}
+              </Descriptions.Item>
               <Descriptions.Item label={t("文件名")}>
                 {detail.filename}
               </Descriptions.Item>

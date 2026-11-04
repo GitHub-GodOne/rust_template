@@ -398,8 +398,11 @@ fn render_systemd_unit(definition: &ServiceDefinition) -> String {
     } else {
         "multi-user.target"
     };
+    // `KillMode=process`: stopping the service signals the server only, so
+    // SSH session hosts can outlive it (`ssh_manager.keep_sessions_on_restart`);
+    // the server ends the commands it started itself on shutdown.
     format!(
-        "[Unit]\nDescription=GPT Images ({name})\nWants=network-online.target\nAfter=network-online.target\n\n[Service]\nType=simple\n{user}WorkingDirectory={working_directory}\nExecStart={executable} {arguments}\nRestart=always\nRestartSec=5\nTimeoutStopSec=30\n\n[Install]\nWantedBy={wanted_by}\n",
+        "[Unit]\nDescription=GPT Images ({name})\nWants=network-online.target\nAfter=network-online.target\n\n[Service]\nType=simple\n{user}WorkingDirectory={working_directory}\nExecStart={executable} {arguments}\nRestart=always\nRestartSec=5\nTimeoutStopSec=30\nKillMode=process\n\n[Install]\nWantedBy={wanted_by}\n",
         name = definition.name,
         working_directory = systemd_quote(&definition.working_directory.to_string_lossy()),
     )
@@ -470,23 +473,54 @@ fn render_windows_task(definition: &ServiceDefinition) -> String {
                 xml_escape(user)
             ),
             format!(
-                "      <UserId>{}</UserId>\n      <LogonType>InteractiveToken</LogonType>\n      <RunLevel>HighestAvailable</RunLevel>",
+                "      <UserId>{}</UserId>\n      <LogonType>InteractiveToken</LogonType>\n      <RunLevel>LeastPrivilege</RunLevel>",
                 xml_escape(user)
             ),
         )
     } else {
         (
-            "    <BootTrigger>\n      <Enabled>true</Enabled>\n    </BootTrigger>".to_string(),
-            "      <UserId>S-1-5-18</UserId>\n      <LogonType>ServiceAccount</LogonType>\n      <RunLevel>HighestAvailable</RunLevel>".to_string(),
+            // Give the network and database services a moment to come up before
+            // the application opens its connection pool after a cold boot.
+            "    <BootTrigger>\n      <Enabled>true</Enabled>\n      <Delay>PT30S</Delay>\n    </BootTrigger>".to_string(),
+            // A boot-triggered task runs before an interactive logon.  Explicitly
+            // selecting ServiceAccount is required for the SYSTEM principal;
+            // leaving LogonType out makes Task Scheduler treat it as an
+            // interactive task on some Windows versions, so the task is present
+            // but never starts after a reboot.
+            "      <UserId>S-1-5-18</UserId>\n      <LogonType>ServiceAccount</LogonType>\n      <RunLevel>HighestAvailable</RunLevel>"
+                .to_string(),
         )
     };
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Task version=\"1.4\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n  <RegistrationInfo>\n    <Description>GPT Images ({name})</Description>\n  </RegistrationInfo>\n  <Triggers>\n{trigger}\n  </Triggers>\n  <Principals>\n    <Principal id=\"Author\">\n{principal}\n    </Principal>\n  </Principals>\n  <Settings>\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n    <AllowHardTerminate>true</AllowHardTerminate>\n    <StartWhenAvailable>true</StartWhenAvailable>\n    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>\n    <AllowStartOnDemand>true</AllowStartOnDemand>\n    <Enabled>true</Enabled>\n    <Hidden>false</Hidden>\n    <RunOnlyIfIdle>false</RunOnlyIfIdle>\n    <WakeToRun>false</WakeToRun>\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\n    <RestartOnFailure>\n      <Interval>PT10S</Interval>\n      <Count>999</Count>\n    </RestartOnFailure>\n    <Priority>7</Priority>\n  </Settings>\n  <Actions Context=\"Author\">\n    <Exec>\n      <Command>{executable}</Command>\n      <Arguments>{arguments}</Arguments>\n      <WorkingDirectory>{working_directory}</WorkingDirectory>\n    </Exec>\n  </Actions>\n</Task>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n<Task version=\"1.4\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n  <RegistrationInfo>\n    <Description>GPT Images ({name})</Description>\n  </RegistrationInfo>\n  <Triggers>\n{trigger}\n  </Triggers>\n  <Principals>\n    <Principal id=\"Author\">\n{principal}\n    </Principal>\n  </Principals>\n  <Settings>\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n    <AllowHardTerminate>true</AllowHardTerminate>\n    <StartWhenAvailable>true</StartWhenAvailable>\n    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>\n    <AllowStartOnDemand>true</AllowStartOnDemand>\n    <Enabled>true</Enabled>\n    <Hidden>false</Hidden>\n    <RunOnlyIfIdle>false</RunOnlyIfIdle>\n    <WakeToRun>false</WakeToRun>\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\n    <RestartOnFailure>\n      <Interval>PT1M</Interval>\n      <Count>999</Count>\n    </RestartOnFailure>\n    <Priority>7</Priority>\n  </Settings>\n  <Actions Context=\"Author\">\n    <Exec>\n      <Command>{executable}</Command>\n      <Arguments>{arguments}</Arguments>\n      <WorkingDirectory>{working_directory}</WorkingDirectory>\n    </Exec>\n  </Actions>\n</Task>\n",
         name = xml_escape(&definition.name),
-        executable = xml_escape(&definition.executable.to_string_lossy()),
+        executable = xml_escape(&windows_display_path(&definition.executable)),
         arguments = xml_escape(&arguments),
-        working_directory = xml_escape(&definition.working_directory.to_string_lossy()),
+        working_directory = xml_escape(&windows_display_path(&definition.working_directory)),
     )
+}
+
+/// `canonicalize` returns verbatim `\\?\` paths on Windows, which Task Scheduler
+/// cannot use as the command or working directory.
+#[cfg(any(test, target_os = "windows"))]
+fn windows_display_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    path.strip_prefix(r"\\?\UNC\").map_or_else(
+        || {
+            path.strip_prefix(r"\\?\")
+                .map_or_else(|| path.to_string(), str::to_string)
+        },
+        |unc| format!(r"\\{unc}"),
+    )
+}
+
+/// `schtasks /XML` only accepts UTF-16 task definitions.
+#[cfg(any(test, target_os = "windows"))]
+fn encode_windows_task(task_xml: &str) -> Vec<u8> {
+    std::iter::once(0xFEFF)
+        .chain(task_xml.encode_utf16())
+        .flat_map(u16::to_le_bytes)
+        .collect()
 }
 
 #[cfg(any(test, target_os = "windows"))]
@@ -862,8 +896,8 @@ mod platform {
 #[cfg(target_os = "windows")]
 mod platform {
     use super::{
-        env, fs, message, render_windows_task, run_command, Command, Result, ServiceDefinition,
-        TargetArgs,
+        encode_windows_task, env, fs, message, render_windows_task, run_command, Command, Result,
+        ServiceDefinition, TargetArgs,
     };
 
     pub fn install(definition: &ServiceDefinition, no_start: bool) -> Result<()> {
@@ -880,7 +914,7 @@ mod platform {
             definition.name,
             std::process::id()
         ));
-        fs::write(&task_file, task_xml).map_err(|error| {
+        fs::write(&task_file, encode_windows_task(&task_xml)).map_err(|error| {
             message(format!(
                 "failed to write temporary task definition: {error}"
             ))
@@ -894,7 +928,23 @@ mod platform {
             .arg("/F");
         let result = run_command(&mut create, "install Windows startup task");
         let _ = fs::remove_file(&task_file);
-        result?;
+        result.map_err(|error| {
+            if definition.user_scope {
+                error
+            } else {
+                message(format!(
+                    "{error}; a system-wide task runs as SYSTEM at boot and must be installed from an elevated (Run as administrator) terminal, or pass --user for a per-user logon task"
+                ))
+            }
+        })?;
+        // `/XML` imports the Enabled value, but explicitly enabling the task
+        // also repairs an existing task that was disabled in Task Scheduler.
+        let mut enable = Command::new("schtasks.exe");
+        enable
+            .args(["/Change", "/TN"])
+            .arg(&definition.name)
+            .arg("/ENABLE");
+        run_command(&mut enable, "enable Windows startup task")?;
         if !no_start {
             start(&target)?;
         }
@@ -981,8 +1031,9 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::{
-        launchd_log_directory, render_launchd_plist, render_systemd_unit, render_windows_task,
-        valid_service_name, windows_quote_argument, xml_escape, Path, PathBuf, ServiceDefinition,
+        encode_windows_task, launchd_log_directory, render_launchd_plist, render_systemd_unit,
+        render_windows_task, valid_service_name, windows_display_path, windows_quote_argument,
+        xml_escape, Path, PathBuf, ServiceDefinition,
     };
 
     fn definition(user_scope: bool) -> ServiceDefinition {
@@ -1009,6 +1060,7 @@ mod tests {
         assert!(unit.contains("User=app-user"));
         assert!(unit.contains("WantedBy=multi-user.target"));
         assert!(unit.contains("Restart=always"));
+        assert!(unit.contains("KillMode=process"));
         assert!(unit.contains("\"/opt/GPT Images/gpt_images-cli\""));
         assert!(unit.contains("\"--port\" \"5150\""));
     }
@@ -1052,10 +1104,31 @@ mod tests {
     fn windows_task_runs_at_boot_and_restarts_on_failure() {
         let task = render_windows_task(&definition(false));
         assert!(task.contains("<BootTrigger>"));
+        assert!(task.contains("<Delay>PT30S</Delay>"));
         assert!(task.contains("<UserId>S-1-5-18</UserId>"));
+        assert!(task.contains("<LogonType>ServiceAccount</LogonType>"));
         assert!(task.contains("<RestartOnFailure>"));
         assert!(task.contains("<Command>/opt/GPT Images/gpt_images-cli</Command>"));
         assert!(task.contains("<Arguments>-e production start --no-banner --port 5150</Arguments>"));
+    }
+
+    #[test]
+    fn windows_task_is_utf16_with_plain_paths() {
+        let task = render_windows_task(&definition(false));
+        assert!(task.starts_with("<?xml version=\"1.0\" encoding=\"UTF-16\"?>"));
+        assert_eq!(
+            encode_windows_task("<a/>"),
+            [0xFF, 0xFE, b'<', 0, b'a', 0, b'/', 0, b'>', 0]
+        );
+        assert_eq!(
+            windows_display_path(Path::new(r"\\?\C:\GPT Images\app.exe")),
+            r"C:\GPT Images\app.exe"
+        );
+        assert_eq!(
+            windows_display_path(Path::new(r"\\?\UNC\server\share\app")),
+            r"\\server\share\app"
+        );
+        assert_eq!(windows_display_path(Path::new("/opt/app")), "/opt/app");
     }
 
     #[test]

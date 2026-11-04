@@ -8,6 +8,7 @@ import { t } from "../i18n";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { HomePage } from "../pages/home/HomePage";
+import { ProfilePage } from "../pages/profile/ProfilePage";
 import { SetupPage } from "../pages/setup/SetupPage";
 import { AiImagesPage } from "../pages/system/ai-images/AiImagesPage";
 import { ApiKeysPage } from "../pages/system/api-keys/ApiKeysPage";
@@ -16,6 +17,7 @@ import { CertificatesPage } from "../pages/system/certificates/CertificatesPage"
 import { ChatMessagesPage } from "../pages/system/chat-messages/ChatMessagesPage";
 import { CommandsPage } from "../pages/system/commands/CommandsPage";
 import { ContentPage } from "../pages/system/content/ContentPage";
+import { DatabasePage } from "../pages/system/database/DatabasePage";
 import { DdnsPage } from "../pages/system/ddns/DdnsPage";
 import { DepartmentsPage } from "../pages/system/departments/DepartmentsPage";
 import { DockSettingsPage } from "../pages/system/dock/DockSettingsPage";
@@ -23,6 +25,7 @@ import { DocsPage } from "../pages/system/docs/DocsPage";
 import { EmailTemplatesPage } from "../pages/system/email-templates/EmailTemplatesPage";
 import { FilesPage } from "../pages/system/files/FilesPage";
 import { HttpClientPage } from "../pages/system/http-client/HttpClientPage";
+import { ImPage } from "../pages/system/im/ImPage";
 import { LogsPage } from "../pages/system/logs/LogsPage";
 import { MenusPage } from "../pages/system/menus/MenusPage";
 import { MonitoringPage } from "../pages/system/monitoring/MonitoringPage";
@@ -30,8 +33,11 @@ import { NotificationsPage } from "../pages/system/notifications/NotificationsPa
 import { PaymentsPage } from "../pages/system/payments/PaymentsPage";
 import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
 import { ProjectCliPage } from "../pages/system/project-cli/ProjectCliPage";
+import { RecycleBinPage } from "../pages/system/recycle-bin/RecycleBinPage";
+import { RemoteAudioPage } from "../pages/system/remote-audio/RemoteAudioPage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
 import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
+import { SessionsPage } from "../pages/system/sessions/SessionsPage";
 import { SettingsPage } from "../pages/system/settings/SettingsPage";
 import { StaticHostingPage } from "../pages/system/static-hosting/StaticHostingPage";
 import { StorageProfilesPage } from "../pages/system/storage/StorageProfilesPage";
@@ -316,6 +322,14 @@ export function AppRouter() {
             }
           />
           <Route
+            path="system/im"
+            element={
+              <RequirePermission permission="system:im:chat">
+                <ImPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="system/storage"
             element={
               <RequirePermission permission="system:storage:list">
@@ -332,6 +346,23 @@ export function AppRouter() {
             }
           />
           <Route path="system/dock" element={<DockSettingsPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route
+            path="system/sessions"
+            element={
+              <RequirePermission permission="system:session:list">
+                <SessionsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/recycle-bin"
+            element={
+              <RequirePermission permission="system:recycle:list">
+                <RecycleBinPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="system/project-cli"
             element={
@@ -441,6 +472,22 @@ export function AppRouter() {
             element={
               <RequirePermission permission="system:rdp:list">
                 {null}
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/database"
+            element={
+              <RequirePermission permission="system:database:list">
+                <DatabasePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="system/remote-audio"
+            element={
+              <RequirePermission permission="system:remote_audio:list">
+                <RemoteAudioPage />
               </RequirePermission>
             }
           />

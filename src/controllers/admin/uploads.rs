@@ -1146,9 +1146,21 @@ pub async fn delete(
     let user = authorize(&ctx, &auth, "system:upload:delete").await?;
     let file = find_file(&ctx, id).await?;
     let original_name = file.original_name.clone();
+    let previous_status = file.status.clone();
     let mut active = file.into_active_model();
     active.status = Set("deleted".to_string());
     active.update(&ctx.db).await?;
+    // Already a soft delete: the bin remembers the status to restore, and
+    // purging it removes the record.
+    crate::services::recycle_bin::record(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("uploads", id, &original_name, &user),
+        crate::services::recycle_bin::Payload::UploadStatus {
+            id,
+            status: previous_status,
+        },
+    )
+    .await?;
     record_upload_log(
         &ctx,
         &user,

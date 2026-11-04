@@ -25,11 +25,18 @@ import type { MenuProps } from "antd";
 import { Fragment, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { current, logout, switchCurrentDepartment } from "../api/auth";
-import { defaultAdminMenus, mergeMenuItems } from "../app/menu";
+import {
+  defaultAdminMenus,
+  mergeMenuItems,
+  standalonePageTitle,
+} from "../app/menu";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 import { useUiStore } from "../stores/ui";
+import { NotificationBell } from "./NotificationBell";
+import { RemoteAudioIndicator } from "./RemoteAudioIndicator";
+import { ThemeSwitch } from "./ThemeSwitch";
 import { findMenuTrail, menuLabel } from "./menuTrail";
 
 const { Header } = Layout;
@@ -91,8 +98,8 @@ export function HeaderBar({
     {
       key: "profile",
       icon: <UserOutlined />,
-      label: t("个人资料"),
-      disabled: true,
+      label: t("个人中心"),
+      onClick: () => navigate("/admin/profile"),
     },
     {
       key: "settings",
@@ -197,6 +204,9 @@ export function HeaderBar({
             onChange={handleDepartmentChange}
           />
         ) : null}
+        <RemoteAudioIndicator />
+        <NotificationBell />
+        <ThemeSwitch />
         <LanguageSwitch />
         <Dropdown
           menu={{ items: menuItems }}
@@ -237,7 +247,7 @@ function PageTrail() {
     return (
       <div className="admin-header-title-wrap">
         <Typography.Text strong className="admin-header-title">
-          {t("后台管理")}
+          {standalonePageTitle(pathname) ?? t("后台管理")}
         </Typography.Text>
       </div>
     );

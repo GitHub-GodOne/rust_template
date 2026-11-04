@@ -1,6 +1,7 @@
 import axios from "axios";
 import { locale, t } from "../i18n";
 import { useAuthStore } from "../stores/auth";
+import { askForReauth } from "./reauth";
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -78,6 +79,26 @@ apiClient.interceptors.response.use(
       Boolean(token) &&
       originalRequest?.headers?.Authorization === `Bearer ${token}`;
     let requestError = error;
+
+    // Sensitive operations: confirm the password once, then retry.
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.code === "REAUTH_REQUIRED" &&
+      originalRequest &&
+      !originalRequest._reauthRetry
+    ) {
+      originalRequest._reauthRetry = true;
+      if (await askForReauth()) {
+        return apiClient(originalRequest);
+      }
+      return Promise.reject(
+        new ApiRequestError(
+          t("已取消：需要确认密码才能继续"),
+          403,
+          "REAUTH_CANCELLED",
+        ),
+      );
+    }
 
     if (
       error.response?.status === 401 &&

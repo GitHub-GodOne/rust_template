@@ -5,10 +5,15 @@ use crate::{
     mailers::auth::AuthMailer,
     models::{
         _entities::{departments, tenants, user_departments, users},
-        admin_logs, rbac, refresh_tokens,
+        admin_logs, rbac, refresh_tokens, user_sessions,
         users::{LoginParams, RegisterParams},
     },
     responses::{self, ApiResponse, EmptyData},
+    services::{
+        captcha,
+        client_info::ClientInfo,
+        security_settings::{self, CaptchaMode},
+    },
     views::auth::{CurrentResponse, LoginResponse, RefreshResponse},
 };
 use chrono::{Duration, Local, TimeZone};
@@ -59,16 +64,205 @@ pub struct CurrentDepartmentParams {
     pub department_id: Option<i32>,
 }
 
-fn jwt_for_user(ctx: &AppContext, user: &users::Model) -> ApiResult<String> {
-    let jwt_secret = ctx.config.get_jwt_config()?;
-    user.generate_jwt(&jwt_secret.secret, jwt_secret.expiration)
-        .map_err(|_| ApiError::unauthorized("unauthorized!"))
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CaptchaResponse {
+    /// Login form should show the captcha before the first attempt.
+    pub required: bool,
+    pub captcha_id: String,
+    /// `data:image/svg+xml;base64,…`
+    pub image: String,
 }
 
-async fn login_response(ctx: &AppContext, user: &users::Model) -> ApiResult<LoginResponse> {
-    let token = jwt_for_user(ctx, user)?;
-    let refresh_token = refresh_tokens::Model::issue(&ctx.db, user).await?;
+fn jwt_for_session(
+    ctx: &AppContext,
+    user: &users::Model,
+    session: &user_sessions::Model,
+) -> ApiResult<String> {
+    let jwt_secret = ctx.config.get_jwt_config()?;
+    user.generate_jwt(
+        &jwt_secret.secret,
+        jwt_secret.expiration,
+        (
+            user_sessions::SID_CLAIM,
+            serde_json::Value::String(session.sid.clone()),
+        ),
+    )
+    .map_err(|_| ApiError::unauthorized("unauthorized!"))
+}
+
+/// Opens a login session and returns its tokens.
+async fn login_response(
+    ctx: &AppContext,
+    user: &users::Model,
+    client: &ClientInfo,
+) -> ApiResult<LoginResponse> {
+    let session = user_sessions::start(&ctx.db, user, client).await?;
+    let token = jwt_for_session(ctx, user, &session)?;
+    let refresh_token = refresh_tokens::Model::issue(&ctx.db, user, &session).await?;
+    let mut active = user.clone().into_active_model();
+    active.last_login_at = Set(Some(Local::now().into()));
+    active.last_login_ip = Set(client.ip.clone());
+    active.update(&ctx.db).await?;
     Ok(LoginResponse::new(user, &token, &refresh_token.token))
+}
+
+fn disabled_error() -> ApiError {
+    ApiError::unauthorized("账号已被禁用，请联系管理员").with_code("ACCOUNT_DISABLED")
+}
+
+/// Whether this login attempt must carry a solved captcha.
+fn captcha_required(mode: CaptchaMode, client: &ClientInfo, user: Option<&users::Model>) -> bool {
+    match mode {
+        CaptchaMode::Off => false,
+        CaptchaMode::Always => true,
+        CaptchaMode::AfterFailures => {
+            client
+                .ip
+                .as_deref()
+                .is_some_and(captcha::ip_failed_recently)
+                || user.is_some_and(|user| user.failed_login_attempts > 0)
+        }
+    }
+}
+
+fn check_captcha(params: &LoginParams) -> ApiResult<()> {
+    let (Some(id), Some(code)) = (params.captcha_id.as_deref(), params.captcha_code.as_deref())
+    else {
+        return Err(ApiError::bad_request("请输入验证码").with_code("CAPTCHA_REQUIRED"));
+    };
+    if code.trim().is_empty() {
+        return Err(ApiError::bad_request("请输入验证码").with_code("CAPTCHA_REQUIRED"));
+    }
+    if !captcha::verify(id, code) {
+        return Err(
+            ApiError::bad_request("验证码错误或已过期，请重新输入").with_code("CAPTCHA_INVALID")
+        );
+    }
+    Ok(())
+}
+
+fn record_ip_failure(client: &ClientInfo) {
+    if let Some(ip) = client.ip.as_deref() {
+        captcha::record_failure(ip);
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct ReauthParams {
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct ReauthResponse {
+    /// Sensitive operations are allowed without asking again for this long.
+    pub valid_minutes: i64,
+}
+
+/// Wrong confirmations in a row per session; the session ends after this
+/// many so a stolen token cannot be used to guess the password.
+const MAX_REAUTH_FAILURES: u32 = 5;
+static REAUTH_FAILURES: OnceLock<std::sync::Mutex<std::collections::HashMap<i32, u32>>> =
+    OnceLock::new();
+
+fn reauth_failures(session_id: i32, failed: bool) -> u32 {
+    let store = REAUTH_FAILURES.get_or_init(Default::default);
+    let Ok(mut store) = store.lock() else {
+        return 0;
+    };
+    if failed {
+        let count = store.entry(session_id).or_insert(0);
+        *count += 1;
+        *count
+    } else {
+        store.remove(&session_id);
+        0
+    }
+}
+
+/// Confirms the password before a sensitive operation (see
+/// `require_reauth`).
+#[utoipa::path(
+    post,
+    path = "/api/auth/reauth",
+    tag = "auth",
+    security(("bearer_auth" = [])),
+    request_body = ReauthParams,
+    responses((status = 200, body = ApiResponse<ReauthResponse>))
+)]
+#[debug_handler]
+pub async fn reauth(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
+    Json(params): Json<ReauthParams>,
+) -> ApiResult<Response> {
+    let user = users::Model::find_by_pid(&ctx.db, &auth.claims.pid).await?;
+    let Some(axum::Extension(session)) = session else {
+        return Err(ApiError::bad_request("API 密钥调用不需要确认密码"));
+    };
+    if !user.verify_password(&params.password) {
+        let failures = reauth_failures(session.id, true);
+        admin_logs::record(
+            &ctx.db,
+            admin_logs::LogInput {
+                log_type: "login",
+                level: "warn",
+                module: "auth",
+                action: "reauth_failed",
+                message: "敏感操作确认失败：密码错误",
+                user_id: Some(user.id),
+                operator: Some(user.email.clone()),
+                method: Some("POST"),
+                path: Some("/api/auth/reauth"),
+                status: Some(400),
+                error_message: Some(format!("attempts={failures}")),
+            },
+        )
+        .await;
+        if failures >= MAX_REAUTH_FAILURES {
+            reauth_failures(session.id, false);
+            user_sessions::revoke(&ctx.db, session.id, "reauth_failed").await?;
+            return Err(
+                ApiError::unauthorized("密码错误次数过多，已退出登录").with_code("SESSION_EXPIRED")
+            );
+        }
+        return Err(ApiError::bad_request(format!(
+            "密码不正确，还可尝试 {} 次",
+            MAX_REAUTH_FAILURES - failures
+        ))
+        .with_code("WRONG_PASSWORD"));
+    }
+    reauth_failures(session.id, false);
+    user_sessions::mark_reauth(&ctx.db, session.id).await?;
+    let settings = security_settings::load(&ctx.db).await?;
+    Ok(responses::ok(ReauthResponse {
+        valid_minutes: settings.reauth_minutes,
+    }))
+}
+
+/// New captcha image for the login form.
+#[utoipa::path(
+    get,
+    path = "/api/auth/captcha",
+    tag = "auth",
+    responses((status = 200, body = ApiResponse<CaptchaResponse>))
+)]
+#[debug_handler]
+pub async fn login_captcha(
+    State(ctx): State<AppContext>,
+    client: ClientInfo,
+) -> ApiResult<Response> {
+    use base64::Engine as _;
+    let settings = security_settings::load(&ctx.db).await?;
+    let challenge = captcha::create();
+    Ok(responses::ok(CaptchaResponse {
+        required: captcha_required(settings.login_captcha, &client, None),
+        captcha_id: challenge.id,
+        image: format!(
+            "data:image/svg+xml;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(challenge.svg)
+        ),
+    }))
 }
 
 /// Register function creates a new user with the given parameters and sends a
@@ -281,35 +475,43 @@ async fn reset_login_failures(ctx: &AppContext, user: &users::Model) -> ApiResul
 #[debug_handler]
 pub async fn login(
     State(ctx): State<AppContext>,
+    client: ClientInfo,
     Json(params): Json<LoginParams>,
 ) -> ApiResult<Response> {
-    let user = match users::Model::find_by_email(&ctx.db, &params.email).await {
-        Ok(user) => user,
-        Err(ModelError::EntityNotFound) => {
-            tracing::debug!(
-                email = %params.email,
-                "login attempt with non-existent email"
-            );
-            admin_logs::record(
-                &ctx.db,
-                admin_logs::LogInput {
-                    log_type: "login",
-                    level: "warn",
-                    module: "auth",
-                    action: "login_failed",
-                    message: "登录失败：用户不存在",
-                    user_id: None,
-                    operator: Some(params.email.clone()),
-                    method: Some("POST"),
-                    path: Some("/api/auth/login"),
-                    status: Some(401),
-                    error_message: Some("user not found".to_string()),
-                },
-            )
-            .await;
-            return Err(ApiError::unauthorized("Invalid credentials!"));
-        }
+    let found = match users::Model::find_by_email(&ctx.db, &params.email).await {
+        Ok(user) => Some(user),
+        Err(ModelError::EntityNotFound) => None,
         Err(error) => return Err(error.into()),
+    };
+    let settings = security_settings::load(&ctx.db).await?;
+    if captcha_required(settings.login_captcha, &client, found.as_ref()) {
+        check_captcha(&params)?;
+    }
+
+    let Some(user) = found else {
+        record_ip_failure(&client);
+        tracing::debug!(
+            email = %params.email,
+            "login attempt with non-existent email"
+        );
+        admin_logs::record(
+            &ctx.db,
+            admin_logs::LogInput {
+                log_type: "login",
+                level: "warn",
+                module: "auth",
+                action: "login_failed",
+                message: "登录失败：用户不存在",
+                user_id: None,
+                operator: Some(params.email.clone()),
+                method: Some("POST"),
+                path: Some("/api/auth/login"),
+                status: Some(401),
+                error_message: Some("user not found".to_string()),
+            },
+        )
+        .await;
+        return Err(ApiError::unauthorized("Invalid credentials!"));
     };
 
     if is_locked(&user) {
@@ -320,6 +522,7 @@ pub async fn login(
     }
 
     if !user.verify_password(&params.password) {
+        record_ip_failure(&client);
         let attempts = update_failed_login(&ctx, user.clone()).await?;
         record_failed_password(&ctx, &user, attempts).await;
         if attempts >= 3 {
@@ -333,8 +536,17 @@ pub async fn login(
         )));
     }
 
+    // Checked only after the password so the message does not reveal which
+    // accounts exist.
+    if user.is_disabled() {
+        return Err(disabled_error());
+    }
+
     let user = reset_login_failures(&ctx, &user).await?;
-    let response = login_response(&ctx, &user).await?;
+    if let Some(ip) = client.ip.as_deref() {
+        captcha::clear_failures(ip);
+    }
+    let response = login_response(&ctx, &user, &client).await?;
     admin_logs::record(
         &ctx.db,
         admin_logs::LogInput {
@@ -369,6 +581,7 @@ pub async fn login(
 #[debug_handler]
 pub async fn refresh(
     State(ctx): State<AppContext>,
+    client: ClientInfo,
     Json(params): Json<RefreshParams>,
 ) -> ApiResult<Response> {
     let refresh_token = refresh_tokens::Model::find_valid_by_token(&ctx.db, &params.refresh_token)
@@ -383,11 +596,25 @@ pub async fn refresh(
             ApiError::internal("model operation failed")
         })?
         .ok_or_else(|| ApiError::unauthorized("invalid refresh token"))?;
+    if user.is_disabled() {
+        user_sessions::revoke_user(&ctx.db, user.id, "disabled", None).await?;
+        return Err(disabled_error());
+    }
+
+    // Tokens issued before sessions existed get a session on first refresh.
+    let session = match refresh_token.session_id {
+        Some(session_id) => user_sessions::find_by_id(&ctx.db, session_id)
+            .await?
+            .filter(user_sessions::is_active)
+            .ok_or_else(|| ApiError::unauthorized("invalid refresh token"))?,
+        None => user_sessions::start(&ctx.db, &user, &client).await?,
+    };
 
     // Keep the existing token usable if issuing its replacement fails.
-    let token = jwt_for_user(&ctx, &user)?;
-    let issued_refresh_token = refresh_tokens::Model::issue(&ctx.db, &user).await?;
+    let token = jwt_for_session(&ctx, &user, &session)?;
+    let issued_refresh_token = refresh_tokens::Model::issue(&ctx.db, &user, &session).await?;
     refresh_token.into_active_model().revoke(&ctx.db).await?;
+    user_sessions::extend(&ctx.db, session).await?;
 
     Ok(responses::ok(RefreshResponse::new(
         &token,
@@ -407,11 +634,21 @@ pub async fn logout(
     State(ctx): State<AppContext>,
     Json(params): Json<RefreshParams>,
 ) -> ApiResult<Response> {
-    if let Err(err) = refresh_tokens::Model::revoke(&ctx.db, &params.refresh_token).await {
-        tracing::debug!(
-            error = err.to_string(),
-            "refresh token already invalid during logout"
-        );
+    match refresh_tokens::Model::find_valid_by_token(&ctx.db, &params.refresh_token).await {
+        // Ending the session also revokes this refresh token and makes the
+        // access token unusable right away.
+        Ok(token) if token.session_id.is_some() => {
+            user_sessions::revoke(&ctx.db, token.session_id.unwrap_or_default(), "logout").await?;
+        }
+        Ok(token) => {
+            token.into_active_model().revoke(&ctx.db).await?;
+        }
+        Err(err) => {
+            tracing::debug!(
+                error = err.to_string(),
+                "refresh token already invalid during logout"
+            );
+        }
     }
 
     Ok(responses::empty())
@@ -583,13 +820,17 @@ pub async fn magic_link(
 pub async fn magic_link_verify(
     Path(token): Path<String>,
     State(ctx): State<AppContext>,
+    client: ClientInfo,
 ) -> ApiResult<Response> {
     let Ok(user) = users::Model::find_by_magic_token(&ctx.db, &token).await else {
         return Err(ApiError::unauthorized("unauthorized!"));
     };
 
     let user = user.into_active_model().clear_magic_link(&ctx.db).await?;
-    Ok(responses::ok(login_response(&ctx, &user).await?))
+    if user.is_disabled() {
+        return Err(disabled_error());
+    }
+    Ok(responses::ok(login_response(&ctx, &user, &client).await?))
 }
 
 #[utoipa::path(
@@ -646,6 +887,8 @@ pub fn routes() -> Routes {
         .add("/magic-link", post(magic_link))
         .add("/magic-link/{token}", get(magic_link_verify))
         .add("/resend-verification-mail", post(resend_verification_email))
+        .add("/captcha", get(login_captcha))
+        .add("/reauth", post(reauth))
 }
 
 // A database outage must not invalidate the browser's persisted session.

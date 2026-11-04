@@ -44,8 +44,11 @@ pub const SETTINGS_KEY: &str = "certificates.config";
 pub const STORAGE_DIR: &str = "storage/certificates";
 pub const MODE_DIRECT: &str = "direct";
 pub const MODE_TUNNEL: &str = "tunnel";
-const SYNC_INTERVAL: Duration = Duration::from_mins(5);
-const VERIFY_INTERVAL: Duration = Duration::from_hours(1);
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const SYNC_INTERVAL: Duration = Duration::from_secs(5 * 60);
+#[allow(clippy::duration_suboptimal_units)]
+const VERIFY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const RENEW_RETRY_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
 /// Settings stored as one JSON system setting.
@@ -743,13 +746,17 @@ struct Addresses {
     ipv6: Option<Result<Ipv6Addr, String>>,
 }
 
+/// Records a mapping should have. An address that cannot be detected only
+/// skips its own record type (reported in the second value), so e.g. a host
+/// without public IPv4 still keeps its AAAA record current.
 async fn desired_records(
     db: &DatabaseConnection,
     settings: &CertificateSettings,
     mapping: &domain_mappings::Model,
     addresses: &mut Addresses,
-) -> Result<Vec<DesiredRecord>, String> {
+) -> (Vec<DesiredRecord>, Vec<String>) {
     let mut records = Vec::new();
+    let mut errors = Vec::new();
     match mapping.ipv4_mode.as_str() {
         "manual" => records.push(DesiredRecord {
             record_type: "A",
@@ -761,16 +768,17 @@ async fn desired_records(
             if addresses.ipv4.is_none() {
                 addresses.ipv4 = Some(public_ipv4(db, &settings.ipv4_lookup_url).await);
             }
-            let address = addresses
-                .ipv4
-                .clone()
-                .unwrap_or_else(|| Err(String::new()))?;
-            records.push(DesiredRecord {
-                record_type: "A",
-                name: mapping.domain.clone(),
-                content: address.to_string(),
-                proxied: false,
-            });
+            match addresses.ipv4.clone().unwrap_or_else(|| Err(String::new())) {
+                Ok(address) => records.push(DesiredRecord {
+                    record_type: "A",
+                    name: mapping.domain.clone(),
+                    content: address.to_string(),
+                    proxied: false,
+                }),
+                Err(error) => {
+                    errors.push(format!("{error}（没有公网 IPv4 时请把 IPv4 映射设为关闭）"));
+                }
+            }
         }
         _ => {}
     }
@@ -785,20 +793,19 @@ async fn desired_records(
             if addresses.ipv6.is_none() {
                 addresses.ipv6 = Some(public_ipv6(db).await);
             }
-            let address = addresses
-                .ipv6
-                .clone()
-                .unwrap_or_else(|| Err(String::new()))?;
-            records.push(DesiredRecord {
-                record_type: "AAAA",
-                name: mapping.domain.clone(),
-                content: address.to_string(),
-                proxied: false,
-            });
+            match addresses.ipv6.clone().unwrap_or_else(|| Err(String::new())) {
+                Ok(address) => records.push(DesiredRecord {
+                    record_type: "AAAA",
+                    name: mapping.domain.clone(),
+                    content: address.to_string(),
+                    proxied: false,
+                }),
+                Err(error) => errors.push(error),
+            }
         }
         _ => {}
     }
-    Ok(records)
+    (records, errors)
 }
 
 async fn sync_direct_dns(
@@ -814,19 +821,14 @@ async fn sync_direct_dns(
         if mapping.ipv4_mode == "off" && mapping.ipv6_mode == "off" {
             continue;
         }
-        let records = match desired_records(db, settings, mapping, &mut addresses).await {
-            Ok(records) => records,
-            Err(error) => {
-                results.insert(mapping.id, Some(format!("DNS：{error}")));
-                continue;
-            }
-        };
-        let print = fingerprint(
-            &records
+        let (records, mut failures) = desired_records(db, settings, mapping, &mut addresses).await;
+        let print = fingerprint(&(
+            records
                 .iter()
                 .map(|record| (record.record_type, &record.name, &record.content))
                 .collect::<Vec<_>>(),
-        );
+            &failures,
+        ));
         let fresh = sync_state().lock().ok().and_then(|state| {
             state.dns.get(&mapping.id).and_then(|sync| {
                 (sync.fingerprint == print && sync.at.elapsed() < VERIFY_INTERVAL)
@@ -839,7 +841,6 @@ async fn sync_direct_dns(
         }
         let error = match cloudflare {
             Ok(cloudflare) => {
-                let mut failures = Vec::new();
                 for record in &records {
                     if let Err(error) = cloudflare.upsert_record(record).await {
                         failures.push(format!("{} 记录：{error}", record.record_type));

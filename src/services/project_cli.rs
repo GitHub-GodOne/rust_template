@@ -45,16 +45,17 @@ use crate::{
     data_manager,
     errors::{ApiError, ApiResult},
     models::_entities::{project_cli_run_logs, project_cli_runs, users},
+    rdp_manager,
     responses::PageResponse,
     service_manager,
-    services::command_runner,
+    services::{child_processes, command_runner},
     tasks, vnc_manager,
 };
 
 /// File name of the project binary (`[[bin]]` in Cargo.toml).
 const CLI_BINARY_NAME: &str = "gpt_images-cli";
 /// Commands handled by this project before Loco parses the command line.
-const CUSTOM_ROOTS: [&str; 3] = ["service", "vnc", "data"];
+const CUSTOM_ROOTS: [&str; 4] = ["service", "vnc", "rdp", "data"];
 const HELP_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_ACTIVE_RUNS: usize = 4;
 /// Older runs (and their output) are deleted beyond this many.
@@ -288,6 +289,17 @@ const COMMAND_NOTES: &[CommandNote] = &[
         CliRisk::Caution,
         "通过 winget 安装 TightVNC（Windows）",
     ),
+    note(
+        "rdp",
+        CliRisk::Safe,
+        "检测、安装和启动 RDP 网关 guacd（无需 Docker）",
+    ),
+    note(
+        "rdp install",
+        CliRisk::Caution,
+        "一键安装 RDP 网关：Windows 装进 WSL 里的 Alpine，Linux 使用系统软件包",
+    ),
+    note("rdp start", CliRisk::Safe, "在后台启动已安装的 RDP 网关"),
     note("data", CliRisk::Safe, "PostgreSQL 数据导出 / 导入"),
     note("data export", CliRisk::Safe, "把数据库导出为 .dump 文件"),
     note(
@@ -740,6 +752,7 @@ pub fn custom_commands() -> Vec<CliCommandSpec> {
     for mut command in [
         service_manager::cli_command(),
         vnc_manager::cli_command(),
+        rdp_manager::cli_command(),
         data_manager::cli_command(),
     ] {
         command.build();
@@ -1393,6 +1406,13 @@ async fn execute(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    if child_processes::stopping() {
+        return (
+            ProjectCliRunStatus::Failed,
+            None,
+            Some("服务正在停止".to_string()),
+        );
+    }
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -1403,6 +1423,7 @@ async fn execute(
             );
         }
     };
+    let _tracked = child_processes::track(&child);
     let process_id = child.id();
     let readers: Vec<_> = [
         child

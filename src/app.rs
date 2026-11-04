@@ -1,8 +1,9 @@
 use async_trait::async_trait;
+use axum::Router as AxumRouter;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
     bgworker::{BackgroundWorker, Queue},
-    boot::{create_app, BootResult, StartMode},
+    boot::{create_app, shutdown_signal, BootResult, ServeParams, StartMode},
     config::Config,
     controller::{middleware as loco_middleware, AppRoutes},
     db::{self, truncate_table},
@@ -11,7 +12,7 @@ use loco_rs::{
     Result,
 };
 use migration::Migrator;
-use std::path::Path;
+use std::{net::SocketAddr, path::Path};
 
 #[allow(unused_imports)]
 use crate::{
@@ -62,6 +63,33 @@ impl Hooks for App {
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
+    /// Loco's default `serve`, except that processes the server starts cannot
+    /// inherit the listening socket (`services::listener`).
+    async fn serve(app: AxumRouter, ctx: &AppContext, serve_params: &ServeParams) -> Result<()> {
+        let listener = crate::services::listener::bind(&format!(
+            "{}:{}",
+            serve_params.binding, serve_params.port
+        ))
+        .await?;
+        let shutdown_ctx = ctx.clone();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            tracing::info!("shutting down...");
+            Self::on_shutdown(&shutdown_ctx).await;
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Commands still running would otherwise outlive the server.
+    async fn on_shutdown(_ctx: &AppContext) {
+        crate::services::child_processes::terminate_all().await;
+    }
+
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
         Ok(vec![])
     }
@@ -70,6 +98,8 @@ impl Hooks for App {
         AppRoutes::with_default_routes() // controller routes below
             .add_route(controllers::auth::routes())
             .add_route(controllers::preferences::routes())
+            .add_route(controllers::profile::routes())
+            .add_route(controllers::user_notifications::routes())
             .add_route(controllers::admin::routes())
             .add_route(controllers::admin::public_routes())
             .add_route(controllers::setup::routes())
@@ -84,7 +114,12 @@ impl Hooks for App {
             crate::services::cloudflare_ddns::start_updater(ctx.db.clone());
             crate::services::certificates::start(ctx.db.clone());
             crate::services::network_watch::start();
+            crate::services::rdp_gateway::start();
             crate::services::log_retention::start_cleaner(ctx.db.clone());
+            crate::services::recycle_bin::start_cleaner(ctx.db.clone());
+            crate::controllers::admin::ssh::restore_sessions(&ctx.db).await;
+            crate::controllers::admin::remote_audio::finish_stale_sessions(&ctx.db).await;
+            crate::controllers::admin::ssh::start_session_reaper(ctx.db.clone());
         }
         Ok(router)
     }
@@ -96,6 +131,14 @@ impl Hooks for App {
         stack.push(Box::new(crate::middleware::audit::AuditMiddleware::new(
             ctx,
         )));
+        // Inside API-key auth (its minted tokens carry their own claim) and
+        // locale (so rejections are translated); the IP check runs first.
+        stack.push(Box::new(
+            crate::middleware::session_guard::SessionGuardMiddleware::new(ctx),
+        ));
+        stack.push(Box::new(
+            crate::middleware::ip_allowlist::IpAllowlistMiddleware::new(ctx),
+        ));
         // Outside audit (logs keep the source text), inside compression.
         stack.push(Box::new(crate::middleware::locale::LocaleMiddleware));
         stack.push(Box::new(
@@ -147,6 +190,17 @@ impl Hooks for App {
         truncate_table(&ctx.db, database_backups::Entity).await?;
         truncate_table(&ctx.db, http_request_runs::Entity).await?;
         truncate_table(&ctx.db, http_request_presets::Entity).await?;
+        truncate_table(
+            &ctx.db,
+            crate::models::_entities::remote_audio_sessions::Entity,
+        )
+        .await?;
+        truncate_table(&ctx.db, crate::models::_entities::db_saved_queries::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::db_query_logs::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::db_connections::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::im_messages::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::im_members::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::im_conversations::Entity).await?;
         truncate_table(&ctx.db, chat_message_attachments::Entity).await?;
         truncate_table(&ctx.db, chat_messages::Entity).await?;
         truncate_table(&ctx.db, command_workflow_run_steps::Entity).await?;
@@ -190,6 +244,15 @@ impl Hooks for App {
         truncate_table(&ctx.db, crate::models::_entities::project_cli_runs::Entity).await?;
         truncate_table(&ctx.db, crate::models::_entities::audit_log_rules::Entity).await?;
         truncate_table(&ctx.db, refresh_tokens::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::user_sessions::Entity).await?;
+        truncate_table(&ctx.db, crate::models::_entities::recycle_bin::Entity).await?;
+        truncate_table(
+            &ctx.db,
+            crate::models::_entities::notification_reads::Entity,
+        )
+        .await?;
+        // Settings are cached for a few seconds; tests start from the table.
+        crate::services::security_settings::invalidate();
         truncate_table(&ctx.db, rdp_credentials::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;
         truncate_table(&ctx.db, departments::Entity).await?;

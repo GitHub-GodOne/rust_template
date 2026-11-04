@@ -12,6 +12,11 @@ use super::system_settings;
 pub struct LoginParams {
     pub email: String,
     pub password: String,
+    /// Required when the server answers `CAPTCHA_REQUIRED`.
+    #[serde(default)]
+    pub captcha_id: Option<String>,
+    #[serde(default)]
+    pub captcha_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -252,15 +257,28 @@ impl Model {
         Ok(user)
     }
 
-    /// Creates a JWT
+    /// Creates a JWT carrying one extra claim: the login session id
+    /// (`sid`) or, for API keys, the key id (`api_key`).
     ///
     /// # Errors
     ///
     /// when could not convert user claims to jwt token
-    pub fn generate_jwt(&self, secret: &str, expiration: u64) -> ModelResult<String> {
+    pub fn generate_jwt(
+        &self,
+        secret: &str,
+        expiration: u64,
+        claim: (&str, serde_json::Value),
+    ) -> ModelResult<String> {
+        let mut claims = Map::new();
+        claims.insert(claim.0.to_string(), claim.1);
         jwt::JWT::new(secret)
-            .generate_token(expiration, self.pid.to_string(), Map::new())
+            .generate_token(expiration, self.pid.to_string(), claims)
             .map_err(ModelError::from)
+    }
+
+    #[must_use]
+    pub fn is_disabled(&self) -> bool {
+        self.status == super::user_sessions::USER_DISABLED
     }
 }
 
@@ -333,6 +351,7 @@ impl ActiveModel {
             ActiveValue::set(hash::hash_password(password).map_err(|e| ModelError::Any(e.into()))?);
         self.reset_token = ActiveValue::Set(None);
         self.reset_sent_at = ActiveValue::Set(None);
+        self.password_changed_at = ActiveValue::Set(Some(Local::now().into()));
         self.update(db).await.map_err(ModelError::from)
     }
 

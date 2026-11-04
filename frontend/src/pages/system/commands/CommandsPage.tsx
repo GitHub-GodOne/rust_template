@@ -54,6 +54,7 @@ import {
   createCommandWorkflow,
   deleteCommandTemplate,
   deleteCommandWorkflow,
+  fetchCommandEnvironment,
   fetchCommandRun,
   fetchCommandRunLogs,
   fetchCommandRuns,
@@ -333,6 +334,33 @@ export function CommandsPage() {
   const canListApiKeys = useAuthStore((state) =>
     state.hasPermission("system:api_key:list"),
   );
+
+  const environmentQuery = useQuery({
+    queryKey: ["admin-command-environment"],
+    queryFn: fetchCommandEnvironment,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const commandEnv = environmentQuery.data;
+  const isWindowsServer = commandEnv?.platform === "windows";
+  const directoryPlaceholder =
+    commandEnv?.default_working_directory ??
+    (isWindowsServer ? "C:\\path\\to\\project" : "/path/to/project");
+  const directoryExtra = commandEnv
+    ? t(
+        "留空时使用服务器默认目录 {0}；命令由 {1} 执行，并自动加载系统环境变量。",
+        commandEnv.default_working_directory,
+        commandEnv.shell,
+      )
+    : undefined;
+  const venvPlaceholder = isWindowsServer
+    ? "C:\\path\\to\\.venv"
+    : "/path/to/.venv";
+  const venvExtra = commandEnv
+    ? t("执行前加载虚拟环境中的 {0}", commandEnv.python_venv_activate)
+    : undefined;
+  const setupPlaceholder = isWindowsServer
+    ? '. .\\env.ps1\n$env:APP_ENV = "dev"'
+    : "source .env\nexport APP_ENV=dev";
 
   const templatesQuery = useQuery({
     queryKey: ["admin-command-templates", templatePage],
@@ -715,7 +743,7 @@ export function CommandsPage() {
     templateForm.resetFields();
     templateForm.setFieldsValue(
       record ?? {
-        working_directory: "/tmp",
+        working_directory: "",
         enabled: true,
       },
     );
@@ -870,7 +898,7 @@ export function CommandsPage() {
       });
     } else {
       runForm.setFieldsValue({
-        working_directory: "/tmp",
+        working_directory: "",
         name: t("临时命令"),
         base_command: "",
         args: [],
@@ -1398,9 +1426,9 @@ export function CommandsPage() {
           <Form.Item
             name="working_directory"
             label={t("工作目录")}
-            rules={[{ required: true }]}
+            extra={directoryExtra}
           >
-            <Input placeholder="/path/to/project" />
+            <Input placeholder={directoryPlaceholder} />
           </Form.Item>
           <Form.Item
             name="command"
@@ -1427,14 +1455,15 @@ export function CommandsPage() {
           <Form.Item name="env_vars" label={t("环境变量 JSON")}>
             <Input.TextArea rows={3} placeholder='{"PYTHONPATH":"src"}' />
           </Form.Item>
-          <Form.Item name="python_venv_path" label={t("Python 虚拟环境路径")}>
-            <Input placeholder="/path/to/.venv" />
+          <Form.Item
+            name="python_venv_path"
+            label={t("Python 虚拟环境路径")}
+            extra={venvExtra}
+          >
+            <Input placeholder={venvPlaceholder} />
           </Form.Item>
           <Form.Item name="setup_script" label={t("前置脚本")}>
-            <Input.TextArea
-              rows={4}
-              placeholder="source .env\nexport APP_ENV=dev"
-            />
+            <Input.TextArea rows={4} placeholder={setupPlaceholder} />
           </Form.Item>
           <Form.Item name="timeout_seconds" label={t("超时时间（秒）")}>
             <Input type="number" min={1} />
@@ -1630,9 +1659,9 @@ export function CommandsPage() {
           <Form.Item
             name="working_directory"
             label={t("工作目录")}
-            rules={[{ required: true }]}
+            extra={directoryExtra}
           >
-            <Input />
+            <Input placeholder={directoryPlaceholder} />
           </Form.Item>
           <Form.Item
             name="base_command"
@@ -1702,11 +1731,15 @@ export function CommandsPage() {
           <Form.Item name="env_vars" label={t("环境变量 JSON")}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="python_venv_path" label={t("Python 虚拟环境路径")}>
-            <Input />
+          <Form.Item
+            name="python_venv_path"
+            label={t("Python 虚拟环境路径")}
+            extra={venvExtra}
+          >
+            <Input placeholder={venvPlaceholder} />
           </Form.Item>
           <Form.Item name="setup_script" label={t("前置脚本")}>
-            <Input.TextArea rows={4} />
+            <Input.TextArea rows={4} placeholder={setupPlaceholder} />
           </Form.Item>
           <Form.Item name="timeout_seconds" label={t("超时时间（秒）")}>
             <Input type="number" min={1} />

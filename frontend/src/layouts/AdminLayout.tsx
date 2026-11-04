@@ -5,17 +5,20 @@ import { RdpPage } from "../pages/system/rdp/RdpPage";
 import { SshPage } from "../pages/system/ssh/SshPage";
 import { VncPage } from "../pages/system/vnc/VncPage";
 import { useAuthStore } from "../stores/auth";
+import { useRemoteAudioStore } from "../stores/remoteAudio";
 import { useUiStore } from "../stores/ui";
 import { AdminDock } from "./AdminDock";
 import { AdminTabs } from "./AdminTabs";
 import { HeaderBar } from "./HeaderBar";
 import { MenuCommandPalette } from "./MenuCommandPalette";
 import { Sidebar } from "./Sidebar";
+import { useRealtimeEvents } from "./useRealtimeEvents";
 import "./content-fill.css";
 
 const { Content } = Layout;
 
 export function AdminLayout() {
+  useRealtimeEvents();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
   const [sshPageMounted, setSshPageMounted] = useState(false);
@@ -63,6 +66,9 @@ export function AdminLayout() {
   useEffect(() => {
     if (isRdpPage && hasRdpPermission) setRdpPageMounted(true);
   }, [isRdpPage, hasRdpPermission]);
+
+  // 远程音频 plays across pages, but not past signing out.
+  useEffect(() => () => useRemoteAudioStore.getState().stop(), []);
 
   useEffect(() => {
     if (isSshPage && hasSshPermission) {

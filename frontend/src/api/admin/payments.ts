@@ -1,5 +1,6 @@
 import { type ApiResponse, unwrap } from "../auth";
 import { apiClient } from "../client";
+import { downloadCsv } from "../download";
 import type { PageResponse } from "./users";
 
 export type PaymentChannelRecord = {
@@ -277,4 +278,17 @@ export async function markPaymentRefundSucceeded(id: number) {
     `/admin/payment-refunds/${id}/mark-succeeded`,
   );
   return unwrap(response.data);
+}
+
+/** Downloads the payment orders matching the filters as CSV. */
+export function exportPaymentOrders(filters: {
+  keyword?: string;
+  status?: string;
+  provider?: string;
+}) {
+  return downloadCsv(
+    "/admin/payment-orders/export",
+    filters,
+    "payment-orders.csv",
+  );
 }

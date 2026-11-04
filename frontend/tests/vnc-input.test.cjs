@@ -121,3 +121,30 @@ test("rescaling the display keeps the cursor on the same remote pixel", () => {
   pad.setBounds(400, 300, true);
   assert.deepEqual(plain(pad.cursor), { x: 200, y: 150 });
 });
+
+test("with pinch on, spreading fingers zoom and never click", () => {
+  const pad = new vnc.TrackpadGesture({ pinch: true });
+  pad.setBounds(800, 600, true);
+  pad.start([{ x: 100, y: 100 }, { x: 200, y: 100 }], 0);
+  const [first] = pad.move([{ x: 90, y: 100 }, { x: 210, y: 100 }]);
+  assert.deepEqual(plain(first), { type: "pinch", x: 150, y: 100, scale: 1.2, deltaX: 0, deltaY: 0 });
+  const [zoom] = pad.move([{ x: 50, y: 110 }, { x: 250, y: 110 }]);
+  assert.equal(zoom.type, "pinch");
+  assert.deepEqual(plain({ x: zoom.x, y: zoom.y, deltaY: zoom.deltaY }), { x: 150, y: 110, deltaY: 10 });
+  assert.ok(Math.abs(zoom.scale - 200 / 120) < 1e-9);
+  // The finger left behind does not drag the cursor, and lifting does not click.
+  assert.deepEqual(plain(pad.end([{ x: 250, y: 110 }], 100)), []);
+  assert.deepEqual(plain(pad.move([{ x: 300, y: 150 }])), []);
+  assert.deepEqual(plain(pad.end([], 150)), []);
+  assert.deepEqual(plain(pad.cursor), { x: 400, y: 300 });
+});
+
+test("with pinch on, two fingers moving together still scroll", () => {
+  const pad = new vnc.TrackpadGesture({ pinch: true });
+  pad.setBounds(800, 600, true);
+  pad.start([{ x: 100, y: 100 }, { x: 200, y: 100 }], 0);
+  const [scroll] = pad.move([{ x: 100, y: 120 }, { x: 200, y: 120 }]);
+  assert.equal(scroll.type, "scroll");
+  const [later] = pad.move([{ x: 90, y: 140 }, { x: 215, y: 140 }]);
+  assert.equal(later.type, "scroll");
+});

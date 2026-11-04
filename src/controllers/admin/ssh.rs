@@ -1,11 +1,14 @@
 #![allow(clippy::missing_errors_doc)]
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     env, fs,
     io::{Read, Write},
     path::{Component, Path as FsPath, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, OnceLock,
+    },
     thread,
 };
 
@@ -16,23 +19,28 @@ use axum::{
 };
 use chrono::{DateTime, Duration, Utc};
 use loco_rs::prelude::*;
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, PtySize};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::{
-    controllers::admin::authorize,
+    controllers::admin::{authorize, remote_sessions::RemoteSessionRecord},
     errors::{ApiError, ApiResult},
     models::{admin_logs, system_settings},
     responses::{self, ApiResponse},
+    services::{
+        command_runner::simplify_verbatim_path,
+        ssh_session_host::{self, HostEvent, HostRequest, HostSpec, OutputHistory, ShellCommand},
+    },
 };
 
 const TARGETS_SETTING_KEY: &str = "ssh_manager.targets";
 const LOCAL_TARGET_KEY: &str = "local-shell";
 const TICKET_TTL_SECONDS: i64 = 60;
-const OUTPUT_BUFFER_CHUNKS: usize = 500;
+/// Lines of output kept per session (`ssh_manager.scrollback_lines`).
+static SCROLLBACK_LINES: AtomicUsize = AtomicUsize::new(ssh_session_host::MAX_SCROLLBACK_LINES);
 const OUTPUT_BROADCAST_CAPACITY: usize = 512;
 const MAX_FILE_PREVIEW_BYTES: u64 = 100 * 1024 * 1024;
 
@@ -66,6 +74,8 @@ pub struct CreateSshTicketParams {
     pub target_key: String,
     pub cols: Option<u16>,
     pub rows: Option<u16>,
+    /// Tab name; the target name when empty.
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -73,6 +83,14 @@ pub struct CreateSshSessionParams {
     pub target_key: String,
     pub cols: Option<u16>,
     pub rows: Option<u16>,
+    /// Tab name; the target name when empty.
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct RenameSshSessionParams {
+    /// New tab name (at most 40 characters); empty restores the default.
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -94,6 +112,8 @@ pub struct SshSessionRecord {
     pub cols: u16,
     pub rows: u16,
     pub current_directory: String,
+    /// Tab name chosen by the user; clients show the target name otherwise.
+    pub title: Option<String>,
     pub created_by: i32,
     pub created_at: String,
     pub updated_at: String,
@@ -114,6 +134,8 @@ pub struct SshFileBrowserRecord {
     pub session_id: String,
     pub current_directory: String,
     pub path: String,
+    /// `None` at a filesystem root (`/`, `C:\`).
+    pub parent_path: Option<String>,
     pub directories: Vec<SshFileRecord>,
     pub files: Vec<SshFileRecord>,
 }
@@ -132,7 +154,8 @@ struct SshTicket {
     expires_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "target", rename_all = "snake_case")]
 enum SshTarget {
     Local(SshTargetRecord),
     Remote(SshTargetConfig),
@@ -171,11 +194,36 @@ struct ManagedSshSession {
     rows: Mutex<u16>,
     created_at: DateTime<Utc>,
     updated_at: Mutex<DateTime<Utc>>,
-    master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
-    child: Mutex<Option<Box<dyn portable_pty::Child + Send + Sync>>>,
-    output_buffer: Mutex<VecDeque<String>>,
+    terminal: Terminal,
+    output_buffer: Mutex<OutputHistory>,
     output_tx: broadcast::Sender<TerminalBroadcastMessage>,
+    /// Browser terminals currently attached; idle only counts while 0.
+    attached: AtomicUsize,
+    title: Mutex<Option<String>>,
+}
+
+/// Where a session's PTY lives.
+enum Terminal {
+    /// In this process; the shell ends with the server.
+    Local {
+        master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
+        writer: Mutex<Box<dyn Write + Send>>,
+        child: Mutex<Option<Box<dyn portable_pty::Child + Send + Sync>>>,
+    },
+    /// In a session host process (`services::ssh_session_host`), which can
+    /// outlive the server.
+    Host(ssh_session_host::HostConnection),
+}
+
+/// What a session host keeps for restoring the session after a restart.
+#[derive(Debug, Deserialize, Serialize)]
+struct PersistedSession {
+    target: SshTarget,
+    user_id: i32,
+    created_at_ms: i64,
+    current_directory: String,
+    #[serde(default)]
+    title: Option<String>,
 }
 
 #[utoipa::path(
@@ -200,15 +248,17 @@ pub async fn targets(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResul
 )]
 #[debug_handler]
 pub async fn sessions(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:ssh:list").await?;
+    let user = authorize(&ctx, &auth, "system:ssh:list").await?;
     let mut store = session_store()
         .lock()
         .map_err(|_| ApiError::internal("failed to lock ssh session store"))?;
     // Sessions whose shell has exited cannot be resumed; drop them so clients
     // stop offering them as reconnect targets.
     store.retain(|_, session| session.status() != "closed");
+    // Each user only sees the shells they opened.
     let sessions = store
         .values()
+        .filter(|session| session.user_id == user.id)
         .map(|session| session.record())
         .collect::<Vec<_>>();
     drop(store);
@@ -227,19 +277,27 @@ pub async fn sessions(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResu
 pub async fn create_session(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Json(params): Json<CreateSshSessionParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:ssh:connect").await?;
+    crate::controllers::admin::require_remote_reauth(&ctx, &session).await?;
+    let title = normalize_title(params.title.as_deref())?;
     let target = find_target(&ctx, &params.target_key).await?;
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| user.email.clone());
-    let session = create_managed_session(
+    let session = open_session(
+        &ctx,
         &target,
         user.id,
         params.cols.unwrap_or(120).clamp(20, 300),
         params.rows.unwrap_or(32).clamp(8, 100),
-    )?;
+    )
+    .await?;
+    if title.is_some() {
+        session.set_title(title);
+    }
     let target_name = session.target.name.clone();
     record_ssh_log(
         &ctx.db,
@@ -266,19 +324,27 @@ pub async fn create_session(
 pub async fn create_ticket(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Json(params): Json<CreateSshTicketParams>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:ssh:connect").await?;
+    crate::controllers::admin::require_remote_reauth(&ctx, &session).await?;
+    let title = normalize_title(params.title.as_deref())?;
     let target = find_target(&ctx, &params.target_key).await?;
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| user.email.clone());
-    let session = create_managed_session(
+    let session = open_session(
+        &ctx,
         &target,
         user.id,
         params.cols.unwrap_or(120).clamp(20, 300),
         params.rows.unwrap_or(32).clamp(8, 100),
-    )?;
+    )
+    .await?;
+    if title.is_some() {
+        session.set_title(title);
+    }
     let record = create_attach_ticket(&session.id, user.id, operator.clone())?;
     record_ssh_log(
         &ctx.db,
@@ -307,7 +373,7 @@ pub async fn create_session_ticket(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:ssh:connect").await?;
-    let session = find_live_session(&id)?;
+    let session = find_live_session(&id, user.id)?;
     let operator = Some(user.name.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| user.email.clone());
@@ -339,6 +405,7 @@ pub async fn close_session(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:ssh:connect").await?;
+    find_session(&id, user.id)?;
     let session = remove_session(&id)?;
     session.close();
     record_ssh_log(
@@ -352,6 +419,49 @@ pub async fn close_session(
     )
     .await;
     Ok(responses::ok(session.record()))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/ssh/sessions/{id}",
+    tag = "admin-ssh",
+    security(("bearer_auth" = [])),
+    request_body = RenameSshSessionParams,
+    responses((status = 200, body = ApiResponse<SshSessionRecord>))
+)]
+#[debug_handler]
+pub async fn rename_session(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Path(id): Path<String>,
+    Json(params): Json<RenameSshSessionParams>,
+) -> ApiResult<Response> {
+    let user = authorize(&ctx, &auth, "system:ssh:connect").await?;
+    let title = normalize_title(params.title.as_deref())?;
+    let session = find_session(&id, user.id)?;
+    tokio::task::spawn_blocking({
+        let session = Arc::clone(&session);
+        move || session.set_title(title)
+    })
+    .await
+    .map_err(|_| ApiError::internal("failed to rename ssh session"))?;
+    Ok(responses::ok(session.record()))
+}
+
+pub const MAX_TITLE_CHARS: usize = 40;
+
+/// A tab name without control characters; `None` for an empty one.
+fn normalize_title(value: Option<&str>) -> ApiResult<Option<String>> {
+    let title: String = value
+        .unwrap_or_default()
+        .chars()
+        .filter(|char| !char.is_control())
+        .collect();
+    let title = title.trim();
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err(ApiError::bad_request("标签名称最多 40 个字"));
+    }
+    Ok(Some(title.to_string()).filter(|title| !title.is_empty()))
 }
 
 #[utoipa::path(
@@ -369,8 +479,8 @@ pub async fn session_files(
     Path(id): Path<String>,
     Query(params): Query<SshFileBrowserParams>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:ssh:list").await?;
-    let session = find_session(&id)?;
+    let user = authorize(&ctx, &auth, "system:ssh:list").await?;
+    let session = find_session(&id, user.id)?;
     Ok(responses::ok(session.file_browser(params.path.as_deref())?))
 }
 
@@ -389,12 +499,12 @@ pub async fn preview_session_file(
     Path(id): Path<String>,
     Query(params): Query<SshFileBrowserParams>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:ssh:list").await?;
+    let user = authorize(&ctx, &auth, "system:ssh:list").await?;
     let path = params
         .path
         .as_deref()
         .ok_or_else(|| ApiError::bad_request("file path is required"))?;
-    let session = find_session(&id)?;
+    let session = find_session(&id, user.id)?;
     let target = session.preview_file_path(path)?;
     let metadata = target
         .metadata()
@@ -430,7 +540,7 @@ pub async fn preview_session_file(
 #[debug_handler]
 pub async fn terminal_ws(Path(ticket): Path<String>, ws: WebSocketUpgrade) -> ApiResult<Response> {
     let ticket = consume_ticket(&ticket)?;
-    let session = find_live_session(&ticket.session_id)?;
+    let session = find_live_session(&ticket.session_id, ticket.user_id)?;
     Ok(ws
         .on_upgrade(move |socket| handle_terminal_socket(socket, session, ticket))
         .into_response())
@@ -445,7 +555,7 @@ pub async fn session_ws(
     if ticket.session_id != id {
         return Err(ApiError::unauthorized("invalid ssh session ticket"));
     }
-    let session = find_live_session(&id)?;
+    let session = find_live_session(&id, ticket.user_id)?;
     Ok(ws
         .on_upgrade(move |socket| handle_terminal_socket(socket, session, ticket))
         .into_response())
@@ -555,13 +665,17 @@ impl SshTarget {
         }
     }
 
-    fn command(&self) -> CommandBuilder {
+    fn command(&self) -> ShellCommand {
         match self {
             Self::Local(_) => {
                 #[cfg(windows)]
                 let mut command = {
-                    let mut command = CommandBuilder::new("powershell.exe");
-                    command.args(["-NoLogo", "-NoProfile", "-NoExit"]);
+                    let mut command = ShellCommand::new("powershell.exe");
+                    command.arg("-NoLogo").arg("-NoProfile").arg("-NoExit");
+                    command.env(
+                        "PATH",
+                        crate::services::windows_env::refreshed_path().to_string_lossy(),
+                    );
                     command
                 };
                 #[cfg(not(windows))]
@@ -570,15 +684,16 @@ impl SshTarget {
                         .ok()
                         .filter(|value| !value.trim().is_empty())
                         .unwrap_or_else(|| "/bin/sh".to_string());
-                    let mut command = CommandBuilder::new(shell);
-                    command.arg("-i");
+                    // A login shell loads the profile (and PATH) a service lacks.
+                    let mut command = ShellCommand::new(shell);
+                    command.arg("-l").arg("-i");
                     command
                 };
                 command.env("TERM", "xterm-256color");
                 command
             }
             Self::Remote(target) => {
-                let mut command = CommandBuilder::new("ssh");
+                let mut command = ShellCommand::new("ssh");
                 command.arg("-tt");
                 command.arg("-o");
                 command.arg("StrictHostKeyChecking=accept-new");
@@ -611,6 +726,7 @@ impl ManagedSshSession {
             cols: Self::locked_value(&self.cols, 120),
             rows: Self::locked_value(&self.rows, 32),
             current_directory: self.current_directory(),
+            title: self.title(),
             created_by: self.user_id,
             created_at: self.created_at.to_rfc3339(),
             updated_at: self
@@ -627,6 +743,27 @@ impl ManagedSshSession {
             .map_or_else(|_| "error".to_string(), |status| status.clone())
     }
 
+    fn remote_record(&self) -> RemoteSessionRecord {
+        let record = self.record();
+        RemoteSessionRecord {
+            kind: "ssh".to_string(),
+            id: record.id,
+            user_id: self.user_id,
+            user_name: None,
+            user_email: None,
+            target_key: record.target_key,
+            target_name: record.target_name,
+            address: record.host.map(|host| match record.port {
+                Some(port) => format!("{host}:{port}"),
+                None => host,
+            }),
+            status: record.status,
+            viewers: self.attached.load(Ordering::SeqCst),
+            created_at: record.created_at,
+            last_active_at: record.updated_at,
+        }
+    }
+
     fn current_directory(&self) -> String {
         self.current_directory
             .lock()
@@ -637,24 +774,27 @@ impl ManagedSshSession {
         value.lock().map_or(fallback, |value| *value)
     }
 
-    fn history(&self) -> Vec<String> {
-        self.output_buffer
-            .lock()
-            .map_or_else(|_| Vec::new(), |buffer| buffer.iter().cloned().collect())
+    /// New output from now on plus everything kept so far. Taken under the
+    /// buffer lock, which `append_output` also broadcasts under, so no output
+    /// is replayed twice or missed.
+    fn subscribe_with_history(
+        &self,
+    ) -> (broadcast::Receiver<TerminalBroadcastMessage>, Vec<String>) {
+        self.output_buffer.lock().map_or_else(
+            |_| (self.output_tx.subscribe(), Vec::new()),
+            |buffer| (self.output_tx.subscribe(), buffer.snapshot()),
+        )
     }
 
     fn append_output(&self, data: String) {
         if let Ok(mut buffer) = self.output_buffer.lock() {
-            buffer.push_back(data.clone());
-            while buffer.len() > OUTPUT_BUFFER_CHUNKS {
-                buffer.pop_front();
-            }
+            buffer.push(data.clone(), scrollback_limit());
+            let _ = self.output_tx.send(TerminalBroadcastMessage {
+                message_type: "output".to_string(),
+                data,
+            });
         }
         self.touch();
-        let _ = self.output_tx.send(TerminalBroadcastMessage {
-            message_type: "output".to_string(),
-            data,
-        });
     }
 
     fn mark_closed(&self) {
@@ -677,13 +817,20 @@ impl ManagedSshSession {
     fn resize(&self, cols: u16, rows: u16) {
         let cols = cols.clamp(20, 300);
         let rows = rows.clamp(8, 100);
-        if let Ok(master) = self.master.lock() {
-            let _ = master.resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            });
+        match &self.terminal {
+            Terminal::Local { master, .. } => {
+                if let Ok(master) = master.lock() {
+                    let _ = master.resize(PtySize {
+                        rows,
+                        cols,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    });
+                }
+            }
+            Terminal::Host(host) => {
+                let _ = host.send(&HostRequest::Resize { cols, rows });
+            }
         }
         if let Ok(mut current_cols) = self.cols.lock() {
             *current_cols = cols;
@@ -695,21 +842,73 @@ impl ManagedSshSession {
     }
 
     fn write_input(&self, data: &[u8]) {
-        if let Ok(mut writer) = self.writer.lock() {
-            let _ = writer.write_all(data);
-            let _ = writer.flush();
+        match &self.terminal {
+            Terminal::Local { writer, .. } => {
+                if let Ok(mut writer) = writer.lock() {
+                    let _ = writer.write_all(data);
+                    let _ = writer.flush();
+                }
+            }
+            Terminal::Host(host) => {
+                let _ = host.send(&HostRequest::Input {
+                    data: data.to_vec(),
+                });
+            }
         }
         self.touch();
     }
 
     fn close(&self) {
-        if let Ok(mut child) = self.child.lock() {
-            if let Some(child) = child.as_mut() {
-                let _ = child.kill();
+        match &self.terminal {
+            Terminal::Local { child, .. } => {
+                if let Ok(mut child) = child.lock() {
+                    if let Some(child) = child.as_mut() {
+                        let _ = child.kill();
+                    }
+                    *child = None;
+                }
             }
-            *child = None;
+            Terminal::Host(host) => host.close(),
         }
         self.mark_closed();
+    }
+
+    fn title(&self) -> Option<String> {
+        self.title.lock().ok().and_then(|title| title.clone())
+    }
+
+    /// Renames the tab; a host-backed session keeps the name across server
+    /// restarts.
+    fn set_title(&self, title: Option<String>) {
+        if let Ok(mut current) = self.title.lock() {
+            current.clone_from(&title);
+        }
+        if !matches!(self.terminal, Terminal::Host(_)) {
+            return;
+        }
+        let metadata = serde_json::to_value(PersistedSession {
+            target: self.target_kind.clone(),
+            user_id: self.user_id,
+            created_at_ms: self.created_at.timestamp_millis(),
+            current_directory: self.current_directory(),
+            title,
+        });
+        if let Err(error) = metadata
+            .map_err(|error| error.to_string())
+            .and_then(|metadata| ssh_session_host::save_session_metadata(&self.id, metadata))
+        {
+            tracing::warn!(
+                error,
+                session_id = self.id,
+                "failed to save ssh session title"
+            );
+        }
+    }
+
+    fn set_persist(&self, persist: bool) {
+        if let Terminal::Host(host) = &self.terminal {
+            let _ = host.send(&HostRequest::Persist { value: persist });
+        }
     }
 
     fn file_browser(&self, path: Option<&str>) -> ApiResult<SshFileBrowserRecord> {
@@ -743,9 +942,11 @@ impl ManagedSshSession {
         if !directory.is_dir() {
             return Err(ApiError::bad_request("path is not a directory"));
         }
-        let normalized = directory
-            .canonicalize()
-            .map_err(|_| ApiError::bad_request("invalid directory"))?;
+        let normalized = simplify_verbatim_path(
+            &directory
+                .canonicalize()
+                .map_err(|_| ApiError::bad_request("invalid directory"))?,
+        );
         if let Ok(mut current_directory) = self.current_directory.lock() {
             *current_directory = normalized.to_string_lossy().to_string();
         }
@@ -774,6 +975,9 @@ impl ManagedSshSession {
             session_id: self.id.clone(),
             current_directory: path.clone(),
             path,
+            parent_path: normalized
+                .parent()
+                .map(|parent| parent.to_string_lossy().to_string()),
             directories,
             files,
         })
@@ -800,15 +1004,16 @@ fn resolve_local_browser_path(current_directory: &str, path: Option<&str>) -> Ap
     } else {
         PathBuf::from(current_directory).join(value)
     };
-    normalize_path_components(&candidate)
+    normalize_path_components(&simplify_verbatim_path(&candidate))
 }
 
 fn normalize_path_components(path: &FsPath) -> ApiResult<PathBuf> {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::Prefix(_) => return Err(ApiError::bad_request("invalid path")),
-            Component::RootDir => normalized.push(component.as_os_str()),
+            // Windows drive (`C:`) or UNC share; `..` never climbs above it
+            // because `PathBuf::pop` stops at the root.
+            Component::Prefix(_) | Component::RootDir => normalized.push(component.as_os_str()),
             Component::CurDir => {}
             Component::ParentDir => {
                 normalized.pop();
@@ -851,17 +1056,101 @@ fn initial_local_directory() -> String {
         .to_string()
 }
 
-fn create_managed_session(
+/// How a new session runs its PTY.
+#[derive(Clone, Copy)]
+enum Backend {
+    /// In this process, e.g. in tests where the binary cannot be a host.
+    Local,
+    /// In a session host; `persist` keeps it across server restarts.
+    Host { persist: bool },
+}
+
+impl Backend {
+    async fn for_context(ctx: &AppContext) -> Self {
+        if matches!(ctx.environment, loco_rs::environment::Environment::Test) {
+            Self::Local
+        } else {
+            Self::Host {
+                persist: keep_sessions_on_restart(&ctx.db).await,
+            }
+        }
+    }
+}
+
+/// Opens the session off the async runtime: starting a host waits for it.
+async fn open_session(
+    ctx: &AppContext,
     target: &SshTarget,
     user_id: i32,
     cols: u16,
     rows: u16,
 ) -> ApiResult<Arc<ManagedSshSession>> {
-    let target_record = target.record();
+    let backend = Backend::for_context(ctx).await;
+    let target = target.clone();
+    tokio::task::spawn_blocking(move || {
+        create_managed_session(&target, user_id, cols, rows, backend)
+    })
+    .await
+    .map_err(|_| ApiError::internal("failed to open ssh session"))?
+}
+
+fn create_managed_session(
+    target: &SshTarget,
+    user_id: i32,
+    cols: u16,
+    rows: u16,
+    backend: Backend,
+) -> ApiResult<Arc<ManagedSshSession>> {
     let current_directory = match target {
         SshTarget::Local(_) => initial_local_directory(),
         SshTarget::Remote(_) => "~".to_string(),
     };
+    if let Backend::Host { persist } = backend {
+        let id = Uuid::new_v4().to_string();
+        let created_at = Utc::now();
+        let spec = HostSpec {
+            token: Uuid::new_v4().to_string(),
+            command: target.command(),
+            cols,
+            rows,
+            persist,
+            history_lines: scrollback_limit(),
+            session: serde_json::to_value(PersistedSession {
+                target: target.clone(),
+                user_id,
+                created_at_ms: created_at.timestamp_millis(),
+                current_directory: current_directory.clone(),
+                title: None,
+            })
+            .map_err(|_| ApiError::internal("failed to serialize ssh session"))?,
+        };
+        match ssh_session_host::spawn(&id, &spec) {
+            Ok(attached) => {
+                return register_host_session(ManagedSshSession::from_host(
+                    id,
+                    target,
+                    user_id,
+                    current_directory,
+                    created_at,
+                    attached,
+                ));
+            }
+            // Still usable, just not across restarts.
+            Err(error) => {
+                tracing::warn!(error, "ssh session host unavailable, using a local PTY");
+            }
+        }
+    }
+    create_local_session(target, user_id, cols, rows, current_directory)
+}
+
+fn create_local_session(
+    target: &SshTarget,
+    user_id: i32,
+    cols: u16,
+    rows: u16,
+    current_directory: String,
+) -> ApiResult<Arc<ManagedSshSession>> {
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -873,7 +1162,7 @@ fn create_managed_session(
         .map_err(|err| ApiError::internal(format!("打开 PTY 失败：{err}")))?;
     let mut child = pair
         .slave
-        .spawn_command(target.command())
+        .spawn_command(target.command().builder())
         .map_err(|err| ApiError::internal(format!("启动终端失败：{err}")))?;
     drop(pair.slave);
     let mut reader = match pair.master.try_clone_reader() {
@@ -893,7 +1182,7 @@ fn create_managed_session(
     let (output_tx, _) = broadcast::channel::<TerminalBroadcastMessage>(OUTPUT_BROADCAST_CAPACITY);
     let session = Arc::new(ManagedSshSession {
         id: Uuid::new_v4().to_string(),
-        target: target_record,
+        target: target.record(),
         target_kind: target.clone(),
         user_id,
         current_directory: Mutex::new(current_directory),
@@ -902,11 +1191,15 @@ fn create_managed_session(
         rows: Mutex::new(rows),
         created_at: Utc::now(),
         updated_at: Mutex::new(Utc::now()),
-        master: Mutex::new(pair.master),
-        writer: Mutex::new(writer),
-        child: Mutex::new(Some(child)),
-        output_buffer: Mutex::new(VecDeque::new()),
+        terminal: Terminal::Local {
+            master: Mutex::new(pair.master),
+            writer: Mutex::new(writer),
+            child: Mutex::new(Some(child)),
+        },
+        output_buffer: Mutex::new(OutputHistory::default()),
         output_tx,
+        attached: AtomicUsize::new(0),
+        title: Mutex::new(None),
     });
     session_store()
         .lock()
@@ -935,12 +1228,99 @@ fn spawn_output_reader(session: Arc<ManagedSshSession>, reader: &mut Box<dyn Rea
     });
 }
 
+impl ManagedSshSession {
+    fn from_host(
+        id: String,
+        target: &SshTarget,
+        user_id: i32,
+        current_directory: String,
+        created_at: DateTime<Utc>,
+        attached: ssh_session_host::Attached,
+    ) -> (Self, ssh_session_host::HostEvents) {
+        let (output_tx, _) =
+            broadcast::channel::<TerminalBroadcastMessage>(OUTPUT_BROADCAST_CAPACITY);
+        let last_activity =
+            DateTime::from_timestamp_millis(attached.last_activity_ms).unwrap_or_else(Utc::now);
+        let history = OutputHistory::from_chunks(attached.history, scrollback_limit());
+        let session = Self {
+            id,
+            target: target.record(),
+            target_kind: target.clone(),
+            user_id,
+            current_directory: Mutex::new(current_directory),
+            status: Mutex::new("running".to_string()),
+            cols: Mutex::new(attached.cols),
+            rows: Mutex::new(attached.rows),
+            created_at,
+            updated_at: Mutex::new(last_activity),
+            terminal: Terminal::Host(attached.connection),
+            output_buffer: Mutex::new(history),
+            output_tx,
+            attached: AtomicUsize::new(0),
+            title: Mutex::new(None),
+        };
+        (session, attached.events)
+    }
+}
+
+/// Stores a host-backed session and forwards the host's output to it.
+fn register_host_session(
+    (session, events): (ManagedSshSession, ssh_session_host::HostEvents),
+) -> ApiResult<Arc<ManagedSshSession>> {
+    let session = Arc::new(session);
+    let stored = session_store()
+        .lock()
+        .map(|mut store| store.insert(session.id.clone(), Arc::clone(&session)))
+        .is_ok();
+    if !stored {
+        session.close();
+        return Err(ApiError::internal("failed to lock ssh session store"));
+    }
+    let reader = Arc::clone(&session);
+    thread::spawn(move || {
+        let mut events = events;
+        loop {
+            let mut exited = false;
+            for event in events.by_ref() {
+                match event {
+                    HostEvent::Output { data } => reader.append_output(data),
+                    HostEvent::Exit => {
+                        exited = true;
+                        break;
+                    }
+                    HostEvent::Hello { .. } | HostEvent::Busy => {}
+                }
+            }
+            if exited || reader.status() == "closed" {
+                break;
+            }
+            // The connection dropped but the shell still runs in its host:
+            // attach again instead of ending the session.
+            let Terminal::Host(host) = &reader.terminal else {
+                break;
+            };
+            match host.reconnect() {
+                Some(next) => {
+                    tracing::info!(session_id = reader.id, "reattached ssh session host");
+                    events = next;
+                }
+                None => break,
+            }
+        }
+        reader.mark_closed();
+        if let Ok(mut store) = session_store().lock() {
+            store.remove(&reader.id);
+        }
+    });
+    Ok(session)
+}
+
 fn create_attach_ticket(
     session_id: &str,
     user_id: i32,
     operator: String,
 ) -> ApiResult<SshTicketRecord> {
-    find_session(session_id)?;
+    find_session(session_id, user_id)?;
     let ticket = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::seconds(TICKET_TTL_SECONDS);
     let ssh_ticket = SshTicket {
@@ -983,7 +1363,7 @@ fn session_not_found(message: &str) -> ApiError {
     ApiError::not_found(message).with_code(SESSION_NOT_FOUND_CODE)
 }
 
-fn find_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
+fn session_by_id(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
     session_store()
         .lock()
         .map_err(|_| ApiError::internal("failed to lock ssh session store"))?
@@ -992,10 +1372,21 @@ fn find_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
         .ok_or_else(|| session_not_found("ssh session not found"))
 }
 
+/// A session of `user_id`. Other users' sessions answer "not found" so their
+/// existence is not revealed.
+fn find_session(id: &str, user_id: i32) -> ApiResult<Arc<ManagedSshSession>> {
+    let session = session_by_id(id)?;
+    if session.user_id == user_id {
+        Ok(session)
+    } else {
+        Err(session_not_found("ssh session not found"))
+    }
+}
+
 /// Like [`find_session`], but treats a session whose shell has exited as
 /// gone and drops it, so attaching never lands on a dead terminal.
-fn find_live_session(id: &str) -> ApiResult<Arc<ManagedSshSession>> {
-    let session = find_session(id)?;
+fn find_live_session(id: &str, user_id: i32) -> ApiResult<Arc<ManagedSshSession>> {
+    let session = find_session(id, user_id)?;
     if session.status() == "closed" {
         let _ = remove_session(id);
         return Err(session_not_found("ssh session has ended"));
@@ -1016,9 +1407,13 @@ async fn handle_terminal_socket(
     session: Arc<ManagedSshSession>,
     ticket: SshTicket,
 ) {
-    let mut output_rx = session.output_tx.subscribe();
+    let (mut output_rx, history) = session.subscribe_with_history();
+    let _attached = AttachGuard::new(&session);
+    // The client clears its terminal on `connected` and rebuilds it from the
+    // replayed output, so reconnecting shows the same screen, not a copy.
     let _ = send_status(&mut socket, "connected", "connected").await;
-    for output in session.history() {
+    let _ = send_terminal_message(&mut socket, "scrollback", &scrollback_limit().to_string()).await;
+    for output in history {
         if send_output(&mut socket, &output).await.is_err() {
             return;
         }
@@ -1089,6 +1484,259 @@ async fn send_terminal_message(
     socket.send(Message::Text(payload.into())).await
 }
 
+/// Counts an attached browser terminal for as long as it lives.
+struct AttachGuard {
+    session: Arc<ManagedSshSession>,
+}
+
+impl AttachGuard {
+    fn new(session: &Arc<ManagedSshSession>) -> Self {
+        session.attached.fetch_add(1, Ordering::SeqCst);
+        session.touch();
+        Self {
+            session: Arc::clone(session),
+        }
+    }
+}
+
+impl Drop for AttachGuard {
+    fn drop(&mut self) {
+        self.session.attached.fetch_sub(1, Ordering::SeqCst);
+        // Idle time starts when the last terminal detaches.
+        self.session.touch();
+    }
+}
+
+pub const IDLE_TIMEOUT_SETTING: &str = "ssh_manager.idle_timeout_minutes";
+pub const MAX_LIFETIME_SETTING: &str = "ssh_manager.max_session_hours";
+pub const KEEP_ON_RESTART_SETTING: &str = "ssh_manager.keep_sessions_on_restart";
+pub const SCROLLBACK_SETTING: &str = "ssh_manager.scrollback_lines";
+
+fn scrollback_limit() -> usize {
+    SCROLLBACK_LINES.load(Ordering::SeqCst)
+}
+
+/// Reads `ssh_manager.scrollback_lines` and trims every session (and its
+/// host) to it; called on startup and whenever the setting is saved.
+pub async fn apply_scrollback_setting(db: &DatabaseConnection) {
+    let setting = system_settings::number_i64(db, SCROLLBACK_SETTING, 0)
+        .await
+        .unwrap_or(0);
+    let lines = ssh_session_host::scrollback_lines(setting);
+    SCROLLBACK_LINES.store(lines, Ordering::SeqCst);
+    let sessions: Vec<_> = session_store()
+        .lock()
+        .map(|store| store.values().cloned().collect())
+        .unwrap_or_default();
+    for session in sessions {
+        if let Ok(mut buffer) = session.output_buffer.lock() {
+            buffer.trim(lines);
+        }
+        if let Terminal::Host(host) = &session.terminal {
+            let _ = host.send(&HostRequest::HistoryLimit { lines });
+        }
+    }
+}
+
+/// `ssh_manager.keep_sessions_on_restart`, on unless set to `false`.
+async fn keep_sessions_on_restart(db: &DatabaseConnection) -> bool {
+    !system_settings::string_value(db, KEEP_ON_RESTART_SETTING, "true")
+        .await
+        .is_ok_and(|value| value.trim() == "false")
+}
+
+/// Tells every session host whether to outlive the server, after
+/// `ssh_manager.keep_sessions_on_restart` changed.
+pub async fn apply_keep_setting(db: &DatabaseConnection) {
+    let persist = keep_sessions_on_restart(db).await;
+    let sessions: Vec<_> = session_store()
+        .lock()
+        .map(|store| store.values().cloned().collect())
+        .unwrap_or_default();
+    for session in sessions {
+        session.set_persist(persist);
+    }
+}
+
+/// Attaches to the session hosts an earlier server run left.
+///
+/// Their terminals continue where they were. With
+/// `ssh_manager.keep_sessions_on_restart` off they are ended instead (only a
+/// crash leaves them then). Runs before the server listens, so clients
+/// reconnecting right away find their sessions.
+pub async fn restore_sessions(db: &DatabaseConnection) {
+    apply_scrollback_setting(db).await;
+    let persist = keep_sessions_on_restart(db).await;
+    let restored = tokio::task::spawn_blocking(move || {
+        ssh_session_host::remove_stale_executables();
+        let mut restored = 0_usize;
+        for leftover in ssh_session_host::leftovers() {
+            let Ok(session) =
+                serde_json::from_value::<PersistedSession>(leftover.spec.session.clone())
+            else {
+                leftover.discard();
+                continue;
+            };
+            if !persist {
+                leftover.discard();
+                continue;
+            }
+            let Ok(attached) = leftover.attach() else {
+                continue;
+            };
+            let created_at =
+                DateTime::from_timestamp_millis(session.created_at_ms).unwrap_or_else(Utc::now);
+            let managed = ManagedSshSession::from_host(
+                leftover.id.clone(),
+                &session.target,
+                session.user_id,
+                session.current_directory,
+                created_at,
+                attached,
+            );
+            if let Ok(mut title) = managed.0.title.lock() {
+                title.clone_from(&session.title);
+            }
+            if register_host_session(managed).is_ok() {
+                restored += 1;
+            }
+        }
+        restored
+    })
+    .await
+    .unwrap_or(0);
+    if restored > 0 {
+        tracing::info!(restored, "restored ssh sessions from the previous run");
+    }
+}
+#[allow(clippy::duration_suboptimal_units)]
+const REAPER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Why a session should be closed now, if at all. Limits of 0 mean
+/// "keep until the shell exits or the service stops".
+fn expiry_reason(
+    created_at: DateTime<Utc>,
+    last_activity: DateTime<Utc>,
+    attached: usize,
+    now: DateTime<Utc>,
+    idle_minutes: i64,
+    max_hours: i64,
+) -> Option<&'static str> {
+    if max_hours > 0 && now - created_at >= Duration::hours(max_hours) {
+        return Some("max_lifetime");
+    }
+    if idle_minutes > 0 && attached == 0 && now - last_activity >= Duration::minutes(idle_minutes) {
+        return Some("idle");
+    }
+    None
+}
+
+fn close_sessions_where(
+    predicate: impl Fn(&ManagedSshSession) -> bool,
+) -> Vec<Arc<ManagedSshSession>> {
+    let Ok(mut store) = session_store().lock() else {
+        return Vec::new();
+    };
+    let ids: Vec<String> = store
+        .values()
+        .filter(|session| predicate(session))
+        .map(|session| session.id.clone())
+        .collect();
+    let closed: Vec<_> = ids.iter().filter_map(|id| store.remove(id)).collect();
+    drop(store);
+    for session in &closed {
+        session.close();
+    }
+    closed
+}
+
+/// Ends every SSH session of a user (disabled or deleted account).
+#[must_use = "returns how many sessions were closed"]
+pub fn close_user_sessions(user_id: i32) -> usize {
+    close_sessions_where(|session| session.user_id == user_id).len()
+}
+
+/// Every user's open shells, for the 在线会话 admin page.
+#[must_use]
+pub fn remote_sessions() -> Vec<RemoteSessionRecord> {
+    session_store().lock().map_or_else(
+        |_| Vec::new(),
+        |store| {
+            store
+                .values()
+                .filter(|session| session.status() != "closed")
+                .map(|session| session.remote_record())
+                .collect()
+        },
+    )
+}
+
+/// Closes any user's shell and detaches its terminals.
+#[must_use = "returns the closed session, if it existed"]
+pub fn close_remote_session(id: &str) -> Option<RemoteSessionRecord> {
+    close_sessions_where(|session| session.id == id)
+        .first()
+        .map(|session| session.remote_record())
+}
+
+/// Closes sessions past `ssh_manager.idle_timeout_minutes` or
+/// `ssh_manager.max_session_hours`; both default to 0 (never).
+pub async fn reap_expired_sessions(db: &DatabaseConnection) -> usize {
+    let idle_minutes = crate::models::system_settings::number_i64(db, IDLE_TIMEOUT_SETTING, 0)
+        .await
+        .unwrap_or(0)
+        .max(0);
+    let max_hours = crate::models::system_settings::number_i64(db, MAX_LIFETIME_SETTING, 0)
+        .await
+        .unwrap_or(0)
+        .max(0);
+    if idle_minutes == 0 && max_hours == 0 {
+        return 0;
+    }
+    let now = Utc::now();
+    let expired = close_sessions_where(|session| {
+        let last_activity = session
+            .updated_at
+            .lock()
+            .map_or(session.created_at, |updated_at| *updated_at);
+        expiry_reason(
+            session.created_at,
+            last_activity,
+            session.attached.load(Ordering::SeqCst),
+            now,
+            idle_minutes,
+            max_hours,
+        )
+        .is_some()
+    });
+    for session in &expired {
+        record_ssh_log(
+            db,
+            session.user_id,
+            None,
+            "auto_close",
+            format!("SSH 会话超时，已自动关闭：{}", session.target.name),
+            None,
+            None,
+        )
+        .await;
+    }
+    expired.len()
+}
+
+/// Background check for expired sessions, once a minute.
+pub fn start_session_reaper(db: DatabaseConnection) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(REAPER_INTERVAL).await;
+            let closed = reap_expired_sessions(&db).await;
+            if closed > 0 {
+                tracing::info!(closed, "closed expired ssh sessions");
+            }
+        }
+    });
+}
+
 async fn record_ssh_log(
     db: &DatabaseConnection,
     user_id: i32,
@@ -1119,4 +1767,78 @@ async fn record_ssh_log(
         },
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        expiry_reason, resolve_local_browser_path, simplify_verbatim_path, Duration, FsPath,
+        PathBuf, Utc,
+    };
+
+    #[test]
+    fn sessions_are_kept_unless_a_limit_is_configured() {
+        let now = Utc::now();
+        let created = now - Duration::hours(30);
+        let quiet = now - Duration::hours(2);
+        // Defaults: kept until the shell exits or the service stops.
+        assert_eq!(expiry_reason(created, quiet, 0, now, 0, 0), None);
+        // Idle only counts while no terminal is attached.
+        assert_eq!(expiry_reason(created, quiet, 0, now, 60, 0), Some("idle"));
+        assert_eq!(expiry_reason(created, quiet, 1, now, 60, 0), None);
+        assert_eq!(expiry_reason(created, now, 0, now, 60, 0), None);
+        // The lifetime cap applies even while attached.
+        assert_eq!(
+            expiry_reason(created, now, 1, now, 0, 24),
+            Some("max_lifetime")
+        );
+        assert_eq!(expiry_reason(created, now, 1, now, 0, 48), None);
+    }
+
+    #[test]
+    fn browser_paths_resolve_relative_and_parent_segments() {
+        let current = std::env::temp_dir();
+        let resolved =
+            resolve_local_browser_path(&current.to_string_lossy(), Some("child/../other/./leaf"))
+                .unwrap();
+        assert_eq!(resolved, current.join("other").join("leaf"));
+        assert_eq!(
+            resolve_local_browser_path(&current.to_string_lossy(), None).unwrap(),
+            current
+        );
+        assert!(resolve_local_browser_path("/tmp", Some("bad\npath")).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn browser_paths_keep_windows_drive_prefixes() {
+        assert_eq!(
+            resolve_local_browser_path(r"C:\Users", Some(r"D:\data\..\logs")).unwrap(),
+            PathBuf::from(r"D:\logs")
+        );
+        assert_eq!(
+            resolve_local_browser_path(r"C:\Users", Some(r"..\..\..")).unwrap(),
+            PathBuf::from(r"C:\")
+        );
+        assert_eq!(
+            resolve_local_browser_path(r"\\?\C:\Users", Some("pikju")).unwrap(),
+            PathBuf::from(r"C:\Users\pikju")
+        );
+    }
+
+    #[test]
+    fn verbatim_windows_paths_are_simplified() {
+        assert_eq!(
+            simplify_verbatim_path(FsPath::new(r"\\?\C:\Program Files")),
+            PathBuf::from(r"C:\Program Files")
+        );
+        assert_eq!(
+            simplify_verbatim_path(FsPath::new(r"\\?\UNC\server\share")),
+            PathBuf::from(r"\\server\share")
+        );
+        assert_eq!(
+            simplify_verbatim_path(FsPath::new("/home/app")),
+            PathBuf::from("/home/app")
+        );
+    }
 }

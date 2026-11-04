@@ -174,6 +174,22 @@ export type CommandRunLogTicketRecord = {
   expires_at: string;
 };
 
+/** How the server runs commands (its OS decides the shell). */
+export type CommandEnvironment = {
+  platform: string;
+  shell: string;
+  script_syntax: "bash" | "powershell";
+  default_working_directory: string;
+  python_venv_activate: string;
+};
+
+export async function fetchCommandEnvironment() {
+  const response = await apiClient.get<ApiResponse<CommandEnvironment>>(
+    "/admin/commands/environment",
+  );
+  return unwrap(response.data);
+}
+
 export async function fetchCommandTemplates(params?: {
   page?: number;
   page_size?: number;

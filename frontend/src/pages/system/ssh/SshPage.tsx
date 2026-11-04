@@ -1,12 +1,15 @@
 import {
+  AppstoreOutlined,
   ArrowLeftOutlined,
   ClearOutlined,
   CloseOutlined,
   CodeOutlined,
   CopyOutlined,
   DisconnectOutlined,
+  EditOutlined,
   ExclamationCircleOutlined,
   FolderOpenOutlined,
+  FullscreenOutlined,
   LinkOutlined,
   LoadingOutlined,
   MoreOutlined,
@@ -15,12 +18,14 @@ import {
   ReloadOutlined,
   SendOutlined,
   SnippetsOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import type { IDisposable } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   Card,
@@ -57,10 +62,22 @@ import {
   fetchSshSessions,
   fetchSshTargets,
   previewSshSessionFile,
+  renameSshSession,
 } from "../../../api/admin/ssh";
+import { fetchPreference, savePreference } from "../../../api/preferences";
 import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { createClientId } from "../../../utils/clientId";
+import { SshCommandsDrawer } from "./SshCommandsDrawer";
+import { SSH_TERMINAL_STAGE_ID, TerminalScrollbar } from "./TerminalScrollbar";
+import {
+  SSH_COMMANDS_PREFERENCE_KEY,
+  type SshQuickCommand,
+  normalizeSshCommands,
+  sshCommandInput,
+  sshConnectInput,
+  toSshCommandsPreference,
+} from "./sshCommands";
 import {
   MAX_AUTO_RECONNECT_ATTEMPTS,
   type TerminalStatus,
@@ -87,7 +104,12 @@ type SshSession = {
   errorMessage?: string;
   /** Set while an automatic reconnect attempt is running. */
   reconnectAttempt?: number;
+  /** Tab name chosen by the user; the target name otherwise. */
+  title?: string;
 };
+
+/** Longest tab name, matching the server's limit. */
+const MAX_TAB_TITLE = 40;
 
 type SpecialKey = {
   label: string;
@@ -168,6 +190,21 @@ const sshAutoConnectKey = "gpt-images-admin-ssh-auto-connect";
 const sshTargetKeyStorageKey = "gpt-images-admin-ssh-target";
 const sshSessionsStorageKey = "gpt-images-admin-ssh-sessions";
 const sshActiveSessionStorageKey = "gpt-images-admin-ssh-active-session";
+const sshMobileToolsStorageKey = "gpt-images-admin-ssh-mobile-tools";
+
+/** Whether the phone key bar and quick commands were left expanded. */
+function loadMobileToolsOpen() {
+  try {
+    return localStorage.getItem(sshMobileToolsStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Command bar text as terminal input: a blank line is just Enter. */
+function commandLineInput(text: string) {
+  return text.trim() === "" ? "\r" : `${text.replace(/\r?\n/g, "\r")}\r`;
+}
 
 function loadPersistedSessions(): SshSession[] {
   if (typeof localStorage === "undefined") {
@@ -191,6 +228,10 @@ function loadPersistedSessions(): SshSession[] {
           typeof session.targetKey === "string" && session.targetKey.trim()
             ? session.targetKey
             : "local-shell",
+        title:
+          typeof session.title === "string" && session.title.trim()
+            ? session.title
+            : undefined,
         status: "idle",
         terminalSize: {
           cols:
@@ -219,11 +260,18 @@ function persistSessions(sessions: SshSession[], activeSessionId: string) {
         id: session.id,
         serverSessionId: session.serverSessionId,
         targetKey: session.targetKey,
+        title: session.title,
         terminalSize: session.terminalSize,
       })),
     ),
   );
   localStorage.setItem(sshActiveSessionStorageKey, activeSessionId);
+}
+
+async function fetchQuickCommands() {
+  return normalizeSshCommands(
+    (await fetchPreference<unknown>(SSH_COMMANDS_PREFERENCE_KEY)).value,
+  );
 }
 
 function statusLabel(status: TerminalStatus) {
@@ -313,15 +361,6 @@ async function writeClipboardText(text: string) {
   }
 }
 
-function parentPath(path: string) {
-  const normalized = path.replace(/\/+$/g, "");
-  const index = normalized.lastIndexOf("/");
-  if (index <= 0) {
-    return "/";
-  }
-  return normalized.slice(0, index);
-}
-
 type SshTerminalHostProps = {
   sessionId: string;
   active: boolean;
@@ -408,6 +447,14 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   const [fileBrowserPath, setFileBrowserPath] = useState<string>();
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [commandText, setCommandText] = useState("");
+  const [commandEditorOpen, setCommandEditorOpen] = useState(false);
+  const [renaming, setRenaming] = useState<{
+    sessionId: string;
+    value: string;
+  } | null>(null);
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(loadMobileToolsOpen);
+  const [commandsOpen, setCommandsOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [copySheetText, setCopySheetText] = useState<string | null>(null);
@@ -432,6 +479,36 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     queryKey: ["admin-ssh-targets"],
     queryFn: fetchSshTargets,
   });
+  const queryClient = useQueryClient();
+  const quickCommandsQueryKey = [
+    "user-preference",
+    SSH_COMMANDS_PREFERENCE_KEY,
+  ];
+  const quickCommandsQuery = useQuery({
+    queryKey: quickCommandsQueryKey,
+    queryFn: fetchQuickCommands,
+  });
+  const quickCommands = quickCommandsQuery.data ?? [];
+  const saveQuickCommandsMutation = useMutation({
+    mutationFn: (commands: SshQuickCommand[]) =>
+      savePreference(
+        SSH_COMMANDS_PREFERENCE_KEY,
+        toSshCommandsPreference(commands),
+      ),
+  });
+  const saveQuickCommands = async (commands: SshQuickCommand[]) => {
+    try {
+      const record = await saveQuickCommandsMutation.mutateAsync(commands);
+      queryClient.setQueryData(
+        quickCommandsQueryKey,
+        normalizeSshCommands(record.value),
+      );
+      return true;
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : t("保存失败"));
+      return false;
+    }
+  };
   const sessionsQuery = useQuery({
     queryKey: ["admin-ssh-sessions"],
     queryFn: fetchSshSessions,
@@ -599,6 +676,10 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
           rows: runtime.terminal.rows || DEFAULT_TERMINAL_SIZE.rows,
         };
       }
+      const previous = {
+        cols: runtime.terminal.cols,
+        rows: runtime.terminal.rows,
+      };
       try {
         runtime.fitAddon.fit();
       } catch {
@@ -608,13 +689,21 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         cols: runtime.terminal.cols,
         rows: runtime.terminal.rows,
       };
+      // Pixel-only changes (e.g. a phone's toolbar sliding while scrolling)
+      // must not make the shell redraw.
+      const changed =
+        previous.cols !== nextSize.cols || previous.rows !== nextSize.rows;
       updateSession(sessionIdValue, (session) =>
         session.terminalSize.cols === nextSize.cols &&
         session.terminalSize.rows === nextSize.rows
           ? session
           : { ...session, terminalSize: nextSize },
       );
-      if (notifySocket && runtime.socket?.readyState === WebSocket.OPEN) {
+      if (
+        notifySocket &&
+        changed &&
+        runtime.socket?.readyState === WebSocket.OPEN
+      ) {
         runtime.socket.send(JSON.stringify({ type: "resize", ...nextSize }));
       }
       return nextSize;
@@ -650,6 +739,15 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       } else {
         host.innerHTML = "";
         runtime.terminal.open(host);
+        // Drawing on the GPU keeps scrolling smooth; the default DOM renderer
+        // rebuilds every visible row on each scroll step.
+        try {
+          const webgl = new WebglAddon();
+          webgl.onContextLoss(() => webgl.dispose());
+          runtime.terminal.loadAddon(webgl);
+        } catch {
+          // No WebGL (old browser, GPU disabled): the DOM renderer stays.
+        }
         // Mobile keyboards otherwise capitalise, autocorrect and hold back
         // characters as suggestions, so typed commands never reach the shell.
         const textarea = runtime.terminal.textarea;
@@ -744,6 +842,11 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
     runtimeMapRef.current.get(sessionIdValue)?.terminal.focus();
   }, []);
 
+  const getActiveTerminal = useCallback(
+    () => runtimeMapRef.current.get(activeSessionId)?.terminal,
+    [activeSessionId],
+  );
+
   const sendTerminalInput = useCallback(
     (sessionIdValue: string, data: string, focusTerminal = true) => {
       const runtime = runtimeMapRef.current.get(sessionIdValue);
@@ -830,6 +933,11 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         convertEol: true,
         rightClickSelectsWord: true,
         scrollOnUserInput: true,
+        // Mouse wheel scrolls glide instead of jumping several lines.
+        smoothScrollDuration: 100,
+        // The server sends the configured limit on connect; this matches
+        // its default (no limit of its own, at most 100000 lines).
+        scrollback: 100_000,
         fontFamily:
           'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         fontSize: 13,
@@ -890,26 +998,38 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
   useEffect(() => {
     const viewport = window.visualViewport;
     let animationFrame = 0;
+    let lastHeight = -1;
+    let lastOffsetTop = -1;
 
     const syncViewport = () => {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
+        const height = Math.round(viewport?.height ?? window.innerHeight);
+        const offsetTop = Math.round(viewport?.offsetTop ?? 0);
+        // Viewport scroll events fire all through a touch scroll; only a real
+        // change (keyboard, rotation) needs a refit.
+        if (height === lastHeight && offsetTop === lastOffsetTop) {
+          return;
+        }
+        lastHeight = height;
+        lastOffsetTop = offsetTop;
         const page = pageRef.current;
         if (page) {
-          page.style.setProperty(
-            "--ssh-viewport-height",
-            `${Math.round(viewport?.height ?? window.innerHeight)}px`,
-          );
-          page.style.setProperty(
-            "--ssh-viewport-offset-top",
-            `${Math.round(viewport?.offsetTop ?? 0)}px`,
-          );
+          page.style.setProperty("--ssh-viewport-height", `${height}px`);
+          page.style.setProperty("--ssh-viewport-offset-top", `${offsetTop}px`);
         }
         if (!activeSessionId) {
           return;
         }
+        const terminal = runtimeMapRef.current.get(activeSessionId)?.terminal;
+        const buffer = terminal?.buffer.active;
+        // Keeps the prompt above a keyboard that just opened, but leaves
+        // someone reading the scrollback where they are.
+        const atBottom = !buffer || buffer.viewportY >= buffer.baseY;
         fitTerminal(activeSessionId);
-        runtimeMapRef.current.get(activeSessionId)?.terminal.scrollToBottom();
+        if (atBottom) {
+          terminal?.scrollToBottom();
+        }
       });
     };
 
@@ -963,6 +1083,8 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         return {
           ...session,
           targetKey: serverSession.target_key,
+          // The server keeps the name, so every device shows the same one.
+          title: serverSession.title ?? undefined,
           status:
             serverSession.status === "closed"
               ? "closed"
@@ -987,6 +1109,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
             id: sessionId(),
             serverSessionId: serverSession.id,
             targetKey: serverSession.target_key,
+            title: serverSession.title ?? undefined,
             status: serverSession.status === "closed" ? "closed" : "detached",
             terminalSize: {
               cols: serverSession.cols,
@@ -1055,14 +1178,20 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         reconnectAttempt,
       }));
       const size = fitTerminal(sessionIdValue, false);
-      const createServerSession = async () =>
-        (
+      // Set when this connect opens a new shell, which then gets the
+      // "run on connect" commands; reattaching an existing one does not.
+      let runConnectCommands = false;
+      const createServerSession = async () => {
+        runConnectCommands = true;
+        return (
           await createSessionMutation.mutateAsync({
             target_key: session.targetKey,
             cols: size.cols,
             rows: size.rows,
+            title: session.title,
           })
         ).id;
+      };
       try {
         // A session whose shell exited cannot be resumed; start a new one.
         let serverSessionId =
@@ -1114,8 +1243,30 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
             const payload = JSON.parse(event.data) as ServerTerminalMessage;
             if (payload.type === "output") {
               currentRuntime.terminal.write(payload.data ?? "");
+              // The shell printed something, so it is up and reading input.
+              if (runConnectCommands) {
+                runConnectCommands = false;
+                // The list may still be loading when the page auto-connects.
+                void queryClient
+                  .ensureQueryData({
+                    queryKey: ["user-preference", SSH_COMMANDS_PREFERENCE_KEY],
+                    queryFn: fetchQuickCommands,
+                  })
+                  .then((commands) => {
+                    const input = sshConnectInput(commands);
+                    if (input && socket.readyState === WebSocket.OPEN) {
+                      socket.send(
+                        JSON.stringify({ type: "input", data: input }),
+                      );
+                    }
+                  })
+                  .catch(() => {});
+              }
             } else if (payload.type === "connected") {
               reconnectAttemptsRef.current.delete(sessionIdValue);
+              // The server replays everything it kept right after this, so
+              // a reconnect rebuilds the same screen instead of a copy.
+              currentRuntime.terminal.reset();
               updateSession(sessionIdValue, (current) => ({
                 ...current,
                 status: "connected",
@@ -1123,6 +1274,12 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                 reconnectAttempt: undefined,
               }));
               currentRuntime.terminal.focus();
+            } else if (payload.type === "scrollback") {
+              // `ssh_manager.scrollback_lines`, before the replay arrives.
+              const lines = Number(payload.data);
+              if (Number.isInteger(lines) && lines > 0) {
+                currentRuntime.terminal.options.scrollback = lines;
+              }
             } else if (payload.type === "closed") {
               ended = true;
               reconnectAttemptsRef.current.delete(sessionIdValue);
@@ -1197,6 +1354,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
       createSessionMutation,
       disconnectSession,
       fitTerminal,
+      queryClient,
       scheduleReconnect,
       sessions,
       sessionsQuery,
@@ -1464,6 +1622,79 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
         : `${targetOption.name} (${targetOption.username}@${targetOption.host}:${targetOption.port ?? 22})`,
   }));
   const activeConnected = activeSession?.status === "connected";
+  const runQuickCommand = (command: SshQuickCommand) => {
+    if (!activeSession) return;
+    // A command that is not auto-run is left in the prompt for editing.
+    if (
+      sendTerminalInput(
+        activeSession.id,
+        sshCommandInput(command),
+        !command.auto_enter,
+      )
+    ) {
+      setCommandsOpen(false);
+    }
+  };
+  const submitCommandLine = () => {
+    if (
+      activeSession &&
+      sendTerminalInput(activeSession.id, commandLineInput(commandText), false)
+    ) {
+      setCommandText("");
+      return true;
+    }
+    return false;
+  };
+  const defaultTabTitle = (session: SshSession) => {
+    const target = targetsQuery.data?.find(
+      (item) => item.key === session.targetKey,
+    );
+    const index = sessions.findIndex((item) => item.id === session.id);
+    return `${target?.name ?? t("终端")} ${index + 1}`;
+  };
+  const tabTitle = (session: SshSession) =>
+    session.title || defaultTabTitle(session);
+  const openRename = (session: SshSession) =>
+    setRenaming({ sessionId: session.id, value: session.title ?? "" });
+  const saveRename = async () => {
+    if (!renaming) return;
+    const session = sessions.find((item) => item.id === renaming.sessionId);
+    if (!session) {
+      setRenaming(null);
+      return;
+    }
+    const title = renaming.value.trim().slice(0, MAX_TAB_TITLE);
+    updateSession(session.id, (current) => ({
+      ...current,
+      title: title || undefined,
+    }));
+    if (session.serverSessionId) {
+      setRenameSaving(true);
+      try {
+        const record = await renameSshSession(session.serverSessionId, title);
+        updateSession(session.id, (current) => ({
+          ...current,
+          title: record.title ?? undefined,
+        }));
+        void sessionsQuery.refetch();
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : t("重命名失败"));
+        return;
+      } finally {
+        setRenameSaving(false);
+      }
+    }
+    setRenaming(null);
+  };
+  const toggleMobileTools = () => {
+    const open = !mobileToolsOpen;
+    setMobileToolsOpen(open);
+    try {
+      localStorage.setItem(sshMobileToolsStorageKey, open ? "1" : "0");
+    } catch {
+      // Only a convenience; the toggle still works for this visit.
+    }
+  };
 
   return (
     <div ref={pageRef} className="ssh-page">
@@ -1478,7 +1709,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
             />
             <div className="ssh-mobile-terminal-title">
               <Typography.Text strong>
-                {selectedTarget?.name ?? t("SSH 终端")}
+                {activeSession?.title || selectedTarget?.name || t("SSH 终端")}
               </Typography.Text>
               <Typography.Text type="secondary">
                 {activeSession
@@ -1527,10 +1758,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
               role="tablist"
               aria-label={t("终端会话")}
             >
-              {sessions.map((session, index) => {
-                const target = targetsQuery.data?.find(
-                  (item) => item.key === session.targetKey,
-                );
+              {sessions.map((session) => {
                 const active = session.id === activeSession?.id;
                 return (
                   <div
@@ -1542,16 +1770,15 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                       role="tab"
                       aria-selected={active}
                       className="ssh-tab-main"
-                      title={`${target?.name ?? t("终端")} · ${statusLabel(session.status)}`}
+                      title={`${tabTitle(session)} · ${statusLabel(session.status)}${t("（双击重命名）")}`}
                       onClick={() => setActiveSessionId(session.id)}
+                      onDoubleClick={() => openRename(session)}
                     >
                       <span
                         className={`ssh-status-dot is-${session.status}`}
                         aria-label={statusLabel(session.status)}
                       />
-                      <span className="ssh-tab-title">
-                        {target?.name ?? t("终端")} {index + 1}
-                      </span>
+                      <span className="ssh-tab-title">{tabTitle(session)}</span>
                     </button>
                     {sessions.length > 1 && (
                       <button
@@ -1663,6 +1890,24 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                     onClick={() => openFileBrowser(activeSession)}
                   />
                 </Tooltip>
+                <Tooltip title={t("快捷命令")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ThunderboltOutlined />}
+                    aria-label={t("快捷命令")}
+                    onClick={() => setCommandsOpen(true)}
+                  />
+                </Tooltip>
+                <Tooltip title={t("重命名标签")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    aria-label={t("重命名标签")}
+                    onClick={() => openRename(activeSession)}
+                  />
+                </Tooltip>
                 <Tooltip title={t("刷新目标")}>
                   <Button
                     type="text"
@@ -1694,7 +1939,40 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
             )}
           </div>
           {activeSession ? (
-            <div className="ssh-session-panel">
+            <div
+              className={`ssh-session-panel${mobileToolsOpen ? " is-mobile-tools-open" : ""}`}
+            >
+              {quickCommands.length > 0 && (
+                <div className="ssh-quick-commands">
+                  {quickCommands.map((command) => (
+                    <Tooltip
+                      key={command.id}
+                      title={
+                        <span className="ssh-quick-command-tip">
+                          {command.command}
+                        </span>
+                      }
+                    >
+                      <Button
+                        size="small"
+                        disabled={!activeConnected}
+                        onClick={() => runQuickCommand(command)}
+                      >
+                        {command.name}
+                      </Button>
+                    </Tooltip>
+                  ))}
+                  <Tooltip title={t("管理快捷命令")}>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<ThunderboltOutlined />}
+                      aria-label={t("管理快捷命令")}
+                      onClick={() => setCommandsOpen(true)}
+                    />
+                  </Tooltip>
+                </div>
+              )}
               <div className="ssh-mobile-keybar">
                 <Button
                   size="small"
@@ -1715,7 +1993,7 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   </Button>
                 ))}
               </div>
-              <div className="ssh-terminal-stage">
+              <div className="ssh-terminal-stage" id={SSH_TERMINAL_STAGE_ID}>
                 {sessions.map((session) => (
                   <SshTerminalHost
                     key={session.id}
@@ -1725,6 +2003,10 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                     onFocus={focusTerminal}
                   />
                 ))}
+                <TerminalScrollbar
+                  key={activeSessionId}
+                  getTerminal={getActiveTerminal}
+                />
                 {activeOverlay && (
                   <output
                     className={`ssh-status-overlay is-${activeOverlay.tone}`}
@@ -1783,17 +2065,21 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                 className="ssh-command-bar"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (
-                    sendTerminalInput(
-                      activeSession.id,
-                      `${commandText}\r`,
-                      false,
-                    )
-                  ) {
-                    setCommandText("");
-                  }
+                  submitCommandLine();
                 }}
               >
+                <Button
+                  type="text"
+                  className={`ssh-command-tools-toggle${mobileToolsOpen ? " is-active" : ""}`}
+                  icon={<AppstoreOutlined />}
+                  aria-label={
+                    mobileToolsOpen
+                      ? t("收起快捷键和快捷命令")
+                      : t("展开快捷键和快捷命令")
+                  }
+                  aria-pressed={mobileToolsOpen}
+                  onClick={toggleMobileTools}
+                />
                 <Input
                   value={commandText}
                   placeholder={
@@ -1808,6 +2094,17 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                   spellCheck={false}
                   enterKeyHint="send"
                   onChange={(event) => setCommandText(event.target.value)}
+                  suffix={
+                    <Button
+                      type="text"
+                      size="small"
+                      className="ssh-command-expand"
+                      icon={<FullscreenOutlined />}
+                      aria-label={t("全屏编辑")}
+                      disabled={activeSession.status !== "connected"}
+                      onClick={() => setCommandEditorOpen(true)}
+                    />
+                  }
                 />
                 <Button
                   type="primary"
@@ -1836,6 +2133,78 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
           ) : null}
         </Card>
       </div>
+      <Modal
+        title={t("重命名标签")}
+        open={Boolean(renaming)}
+        okText={t("保存")}
+        cancelText={t("取消")}
+        confirmLoading={renameSaving}
+        onOk={() => void saveRename()}
+        onCancel={() => setRenaming(null)}
+        destroyOnHidden
+      >
+        <Input
+          autoFocus
+          value={renaming?.value ?? ""}
+          maxLength={MAX_TAB_TITLE}
+          showCount
+          placeholder={
+            renaming
+              ? (() => {
+                  const session = sessions.find(
+                    (item) => item.id === renaming.sessionId,
+                  );
+                  return session ? defaultTabTitle(session) : "";
+                })()
+              : ""
+          }
+          onChange={(event) =>
+            setRenaming((current) =>
+              current ? { ...current, value: event.target.value } : current,
+            )
+          }
+          onPressEnter={() => void saveRename()}
+        />
+        <Typography.Text type="secondary" className="ssh-rename-hint">
+          {t(
+            "留空则恢复默认名称；名称保存在服务器上，其他设备打开同一会话时也会显示",
+          )}
+        </Typography.Text>
+      </Modal>
+      <Drawer
+        title={t("编辑命令")}
+        open={commandEditorOpen}
+        placement="bottom"
+        height="100%"
+        className="ssh-command-editor"
+        onClose={() => setCommandEditorOpen(false)}
+        extra={
+          <Button
+            type="primary"
+            icon={<SendOutlined />}
+            disabled={!activeConnected}
+            onClick={() => {
+              if (submitCommandLine()) {
+                setCommandEditorOpen(false);
+              }
+            }}
+          >
+            {t("发送")}
+          </Button>
+        }
+      >
+        <Input.TextArea
+          value={commandText}
+          className="ssh-command-editor-input"
+          placeholder={t("多行内容会逐行发送执行；留空发送相当于按回车")}
+          autoFocus
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setCommandText(event.target.value)}
+        />
+      </Drawer>
       <Drawer
         title={t("终端控制")}
         open={mobileControlsOpen}
@@ -1898,6 +2267,15 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                 {t("清屏")}
               </Button>
               <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setMobileControlsOpen(false);
+                  openRename(activeSession);
+                }}
+              >
+                {t("重命名")}
+              </Button>
+              <Button
                 icon={<CopyOutlined />}
                 onClick={() => {
                   setMobileControlsOpen(false);
@@ -1915,6 +2293,15 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
                 }}
               >
                 {t("文件")}
+              </Button>
+              <Button
+                icon={<ThunderboltOutlined />}
+                onClick={() => {
+                  setMobileControlsOpen(false);
+                  setCommandsOpen(true);
+                }}
+              >
+                {t("快捷命令")}
               </Button>
               <Button
                 icon={<ReloadOutlined />}
@@ -1937,6 +2324,17 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
           </Space>
         ) : null}
       </Drawer>
+      <SshCommandsDrawer
+        open={commandsOpen}
+        commands={quickCommands}
+        loading={quickCommandsQuery.isLoading}
+        saving={saveQuickCommandsMutation.isPending}
+        canRun={activeConnected}
+        draftCommand={commandText}
+        onClose={() => setCommandsOpen(false)}
+        onSave={saveQuickCommands}
+        onRun={runQuickCommand}
+      />
       <Modal
         title={t("粘贴到终端")}
         open={pasteOpen}
@@ -2025,12 +2423,11 @@ export function SshPage({ visible = true }: { visible?: boolean }) {
             </Typography.Text>
             <Button
               size="small"
-              disabled={
-                !sshFilesQuery.data?.path || sshFilesQuery.data.path === "/"
-              }
-              onClick={() =>
-                setFileBrowserPath(parentPath(sshFilesQuery.data?.path ?? "/"))
-              }
+              disabled={!sshFilesQuery.data?.parent_path}
+              onClick={() => {
+                const parent = sshFilesQuery.data?.parent_path;
+                if (parent) setFileBrowserPath(parent);
+              }}
             >
               {t("上级目录")}
             </Button>

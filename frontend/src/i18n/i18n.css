@@ -21,6 +21,25 @@
 	backdrop-filter: blur(6px);
 }
 
+.page-language-switch:not(.ant-btn) {
+	position: fixed;
+	top: calc(12px + env(safe-area-inset-top));
+	right: 16px;
+	z-index: 20;
+	display: flex;
+	gap: 6px;
+}
+
+.page-language-switch:not(.ant-btn) .ant-btn {
+	background: rgb(255 255 255 / 72%);
+	backdrop-filter: blur(6px);
+}
+
+:root[data-theme="dark"] .page-language-switch .ant-btn,
+:root[data-theme="dark"] .page-language-switch.ant-btn {
+	background: rgb(34 32 29 / 80%);
+}
+
 @media (max-width: 768px) {
 	.admin-header .language-switch-label {
 		display: none;

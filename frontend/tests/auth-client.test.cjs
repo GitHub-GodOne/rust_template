@@ -7,8 +7,9 @@ const ts = require("typescript");
 const { i18n, i18nRequire } = require("./support/i18n-stub.cjs");
 const axios = require("axios");
 
-function makeClient(adapter) {
+function makeClient(adapter, { confirmReauth = false } = {}) {
   let signOuts = 0;
+  let reauthPrompts = 0;
   const state = {
     accessToken: "old-access",
     refreshToken: "old-refresh",
@@ -39,11 +40,54 @@ function makeClient(adapter) {
       if (/(^|\/)i18n$/.test(name)) return i18n;
       if (name === "axios") return axiosModule;
       if (name === "../stores/auth") return { useAuthStore: { getState: () => state } };
+      if (name === "./reauth")
+        return {
+          askForReauth: async () => {
+            reauthPrompts += 1;
+            return confirmReauth;
+          },
+        };
       throw new Error(`Unexpected import: ${name}`);
     },
   });
-  return { client: output.exports.apiClient, state, signOuts: () => signOuts };
+  return {
+    client: output.exports.apiClient,
+    state,
+    signOuts: () => signOuts,
+    reauthPrompts: () => reauthPrompts,
+  };
 }
+
+function reauthRequired(config) {
+  const response = { status: 403, data: { code: "REAUTH_REQUIRED", message: "confirm" }, config };
+  throw new axios.AxiosError("forbidden", "ERR_BAD_REQUEST", config, undefined, response);
+}
+
+test("a sensitive request asks for the password once and is retried", async () => {
+  let calls = 0;
+  const session = makeClient(
+    async (config) => {
+      calls += 1;
+      if (calls === 1) return reauthRequired(config);
+      return { status: 200, data: { ok: true }, config };
+    },
+    { confirmReauth: true },
+  );
+  const response = await session.client.post("/admin/ssh/sessions", {});
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  assert.equal(session.reauthPrompts(), 1);
+});
+
+test("cancelling the password prompt fails the request without signing out", async () => {
+  const session = makeClient(async (config) => reauthRequired(config));
+  await assert.rejects(session.client.post("/admin/ssh/sessions", {}), (error) => {
+    assert.equal(error.code, "REAUTH_CANCELLED");
+    return true;
+  });
+  assert.equal(session.reauthPrompts(), 1);
+  assert.equal(session.signOuts(), 0);
+});
 
 function fail(config, status, code = "ERR_BAD_RESPONSE") {
   const response = status ? { status, data: { message: "temporary failure" }, config } : undefined;

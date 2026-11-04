@@ -16,12 +16,14 @@ pub mod commands;
 pub mod content;
 pub mod dashboard;
 pub mod data_scopes;
+pub mod db_manager;
 pub mod ddns;
 pub mod departments;
 pub mod dicts;
 pub mod email_templates;
 pub mod file_manager;
 pub mod http_client;
+pub mod im;
 pub mod image_api;
 pub mod logs;
 pub mod menus;
@@ -29,11 +31,16 @@ pub mod monitoring;
 pub mod notifications;
 pub mod payments;
 pub mod permissions;
+pub mod primary_database;
 pub mod project_cli;
 pub mod rate_limits;
 pub mod rdp;
+pub mod recycle_bin;
+pub mod remote_audio;
+pub mod remote_sessions;
 pub mod roles;
 pub mod scheduled_tasks;
+pub mod sessions;
 pub mod settings;
 pub mod ssh;
 pub mod static_hosting;
@@ -52,6 +59,48 @@ pub async fn authorize(
     let user = users::Model::find_by_pid(&ctx.db, &auth.claims.pid).await?;
     rbac::assert_permission(&ctx.db, user.id, permission).await?;
     Ok(user)
+}
+
+/// The login session behind a request; `None` for API-key calls.
+pub type SessionExt = Option<axum::Extension<crate::models::user_sessions::CurrentSession>>;
+
+/// Requires a recent password confirmation for a sensitive operation.
+///
+/// Remote shells, running commands, restoring backups… answer
+/// `REAUTH_REQUIRED` until the password was confirmed in this login
+/// session; the client then calls `/api/auth/reauth` and retries.
+pub async fn require_reauth(ctx: &AppContext, session: &SessionExt) -> ApiResult<()> {
+    reauth(ctx, session, false).await
+}
+
+/// Like [`require_reauth`] for opening SSH/VNC/RDP connections, which only
+/// ask when `security.remote_reauth_enabled` is also on.
+pub async fn require_remote_reauth(ctx: &AppContext, session: &SessionExt) -> ApiResult<()> {
+    reauth(ctx, session, true).await
+}
+
+async fn reauth(ctx: &AppContext, session: &SessionExt, remote: bool) -> ApiResult<()> {
+    let settings = crate::services::security_settings::load(&ctx.db).await?;
+    if !settings.reauth_enabled || (remote && !settings.remote_reauth_enabled) {
+        return Ok(());
+    }
+    // API keys are explicit automation credentials without a login session.
+    let Some(axum::Extension(session)) = session else {
+        return Ok(());
+    };
+    let fresh = crate::models::user_sessions::find_by_id(&ctx.db, session.id)
+        .await?
+        .is_some_and(|model| {
+            crate::models::user_sessions::reauth_fresh(&model, settings.reauth_minutes)
+        });
+    if fresh {
+        Ok(())
+    } else {
+        Err(
+            crate::errors::ApiError::forbidden("此操作需要先确认登录密码")
+                .with_code("REAUTH_REQUIRED"),
+        )
+    }
 }
 
 #[must_use]
@@ -80,6 +129,11 @@ pub fn public_routes() -> Routes {
 fn core_routes(routes: Routes) -> Routes {
     routes
         .add("/api/admin/dashboard/overview", get(dashboard::overview))
+        .add("/api/admin/primary-database", get(primary_database::status))
+        .add(
+            "/api/admin/primary-database/apply",
+            post(primary_database::apply),
+        )
         .add(
             "/api/admin/users",
             get(users_admin::list).post(users_admin::create),
@@ -98,6 +152,30 @@ fn core_routes(routes: Routes) -> Routes {
             "/api/admin/users/{id}/departments",
             get(users_admin::departments).put(users_admin::save_departments),
         )
+        .add("/api/admin/users/export", get(users_admin::export))
+        .add(
+            "/api/admin/users/{id}/status",
+            put(users_admin::update_status),
+        )
+        .add(
+            "/api/admin/users/{id}/reset-password",
+            post(users_admin::reset_password),
+        )
+        .add("/api/admin/users/{id}/unlock", post(users_admin::unlock))
+        .add(
+            "/api/admin/users/{id}/sessions/revoke",
+            post(sessions::revoke_user),
+        )
+        .add("/api/admin/sessions", get(sessions::list))
+        .add("/api/admin/recycle-bin", get(recycle_bin::list))
+        .add("/api/admin/recycle-bin/summary", get(recycle_bin::summary))
+        .add("/api/admin/recycle-bin/empty", post(recycle_bin::empty))
+        .add("/api/admin/recycle-bin/{id}", delete(recycle_bin::purge))
+        .add(
+            "/api/admin/recycle-bin/{id}/restore",
+            post(recycle_bin::restore),
+        )
+        .add("/api/admin/sessions/{id}", delete(sessions::revoke))
         .add("/api/admin/roles", get(roles::list).post(roles::create))
         .add(
             "/api/admin/roles/{id}",
@@ -197,6 +275,10 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
             get(backups::list).post(backups::create),
         )
         .add(
+            "/api/admin/backups/destinations",
+            get(backups::destinations),
+        )
+        .add(
             "/api/admin/backups/{id}",
             get(backups::get).delete(backups::delete),
         )
@@ -256,6 +338,10 @@ fn command_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/commands",
             get(commands::list).post(commands::create),
+        )
+        .add(
+            "/api/admin/commands/environment",
+            get(commands::environment),
         )
         .add(
             "/api/admin/commands/{id}",
@@ -335,6 +421,7 @@ fn work_order_routes(routes: Routes) -> Routes {
             "/api/admin/work-orders",
             get(work_orders::list).post(work_orders::create),
         )
+        .add("/api/admin/work-orders/export", get(work_orders::export))
         .add(
             "/api/admin/work-orders/{id}",
             get(work_orders::get)
@@ -378,6 +465,10 @@ fn payment_routes(routes: Routes) -> Routes {
         .add(
             "/api/admin/payment-orders",
             get(payments::list_orders).post(payments::create_order),
+        )
+        .add(
+            "/api/admin/payment-orders/export",
+            get(payments::export_orders),
         )
         .add("/api/admin/payment-orders/{id}", get(payments::get_order))
         .add(
@@ -454,10 +545,41 @@ fn extension_routes(routes: Routes) -> Routes {
     let routes = static_hosting_routes(routes);
     let routes = ssh_routes(routes);
     let routes = vnc_routes(routes);
+    let routes = remote_session_routes(routes);
+    let routes = remote_audio_routes(routes);
+    let routes = db_manager_routes(routes);
     let routes = ai_image_routes(routes);
     let routes = http_client_routes(routes);
     let routes = certificate_routes(routes);
+    let routes = im_routes(routes);
     upload_routes(routes)
+}
+
+fn im_routes(routes: Routes) -> Routes {
+    routes
+        .add("/api/admin/im/contacts", get(im::contacts))
+        .add("/api/admin/im/conversations", get(im::list))
+        .add("/api/admin/im/conversations/direct", post(im::open_direct))
+        .add("/api/admin/im/conversations/group", post(im::create_group))
+        .add(
+            "/api/admin/im/conversations/{id}",
+            get(im::get).put(im::rename).delete(im::dissolve),
+        )
+        .add("/api/admin/im/conversations/{id}/members", post(im::invite))
+        .add(
+            "/api/admin/im/conversations/{id}/members/{user_id}",
+            delete(im::remove_member),
+        )
+        .add(
+            "/api/admin/im/conversations/{id}/messages",
+            get(im::messages).post(im::send_text),
+        )
+        .add(
+            "/api/admin/im/conversations/{id}/files",
+            post(im::send_file).layer(DefaultBodyLimit::disable()),
+        )
+        .add("/api/admin/im/conversations/{id}/read", post(im::mark_read))
+        .add("/api/admin/im/messages/{id}/file", get(im::file))
 }
 
 fn certificate_routes(routes: Routes) -> Routes {
@@ -658,6 +780,102 @@ fn static_hosting_routes(routes: Routes) -> Routes {
         )
 }
 
+/// 远程音频: listening to this machine's sound, with traffic per session.
+fn remote_audio_routes(routes: Routes) -> Routes {
+    routes
+        .add("/api/admin/remote-audio/status", get(remote_audio::status))
+        .add(
+            "/api/admin/remote-audio/tickets",
+            post(remote_audio::create_ticket),
+        )
+        .add(
+            "/api/admin/remote-audio/sessions",
+            get(remote_audio::list_sessions),
+        )
+        .add(
+            "/api/admin/remote-audio/ws/{ticket}",
+            get(remote_audio::listen),
+        )
+}
+
+/// 数据库管理: saved connections, object browser, data grid and SQL editor.
+fn db_manager_routes(routes: Routes) -> Routes {
+    const BASE: &str = "/api/admin/db-manager";
+    let path = |suffix: &str| format!("{BASE}{suffix}");
+    routes
+        .add(
+            &path("/connections"),
+            get(db_manager::list_connections).post(db_manager::create_connection),
+        )
+        .add(
+            &path("/connections/test"),
+            post(db_manager::test_connection),
+        )
+        .add(
+            &path("/connections/{id}"),
+            put(db_manager::update_connection).delete(db_manager::delete_connection),
+        )
+        .add(
+            &path("/connections/{id}/connect"),
+            post(db_manager::connect),
+        )
+        .add(
+            &path("/connections/{id}/disconnect"),
+            post(db_manager::disconnect),
+        )
+        .add(&path("/connections/{id}/schemas"), get(db_manager::schemas))
+        .add(&path("/connections/{id}/objects"), get(db_manager::objects))
+        .add(
+            &path("/connections/{id}/structure"),
+            get(db_manager::structure),
+        )
+        .add(&path("/connections/{id}/routine"), get(db_manager::routine))
+        .add(
+            &path("/connections/{id}/completion"),
+            get(db_manager::completion),
+        )
+        .add(&path("/connections/{id}/rows"), get(db_manager::rows))
+        .add(&path("/connections/{id}/export"), get(db_manager::export))
+        .add(
+            &path("/connections/{id}/changes"),
+            post(db_manager::apply_changes),
+        )
+        .add(
+            &path("/connections/{id}/execute"),
+            post(db_manager::execute).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
+        .add(
+            &path("/connections/{id}/sessions/{key}"),
+            delete(db_manager::close_session),
+        )
+        .add(
+            &path("/connections/{id}/sessions/{key}/cancel"),
+            post(db_manager::cancel),
+        )
+        .add(
+            &path("/history"),
+            get(db_manager::history).delete(db_manager::clear_history),
+        )
+        .add(
+            &path("/saved-queries"),
+            get(db_manager::list_saved_queries).post(db_manager::create_saved_query),
+        )
+        .add(
+            &path("/saved-queries/{id}"),
+            put(db_manager::update_saved_query).delete(db_manager::delete_saved_query),
+        )
+}
+
+/// 在线会话 → 远程连接: every user's SSH / VNC / RDP sessions.
+fn remote_session_routes(routes: Routes) -> Routes {
+    routes
+        .add("/api/admin/sessions/remote", get(remote_sessions::list))
+        .add(
+            "/api/admin/sessions/remote/{kind}/{id}",
+            delete(remote_sessions::close),
+        )
+}
+
 fn ssh_routes(routes: Routes) -> Routes {
     routes
         .add("/api/admin/ssh/targets", get(ssh::targets))
@@ -665,7 +883,10 @@ fn ssh_routes(routes: Routes) -> Routes {
             "/api/admin/ssh/sessions",
             get(ssh::sessions).post(ssh::create_session),
         )
-        .add("/api/admin/ssh/sessions/{id}", delete(ssh::close_session))
+        .add(
+            "/api/admin/ssh/sessions/{id}",
+            delete(ssh::close_session).put(ssh::rename_session),
+        )
         .add(
             "/api/admin/ssh/sessions/{id}/files",
             get(ssh::session_files),
@@ -694,6 +915,8 @@ fn vnc_routes(routes: Routes) -> Routes {
             get(rdp::targets).put(rdp::save_targets),
         )
         .add("/api/admin/rdp/tickets", post(rdp::create_ticket))
+        .add("/api/admin/rdp/sessions", get(rdp::sessions))
+        .add("/api/admin/rdp/sessions/{id}", delete(rdp::close_session))
         .add("/api/admin/rdp/gateway", get(rdp::gateway_status))
         .add(
             "/api/admin/rdp/credentials/{key}",

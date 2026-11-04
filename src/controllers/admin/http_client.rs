@@ -351,11 +351,16 @@ pub async fn delete_request(
     State(ctx): State<AppContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:http_client:request:delete").await?;
-    find_preset(&ctx, id).await?;
-    http_request_presets::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:http_client:request:delete").await?;
+    let preset = find_preset(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("http_requests", id, &preset.name, &actor),
+        "http_request_presets",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 

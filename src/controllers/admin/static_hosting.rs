@@ -268,12 +268,26 @@ pub async fn delete_site(
 ) -> ApiResult<Response> {
     let user = authorize(&ctx, &auth, "system:static_host:delete").await?;
     let mut sites = load_sites(&ctx).await?;
-    let original_len = sites.len();
-    sites.retain(|site| site.key != key);
-    if sites.len() == original_len {
+    let Some(removed) = sites.iter().find(|site| site.key == key).cloned() else {
         return Err(ApiError::bad_request("静态托管站点不存在"));
-    }
+    };
+    sites.retain(|site| site.key != key);
     save_sites(&ctx, sites, user.id).await?;
+    crate::services::recycle_bin::record(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "static_sites",
+            &key,
+            format!("{}（{}）", removed.name, removed.url_path),
+            &user,
+        ),
+        crate::services::recycle_bin::Payload::ConfigItem {
+            collection: "static_sites".to_string(),
+            item: serde_json::to_value(&removed)
+                .map_err(|_| ApiError::internal("failed to encode static site"))?,
+        },
+    )
+    .await?;
     record_static_log(
         &ctx,
         &user,
@@ -489,11 +503,17 @@ pub async fn delete_file(
     let site = find_site(&ctx, &params.site_key).await?;
     let relative = normalize_required_relative_path(&params.path)?;
     let target = resolve_existing_path(&site, &relative)?;
-    if target.is_dir() {
-        fs::remove_dir_all(&target).map_err(|_| ApiError::internal("删除目录失败"))?;
-    } else {
-        fs::remove_file(&target).map_err(|_| ApiError::internal("删除文件失败"))?;
-    }
+    crate::services::recycle_bin::delete_files(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new(
+            "static_files",
+            format!("{}/{}", site.key, relative),
+            format!("{}/{}", site.name, relative),
+            &user,
+        ),
+        &[target],
+    )
+    .await?;
     record_static_log(
         &ctx,
         &user,
@@ -502,6 +522,28 @@ pub async fn delete_file(
     )
     .await;
     Ok(responses::empty())
+}
+
+/// Puts a static site removed through the recycle bin back.
+pub(crate) async fn restore_site(
+    ctx: &AppContext,
+    user: &crate::models::_entities::users::Model,
+    item: serde_json::Value,
+) -> ApiResult<()> {
+    let site: StaticSiteConfig = serde_json::from_value(item)
+        .map_err(|_| ApiError::bad_request("回收站中的站点配置无法识别"))?;
+    let mut sites = load_sites(ctx).await?;
+    if sites
+        .iter()
+        .any(|existing| existing.key == site.key || existing.url_path == site.url_path)
+    {
+        return Err(ApiError::bad_request(format!(
+            "无法恢复：已存在相同标识或访问路径的站点（{}）",
+            site.url_path
+        )));
+    }
+    sites.push(site);
+    save_sites(ctx, sites, user.id).await.map(|_| ())
 }
 
 async fn find_site(ctx: &AppContext, key: &str) -> ApiResult<StaticSiteConfig> {

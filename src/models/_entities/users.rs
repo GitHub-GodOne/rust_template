@@ -29,6 +29,11 @@ pub struct Model {
     pub last_failed_login_at: Option<DateTimeWithTimeZone>,
     pub tenant_id: Option<i32>,
     pub current_department_id: Option<i32>,
+    /// `active` or `disabled`.
+    pub status: String,
+    pub last_login_at: Option<DateTimeWithTimeZone>,
+    pub last_login_ip: Option<String>,
+    pub password_changed_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

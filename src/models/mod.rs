@@ -1,6 +1,7 @@
 pub mod _entities;
 pub mod admin_logs;
 pub mod database_backups;
+pub mod db_connections;
 pub mod email_templates;
 pub mod menus;
 pub mod permissions;
@@ -9,4 +10,5 @@ pub mod rdp_credentials;
 pub mod refresh_tokens;
 pub mod roles;
 pub mod system_settings;
+pub mod user_sessions;
 pub mod users;

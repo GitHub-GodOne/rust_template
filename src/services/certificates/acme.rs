@@ -216,10 +216,16 @@ async fn answer_challenges(
     Ok(())
 }
 
+// Keep compatibility with stable Rust versions before duration_constructors.
+#[allow(clippy::duration_suboptimal_units)]
+const READY_TIMEOUT: Duration = Duration::from_secs(3 * 60);
+#[allow(clippy::duration_suboptimal_units)]
+const CERTIFICATE_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+
 /// Waits for validation, then returns `(private_key_pem, certificate_chain_pem)`.
 async fn finalize_order(order: &mut Order) -> Result<(String, String), String> {
     let status = order
-        .poll_ready(&RetryPolicy::new().timeout(Duration::from_mins(3)))
+        .poll_ready(&RetryPolicy::new().timeout(READY_TIMEOUT))
         .await
         .map_err(|error| format!("等待域名验证失败：{error}"))?;
     if status != OrderStatus::Ready {
@@ -232,7 +238,7 @@ async fn finalize_order(order: &mut Order) -> Result<(String, String), String> {
         .await
         .map_err(|error| format!("提交证书签名请求失败：{error}"))?;
     let chain = order
-        .poll_certificate(&RetryPolicy::new().timeout(Duration::from_mins(2)))
+        .poll_certificate(&RetryPolicy::new().timeout(CERTIFICATE_TIMEOUT))
         .await
         .map_err(|error| format!("下载证书失败：{error}"))?;
     Ok((private_key, chain))

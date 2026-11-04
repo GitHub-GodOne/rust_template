@@ -3,16 +3,18 @@
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::{
     controllers::admin::authorize,
     errors::{ApiError, ApiResult},
     models::{
-        _entities::{database_backups, database_restores},
+        _entities::{database_backups, database_restores, db_connections},
         database_backups::{
-            create_postgres_backup, deliver_backup, restore_postgres_backup, BackupTrigger,
-            RestoreOptions,
+            create_postgres_backup_with_options, deliver_backup, restore_postgres_backup,
+            telegram_destination_summaries, BackupOptions, BackupTrigger, RestoreOptions,
         },
+        db_connections::decrypt_password,
     },
     responses::{self, ApiResponse, EmptyData, PageResponse},
 };
@@ -53,6 +55,8 @@ pub struct BackupRecord {
     pub delivery_targets: Option<String>,
     pub delivery_status: Option<String>,
     pub error_message: Option<String>,
+    pub database_connection_id: Option<i32>,
+    pub database_label: Option<String>,
     pub created_by: Option<i32>,
     pub created_at: String,
     pub updated_at: String,
@@ -61,6 +65,44 @@ pub struct BackupRecord {
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct RestoreBackupParams {
     pub confirm_phrase: String,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct CreateBackupParams {
+    /// Saved PostgreSQL connection; omitted means the application's database.
+    pub connection_id: Option<i32>,
+    /// Optional per-backup delivery target ids, e.g. ["telegram"].
+    pub delivery_targets: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct BackupDestinationRecord {
+    pub id: String,
+    pub name: Option<String>,
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/backups/destinations",
+    tag = "admin-backups",
+    security(("bearer_auth" = [])),
+    responses((status = 200, body = ApiResponse<Vec<BackupDestinationRecord>>))
+)]
+#[debug_handler]
+pub async fn destinations(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
+    authorize(&ctx, &auth, "system:backup:list").await?;
+    let destinations = telegram_destination_summaries(&ctx.db).await?;
+    Ok(responses::ok(
+        destinations
+            .into_iter()
+            .map(|destination| BackupDestinationRecord {
+                id: destination.id,
+                name: destination.name,
+                enabled: destination.enabled,
+            })
+            .collect::<Vec<_>>(),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -151,16 +193,29 @@ pub async fn get(
     path = "/api/admin/backups",
     tag = "admin-backups",
     security(("bearer_auth" = [])),
+    request_body = CreateBackupParams,
     responses((status = 200, body = ApiResponse<BackupRecord>))
 )]
 #[debug_handler]
-pub async fn create(auth: auth::JWT, State(ctx): State<AppContext>) -> ApiResult<Response> {
+pub async fn create(
+    auth: auth::JWT,
+    State(ctx): State<AppContext>,
+    Json(params): Json<CreateBackupParams>,
+) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:backup:create").await?;
-    let backup = create_postgres_backup(
+    let (database_url, database_connection_id, database_label) =
+        resolve_backup_database(&ctx, actor.id, params.connection_id).await?;
+    let delivery_targets = normalize_delivery_targets(params.delivery_targets)?;
+    let backup = create_postgres_backup_with_options(
         &ctx.db,
-        &ctx.config.database.uri,
+        &database_url,
         Some(actor.id),
         BackupTrigger::Manual,
+        BackupOptions {
+            database_connection_id,
+            database_label,
+            delivery_targets,
+        },
     )
     .await?;
     let backup = deliver_backup(&ctx.db, backup).await?;
@@ -228,10 +283,12 @@ pub async fn list_restores(
 pub async fn restore(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Path(id): Path<i32>,
     Json(params): Json<RestoreBackupParams>,
 ) -> ApiResult<Response> {
     let actor = authorize(&ctx, &auth, "system:backup:restore").await?;
+    crate::controllers::admin::require_reauth(&ctx, &session).await?;
     let backup = find_backup(&ctx, id).await?;
     let restore = restore_postgres_backup(
         &ctx.db,
@@ -259,13 +316,20 @@ pub async fn restore(
 pub async fn delete(
     auth: auth::JWT,
     State(ctx): State<AppContext>,
+    session: crate::controllers::admin::SessionExt,
     Path(id): Path<i32>,
 ) -> ApiResult<Response> {
-    authorize(&ctx, &auth, "system:backup:delete").await?;
-    find_backup(&ctx, id).await?;
-    database_backups::Entity::delete_by_id(id)
-        .exec(&ctx.db)
-        .await?;
+    let actor = authorize(&ctx, &auth, "system:backup:delete").await?;
+    crate::controllers::admin::require_reauth(&ctx, &session).await?;
+    let backup = find_backup(&ctx, id).await?;
+    crate::services::recycle_bin::delete_row(
+        &ctx.db,
+        crate::services::recycle_bin::Deletion::new("backups", id, &backup.filename, &actor),
+        "database_backups",
+        i64::from(id),
+        &[],
+    )
+    .await?;
     Ok(responses::empty())
 }
 
@@ -274,6 +338,87 @@ async fn find_backup(ctx: &AppContext, id: i32) -> ApiResult<database_backups::M
         .one(&ctx.db)
         .await?
         .ok_or_else(|| ApiError::bad_request("backup not found"))
+}
+
+pub(crate) async fn resolve_backup_database(
+    ctx: &AppContext,
+    user_id: i32,
+    connection_id: Option<i32>,
+) -> ApiResult<(String, Option<i32>, Option<String>)> {
+    let Some(connection_id) = connection_id else {
+        return Ok((ctx.config.database.uri.clone(), None, None));
+    };
+    let connection = db_connections::Entity::find_by_id(connection_id)
+        .filter(db_connections::Column::UserId.eq(user_id))
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("数据库连接不存在或无权访问"))?;
+    if !connection.db_type.eq_ignore_ascii_case("postgres") {
+        return Err(ApiError::bad_request(
+            "数据库备份目前只支持 PostgreSQL 连接",
+        ));
+    }
+    let mut url = Url::parse("postgres://localhost")
+        .map_err(|_| ApiError::internal("无法初始化 PostgreSQL 连接地址"))?;
+    if let Some(username) = connection.username.as_deref() {
+        url.set_username(username)
+            .map_err(|_| ApiError::bad_request("数据库用户名无效"))?;
+    }
+    if let Some(payload) = connection.encrypted_password.as_deref() {
+        let secret = ctx.config.get_jwt_config()?.secret.clone();
+        let password = decrypt_password(&secret, user_id, connection.id, payload)?;
+        url.set_password(Some(&password))
+            .map_err(|_| ApiError::bad_request("数据库密码无效"))?;
+    }
+    url.set_host(connection.host.as_deref().filter(|value| !value.is_empty()))
+        .map_err(|_| ApiError::bad_request("数据库主机地址无效"))?;
+    if let Some(port) = connection.port.and_then(|value| u16::try_from(value).ok()) {
+        url.set_port(Some(port))
+            .map_err(|_| ApiError::bad_request("数据库端口无效"))?;
+    }
+    if let Some(database) = connection
+        .database_name
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        url.set_path(&format!("/{database}"));
+    }
+    if let Some(ssl_mode) = connection
+        .ssl_mode
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        url.query_pairs_mut().append_pair("sslmode", ssl_mode);
+    }
+    Ok((url.to_string(), Some(connection.id), Some(connection.name)))
+}
+
+pub(crate) fn normalize_delivery_targets(
+    targets: Option<Vec<String>>,
+) -> ApiResult<Option<Vec<String>>> {
+    let Some(targets) = targets else {
+        return Ok(None);
+    };
+    let mut normalized = Vec::new();
+    for target in targets {
+        let target = target.trim().to_ascii_lowercase();
+        if target.is_empty() {
+            continue;
+        }
+        if !matches!(
+            target.as_str(),
+            "telegram" | "wecom" | "dingtalk" | "custom"
+        ) && !target.starts_with("telegram:")
+        {
+            return Err(ApiError::bad_request(format!(
+                "不支持的备份推送目标：{target}"
+            )));
+        }
+        if !normalized.contains(&target) {
+            normalized.push(target);
+        }
+    }
+    Ok(Some(normalized))
 }
 
 impl From<database_restores::Model> for RestoreRecord {
@@ -312,6 +457,8 @@ impl From<database_backups::Model> for BackupRecord {
             delivery_targets: backup.delivery_targets,
             delivery_status: backup.delivery_status,
             error_message: backup.error_message,
+            database_connection_id: backup.database_connection_id,
+            database_label: backup.database_label,
             created_by: backup.created_by,
             created_at: backup.created_at.to_rfc3339(),
             updated_at: backup.updated_at.to_rfc3339(),

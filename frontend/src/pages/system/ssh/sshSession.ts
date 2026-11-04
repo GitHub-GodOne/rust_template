@@ -8,7 +8,11 @@ export type TerminalStatus =
   | "error";
 
 export const SESSION_NOT_FOUND_CODE = "SSH_SESSION_NOT_FOUND";
-export const MAX_AUTO_RECONNECT_ATTEMPTS = 3;
+/**
+ * A dropped terminal keeps retrying (every 10 s at most) while the page is
+ * visible, so a long network outage still ends with the terminal back.
+ */
+export const MAX_AUTO_RECONNECT_ATTEMPTS = Number.POSITIVE_INFINITY;
 
 /** True when the server no longer has the session (restart or shell exit). */
 export function isSessionGone(error: unknown) {
