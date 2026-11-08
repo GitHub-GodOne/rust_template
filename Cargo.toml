@@ -1,5 +1,15 @@
 [workspace]
 
+# Apply release settings to the workspace root. The nested `rathole` crate's
+# profile is ignored by Cargo when it is not declared here.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = 0
+
 [package]
 name = "gpt_images"
 version = "0.1.0"
@@ -70,7 +80,14 @@ hyper = { version = "1", features = ["server", "client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "client-legacy", "http1", "http2"] }
 http-body-util = { version = "0.1" }
 socket2 = { version = "0.6" }
-rathole = { path = "rathole", default-features = true }
+rathole = { path = "rathole", default-features = false, features = [
+  "server",
+  "client",
+  "rustls",
+  "noise",
+  "websocket-rustls",
+  "hot-reload",
+] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
