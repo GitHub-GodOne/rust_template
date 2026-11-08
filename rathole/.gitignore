@@ -1,0 +1,6 @@
+/target
+perf.data
+perf.data.old
+# Example TLS private material must never be committed.
+/examples/tls/*.key
+/examples/tls/*.pfx
