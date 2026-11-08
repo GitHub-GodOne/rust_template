@@ -15,7 +15,6 @@ import {
   Button,
   Dropdown,
   Layout,
-  Select,
   Space,
   Tooltip,
   Typography,
@@ -107,6 +106,32 @@ export function HeaderBar({
       label: t("系统设置"),
       onClick: () => navigate("/admin/system/settings"),
     },
+    {
+      type: "group" as const,
+      label: t("页面缩放"),
+      children: [
+        {
+          key: "zoom-out",
+          icon: <ZoomOutOutlined />,
+          label: t("缩小页面"),
+          disabled: contentZoom <= 0.7,
+          onClick: zoomOut,
+        },
+        {
+          key: "zoom-reset",
+          icon: <FontSizeOutlined />,
+          label: `${t("重置页面缩放")}（${Math.round(contentZoom * 100)}%）`,
+          onClick: resetZoom,
+        },
+        {
+          key: "zoom-in",
+          icon: <ZoomInOutlined />,
+          label: t("放大页面"),
+          disabled: contentZoom >= 1,
+          onClick: zoomIn,
+        },
+      ],
+    },
     ...(showDepartmentSwitch
       ? [
           {
@@ -165,45 +190,6 @@ export function HeaderBar({
             onClick={onOpenMenuSearch}
           />
         </Tooltip>
-        <Space.Compact className="admin-zoom-control">
-          <Button
-            type="text"
-            aria-label={t("缩小页面")}
-            icon={<ZoomOutOutlined />}
-            disabled={contentZoom <= 0.7}
-            onClick={zoomOut}
-          />
-          <Button
-            type="text"
-            aria-label={t("重置页面缩放")}
-            icon={<FontSizeOutlined />}
-            onClick={resetZoom}
-          >
-            {Math.round(contentZoom * 100)}%
-          </Button>
-          <Button
-            type="text"
-            aria-label={t("放大页面")}
-            icon={<ZoomInOutlined />}
-            disabled={contentZoom >= 1}
-            onClick={zoomIn}
-          />
-        </Space.Compact>
-        {showDepartmentSwitch ? (
-          <Select
-            allowClear
-            className="admin-department-select"
-            loading={switchingDepartment}
-            placeholder={t("当前部门")}
-            value={currentDepartment?.id}
-            suffixIcon={<BranchesOutlined />}
-            options={departments.map((department) => ({
-              value: department.id,
-              label: department.name,
-            }))}
-            onChange={handleDepartmentChange}
-          />
-        ) : null}
         <RemoteAudioIndicator />
         <NotificationBell />
         <ThemeSwitch />

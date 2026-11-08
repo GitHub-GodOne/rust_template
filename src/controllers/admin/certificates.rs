@@ -13,12 +13,15 @@ use crate::{
         admin_logs,
     },
     responses::{self, ApiResponse, EmptyData},
-    services::certificates::{
-        self as certs,
-        cloudflare::CloudflareApi,
-        proxy::ListenerStatus,
-        tunnel::{self, TunnelStatus},
-        CertificateSettingsView, SaveCertificateSettingsParams, MODE_DIRECT, MODE_TUNNEL,
+    services::{
+        certificates::{
+            self as certs,
+            cloudflare::CloudflareApi,
+            proxy::ListenerStatus,
+            tunnel::{self, TunnelStatus},
+            CertificateSettingsView, SaveCertificateSettingsParams, MODE_DIRECT, MODE_TUNNEL,
+        },
+        ip_rules,
     },
 };
 
@@ -57,6 +60,7 @@ pub struct DomainMappingRecord {
     pub ipv4_address: Option<String>,
     pub ipv6_mode: String,
     pub ipv6_address: Option<String>,
+    pub allowed_ips: Vec<String>,
     pub enabled: bool,
     /// `active`, `pending`, `error` or `disabled`.
     pub status: String,
@@ -108,6 +112,8 @@ pub struct SaveDomainMappingParams {
     pub ipv4_address: Option<String>,
     pub ipv6_mode: Option<String>,
     pub ipv6_address: Option<String>,
+    /// Empty means any client; values may be IP addresses or CIDR ranges.
+    pub allowed_ips: Option<Vec<String>>,
     pub enabled: Option<bool>,
     /// Direct mode: create and issue a certificate when none covers the domain (default true).
     pub issue_certificate: Option<bool>,
@@ -175,6 +181,7 @@ fn mapping_record(
         ipv4_address: mapping.ipv4_address.clone(),
         ipv6_mode: mapping.ipv6_mode.clone(),
         ipv6_address: mapping.ipv6_address.clone(),
+        allowed_ips: serde_json::from_str(&mapping.allowed_ips).unwrap_or_default(),
         enabled: mapping.enabled,
         status: mapping.status.clone(),
         last_error: mapping.last_error.clone(),
@@ -600,6 +607,7 @@ struct ValidMapping {
     public_port: i32,
     ipv4: (String, Option<String>),
     ipv6: (String, Option<String>),
+    allowed_ips: Vec<String>,
     enabled: bool,
 }
 
@@ -644,6 +652,7 @@ fn validate_mapping(ctx: &AppContext, params: &SaveDomainMappingParams) -> ApiRe
         .map_err(ApiError::bad_request)?;
         (i32::from(port), ipv4, ipv6)
     };
+    let allowed_ips = normalize_allowed_ips(params.allowed_ips.as_deref())?;
     let name = params
         .name
         .as_deref()
@@ -662,8 +671,29 @@ fn validate_mapping(ctx: &AppContext, params: &SaveDomainMappingParams) -> ApiRe
         public_port,
         ipv4,
         ipv6,
+        allowed_ips,
         enabled: params.enabled.unwrap_or(true),
     })
+}
+
+fn normalize_allowed_ips(values: Option<&[String]>) -> ApiResult<Vec<String>> {
+    let mut normalized = Vec::new();
+    for value in values.unwrap_or_default() {
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        ip_rules::IpRule::parse(value).ok_or_else(|| {
+            ApiError::bad_request(format!("允许访问 IP 列表中包含无效地址：{value}"))
+        })?;
+        if !normalized.iter().any(|existing| existing == value) {
+            normalized.push(value.to_string());
+        }
+    }
+    if normalized.len() > 256 {
+        return Err(ApiError::bad_request("允许访问 IP 列表最多包含 256 项"));
+    }
+    Ok(normalized)
 }
 
 /// Links a direct mapping to a certificate covering it, creating one if needed.
@@ -766,6 +796,9 @@ pub async fn create_mapping(
         ipv4_address: Set(valid.ipv4.1),
         ipv6_mode: Set(valid.ipv6.0),
         ipv6_address: Set(valid.ipv6.1),
+        allowed_ips: Set(
+            serde_json::to_string(&valid.allowed_ips).unwrap_or_else(|_| "[]".to_string())
+        ),
         enabled: Set(valid.enabled),
         status: Set(if valid.enabled { "pending" } else { "disabled" }.to_string()),
         certificate_id: Set(certificate_id),
@@ -847,6 +880,8 @@ pub async fn update_mapping(
     active.ipv4_address = Set(valid.ipv4.1);
     active.ipv6_mode = Set(valid.ipv6.0);
     active.ipv6_address = Set(valid.ipv6.1);
+    active.allowed_ips =
+        Set(serde_json::to_string(&valid.allowed_ips).unwrap_or_else(|_| "[]".to_string()));
     active.enabled = Set(valid.enabled);
     if !valid.enabled {
         active.status = Set("disabled".to_string());

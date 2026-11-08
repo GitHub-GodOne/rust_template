@@ -5,6 +5,7 @@ export type ImContact = {
   id: number;
   name: string;
   email: string;
+  is_self: boolean;
 };
 
 export type ImMember = {

@@ -24,6 +24,7 @@ impl Task for RunDueScheduledTasks {
         let now = Local::now();
         let tasks = scheduled_tasks::Entity::find()
             .filter(scheduled_tasks::Column::Enabled.eq(true))
+            .filter(scheduled_tasks::Column::TaskType.ne("startup_command"))
             .filter(
                 Condition::any()
                     .add(scheduled_tasks::Column::NextRunAt.is_null())

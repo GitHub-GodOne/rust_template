@@ -67,6 +67,8 @@ sudo ./target/release/gpt_images-cli service install \
   --binding 0.0.0.0
 
 sudo ./target/release/gpt_images-cli service status
+sudo ./target/release/gpt_images-cli service enable
+sudo ./target/release/gpt_images-cli service disable
 sudo ./target/release/gpt_images-cli service restart
 sudo ./target/release/gpt_images-cli service stop
 sudo ./target/release/gpt_images-cli service start
@@ -96,6 +98,8 @@ sudo loginctl enable-linger "$USER"
 ```sh
 sudo ./target/release/gpt_images-cli service install --environment production --port 5150
 sudo ./target/release/gpt_images-cli service status
+sudo ./target/release/gpt_images-cli service enable
+sudo ./target/release/gpt_images-cli service disable
 sudo ./target/release/gpt_images-cli service restart
 sudo ./target/release/gpt_images-cli service uninstall
 ```
@@ -154,6 +158,8 @@ HTTP 服务响应，不能证明数据库查询正常。
 ```powershell
 .\gpt_images-cli.exe service install --environment production --port 5150
 .\gpt_images-cli.exe service status
+.\gpt_images-cli.exe service enable
+.\gpt_images-cli.exe service disable
 .\gpt_images-cli.exe service restart
 .\gpt_images-cli.exe service stop
 .\gpt_images-cli.exe service start
@@ -172,6 +178,22 @@ HTTP 服务响应，不能证明数据库查询正常。
 
 服务配置会保存安装时的二进制和工作目录绝对路径。移动二进制或项目目录后，应使用
 新的路径再次执行 `service install` 覆盖配置。同名安装也可用于更新端口、环境或模式。
+
+### 页面配置开机自启命令
+
+后台进入“系统管理 → 开机自启命令”，可以新增、编辑、启用、停用和手动运行命令，
+例如 Windows 的 `ipconfig`、Linux 的 `ip addr` 或 macOS 的 `ifconfig`。命令会在本程序
+服务每次启动时执行一次，并记录最近一次执行状态和输出。
+
+要让命令随电脑开机执行，先为本程序安装系统服务：
+
+```text
+gpt_images-cli service install
+```
+
+Windows 使用任务计划程序，Linux 使用 systemd，macOS 使用 launchd；命令继承本程序
+服务的运行账户和工作目录权限。命令本身不会提升权限，若需要访问系统资源，请使用
+管理员/root 账户安装本程序服务并谨慎配置命令。
 
 ## Windows VNC 服务安装与启动
 

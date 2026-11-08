@@ -70,6 +70,7 @@ pub struct ContactRecord {
     pub id: i32,
     pub name: String,
     pub email: String,
+    pub is_self: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -100,10 +101,11 @@ pub struct ConversationRecord {
     pub id: i32,
     /// `direct` or `group`.
     pub kind: String,
-    /// The group name, or the other person's name in a direct chat.
+    /// The group name, or the peer's name in a direct chat. A self-chat uses
+    /// the signed-in user's own name.
     pub name: String,
     pub owner_id: Option<i32>,
-    /// The other person in a direct chat.
+    /// The peer in a direct chat, or the viewer for a self-chat.
     pub peer_id: Option<i32>,
     /// The signed-in user, so the client can tell its own messages apart.
     pub viewer_id: i32,
@@ -309,6 +311,7 @@ async fn conversation_record(
                 .iter()
                 .map(|member| member.user_id)
                 .find(|id| *id != me.user_id)
+                .or_else(|| members.first().map(|member| member.user_id))
         })
         .flatten();
     let name = if conversation.kind == KIND_DIRECT {
@@ -549,7 +552,7 @@ pub async fn contacts(
     let mut query = users::Entity::find()
         .filter(contact_scope(&ctx, &me).await?)
         .order_by_asc(UserColumn::Name)
-        .limit(MAX_CONTACTS);
+        .limit(MAX_CONTACTS.saturating_sub(1));
     if let Some(keyword) = params
         .keyword
         .as_deref()
@@ -562,16 +565,36 @@ pub async fn contacts(
                 .add(UserColumn::Email.contains(keyword)),
         );
     }
-    let items: Vec<ContactRecord> = query
-        .all(&ctx.db)
-        .await?
-        .into_iter()
-        .map(|user| ContactRecord {
-            id: user.id,
-            name: display_name(&user),
-            email: user.email,
-        })
-        .collect();
+    let mut items = Vec::with_capacity(usize::try_from(MAX_CONTACTS).unwrap_or(500));
+    let keyword = params
+        .keyword
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if keyword.is_none_or(|value| {
+        let value = value.to_lowercase();
+        display_name(&me).to_lowercase().contains(&value)
+            || me.email.to_lowercase().contains(&value)
+    }) {
+        items.push(ContactRecord {
+            id: me.id,
+            name: display_name(&me),
+            email: me.email.clone(),
+            is_self: true,
+        });
+    }
+    items.extend(
+        query
+            .all(&ctx.db)
+            .await?
+            .into_iter()
+            .map(|user| ContactRecord {
+                id: user.id,
+                name: display_name(&user),
+                email: user.email,
+                is_self: false,
+            }),
+    );
     Ok(responses::ok(items))
 }
 
@@ -663,10 +686,9 @@ pub async fn open_direct(
     Json(params): Json<DirectParams>,
 ) -> ApiResult<Response> {
     let me = authorize(&ctx, &auth, PERMISSION).await?;
-    if params.user_id == me.id {
-        return Err(ApiError::bad_request("不能和自己单聊"));
+    if params.user_id != me.id {
+        assert_contacts(&ctx, &me, &[params.user_id]).await?;
     }
-    assert_contacts(&ctx, &me, &[params.user_id]).await?;
     let key = format!(
         "{}:{}",
         me.id.min(params.user_id),
@@ -679,7 +701,12 @@ pub async fn open_direct(
     let conversation = if let Some(conversation) = existing {
         // Someone who left (or was deleted and restored) rejoins quietly.
         let members = member_rows(&ctx, conversation.id).await?;
-        let missing = [me.id, params.user_id]
+        let member_ids = if params.user_id == me.id {
+            vec![me.id]
+        } else {
+            vec![me.id, params.user_id]
+        };
+        let missing = member_ids
             .into_iter()
             .filter(|id| !members.iter().any(|member| member.user_id == *id))
             .map(|id| (id, ROLE_MEMBER));
@@ -694,12 +721,12 @@ pub async fn open_direct(
         }
         .insert(&txn)
         .await?;
-        add_members(
-            &txn,
-            conversation.id,
-            vec![(me.id, ROLE_MEMBER), (params.user_id, ROLE_MEMBER)],
-        )
-        .await?;
+        let member_ids = if params.user_id == me.id {
+            vec![(me.id, ROLE_MEMBER)]
+        } else {
+            vec![(me.id, ROLE_MEMBER), (params.user_id, ROLE_MEMBER)]
+        };
+        add_members(&txn, conversation.id, member_ids).await?;
         txn.commit().await?;
         conversation
     };

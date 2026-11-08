@@ -1,6 +1,5 @@
-//! `security.admin_ip_allowlist`: only listed addresses may log in or call the
-//! admin API. This machine is always allowed, so a bad list can be fixed
-//! locally.
+//! `security.admin_ip_allowlist` and `security.admin_ip_blocklist` restrict
+//! login and admin API access. A matching blocklist entry always wins.
 
 use std::net::SocketAddr;
 
@@ -74,7 +73,7 @@ async fn check_ip(State(ctx): State<AppContext>, request: Request, next: Next) -
             return next.run(request).await;
         }
     };
-    if settings.admin_ip_allowlist.is_empty() {
+    if settings.admin_ip_allowlist.is_empty() && settings.admin_ip_blocklist.is_empty() {
         return next.run(request).await;
     }
     let peer = request
@@ -85,15 +84,24 @@ async fn check_ip(State(ctx): State<AppContext>, request: Request, next: Next) -
     if settings.ip_allowed(ip) {
         return next.run(request).await;
     }
-    tracing::warn!(ip = ?ip, path = request.uri().path(), "blocked by admin IP allowlist");
-    responses::error(
-        StatusCode::FORBIDDEN,
-        "IP_NOT_ALLOWED",
-        &format!(
+    let reason = if settings.ip_blocked(ip) {
+        "admin IP blocklist"
+    } else {
+        "admin IP allowlist"
+    };
+    tracing::warn!(ip = ?ip, path = request.uri().path(), reason, "blocked by admin IP policy");
+    let message = if settings.ip_blocked(ip) {
+        format!(
+            "当前 IP {} 在后台访问黑名单中",
+            ip.map_or_else(|| "未知".to_string(), |ip| ip.to_string())
+        )
+    } else {
+        format!(
             "当前 IP {} 不在后台访问白名单中",
             ip.map_or_else(|| "未知".to_string(), |ip| ip.to_string())
-        ),
-    )
+        )
+    };
+    responses::error(StatusCode::FORBIDDEN, "IP_NOT_ALLOWED", &message)
 }
 
 #[cfg(test)]

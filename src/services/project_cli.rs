@@ -266,6 +266,16 @@ const COMMAND_NOTES: &[CommandNote] = &[
         CliRisk::Caution,
         "安装并启用系统服务，通常需要管理员权限",
     ),
+    note(
+        "service enable",
+        CliRisk::Caution,
+        "开启已安装服务的开机自启，不改动服务配置",
+    ),
+    note(
+        "service disable",
+        CliRisk::Caution,
+        "关闭开机自启但保留已安装的服务配置",
+    ),
     note("service status", CliRisk::Safe, "查看系统服务状态"),
     note("service start", CliRisk::Safe, "启动已安装的系统服务"),
     note(

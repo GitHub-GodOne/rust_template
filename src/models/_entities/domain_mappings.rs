@@ -18,6 +18,8 @@ pub struct Model {
     pub ipv4_address: Option<String>,
     pub ipv6_mode: String,
     pub ipv6_address: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub allowed_ips: String,
     pub enabled: bool,
     pub status: String,
     #[sea_orm(column_type = "Text", nullable)]

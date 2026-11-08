@@ -1294,3 +1294,24 @@
   description: 在 SQL 编辑器中执行任意语句，并新增、修改、删除表数据
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 186
+  name: 查看内网穿透
+  code: system:rathole:list
+  group_name: system:rathole
+  description: 查看 Rathole 配置和运行状态
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 187
+  name: 管理内网穿透
+  code: system:rathole:manage
+  group_name: system:rathole
+  description: 新增、编辑、删除和校验 Rathole 配置
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 188
+  name: 运行内网穿透
+  code: system:rathole:run
+  group_name: system:rathole
+  description: 启动、停止和重启 Rathole 实例
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"

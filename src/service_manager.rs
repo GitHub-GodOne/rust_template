@@ -29,11 +29,13 @@ struct ServiceCli {
 #[derive(Debug, Subcommand)]
 enum ServiceCommand {
     /// Install autostart and restart-on-failure configuration
-    #[command(alias = "enable")]
     Install(InstallArgs),
+    /// Enable boot/login autostart for an already installed service
+    Enable(TargetArgs),
     /// Remove the installed service configuration
-    #[command(alias = "disable")]
     Uninstall(TargetArgs),
+    /// Disable boot/login autostart while keeping the service installed
+    Disable(TargetArgs),
     /// Start the installed service
     Start(TargetArgs),
     /// Stop the installed service
@@ -150,9 +152,17 @@ fn execute(command: ServiceCommand) -> Result<()> {
             let definition = resolve_definition(arguments)?;
             platform::install(&definition, no_start)
         }
+        ServiceCommand::Enable(target) => {
+            validate_target(&target)?;
+            platform::enable(&target)
+        }
         ServiceCommand::Uninstall(target) => {
             validate_target(&target)?;
             platform::uninstall(&target)
+        }
+        ServiceCommand::Disable(target) => {
+            validate_target(&target)?;
+            platform::disable(&target)
         }
         ServiceCommand::Start(target) => {
             validate_target(&target)?;
@@ -601,6 +611,22 @@ mod platform {
         Ok(())
     }
 
+    pub fn enable(target: &TargetArgs) -> Result<()> {
+        systemctl(
+            target,
+            &["enable", &unit_name(&target.name)],
+            "enable service autostart",
+        )
+    }
+
+    pub fn disable(target: &TargetArgs) -> Result<()> {
+        systemctl(
+            target,
+            &["disable", &unit_name(&target.name)],
+            "disable service autostart",
+        )
+    }
+
     pub fn start(target: &TargetArgs) -> Result<()> {
         systemctl(
             target,
@@ -691,6 +717,9 @@ mod platform {
                 path.display()
             ))
         })?;
+        // `launchctl disable` persists outside the plist. Re-enable the label
+        // on every install so reinstalling a service restores boot autostart.
+        enable(&target)?;
         if !no_start {
             if is_loaded(&target)? {
                 bootout(&target)?;
@@ -716,6 +745,18 @@ mod platform {
         }
         println!("Removed {}", service_label(&target.name));
         Ok(())
+    }
+
+    pub fn enable(target: &TargetArgs) -> Result<()> {
+        let mut command = Command::new("launchctl");
+        command.args(["enable", &service_target(target)?]);
+        run_command(&mut command, "enable launchd service autostart")
+    }
+
+    pub fn disable(target: &TargetArgs) -> Result<()> {
+        let mut command = Command::new("launchctl");
+        command.args(["disable", &service_target(target)?]);
+        run_command(&mut command, "disable launchd service autostart")
     }
 
     pub fn start(target: &TargetArgs) -> Result<()> {
@@ -959,6 +1000,24 @@ mod platform {
         run_command(&mut command, "remove Windows startup task")
     }
 
+    pub fn enable(target: &TargetArgs) -> Result<()> {
+        let mut command = Command::new("schtasks.exe");
+        command
+            .args(["/Change", "/TN"])
+            .arg(&target.name)
+            .arg("/ENABLE");
+        run_command(&mut command, "enable Windows startup task")
+    }
+
+    pub fn disable(target: &TargetArgs) -> Result<()> {
+        let mut command = Command::new("schtasks.exe");
+        command
+            .args(["/Change", "/TN"])
+            .arg(&target.name)
+            .arg("/DISABLE");
+        run_command(&mut command, "disable Windows startup task")
+    }
+
     pub fn start(target: &TargetArgs) -> Result<()> {
         let mut command = Command::new("schtasks.exe");
         command.args(["/Run", "/TN"]).arg(&target.name);
@@ -1005,6 +1064,14 @@ mod platform {
         unsupported()
     }
 
+    pub fn enable(_target: &TargetArgs) -> Result<()> {
+        unsupported()
+    }
+
+    pub fn disable(_target: &TargetArgs) -> Result<()> {
+        unsupported()
+    }
+
     pub fn start(_target: &TargetArgs) -> Result<()> {
         unsupported()
     }
@@ -1031,9 +1098,9 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_windows_task, launchd_log_directory, render_launchd_plist, render_systemd_unit,
-        render_windows_task, valid_service_name, windows_display_path, windows_quote_argument,
-        xml_escape, Path, PathBuf, ServiceDefinition,
+        cli_command, encode_windows_task, launchd_log_directory, render_launchd_plist,
+        render_systemd_unit, render_windows_task, valid_service_name, windows_display_path,
+        windows_quote_argument, xml_escape, Path, PathBuf, ServiceDefinition,
     };
 
     fn definition(user_scope: bool) -> ServiceDefinition {
@@ -1156,5 +1223,16 @@ mod tests {
         assert_eq!(windows_quote_argument("plain"), "plain");
         assert_eq!(windows_quote_argument("two words"), "\"two words\"");
         assert_eq!(xml_escape("a<&\"'"), "a&lt;&amp;&quot;&apos;");
+    }
+
+    #[test]
+    fn service_cli_exposes_autostart_controls() {
+        assert!(cli_command()
+            .clone()
+            .try_get_matches_from(["service", "enable"])
+            .is_ok());
+        assert!(cli_command()
+            .try_get_matches_from(["service", "disable", "--name", "worker"])
+            .is_ok());
     }
 }

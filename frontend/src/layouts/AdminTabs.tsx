@@ -7,7 +7,7 @@ import {
   mergeMenuItems,
   standalonePageTitle,
 } from "../app/menu";
-import { t } from "../i18n";
+import { t, tData } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 
 type AdminTab = {
@@ -53,7 +53,7 @@ export function AdminTabs() {
     const menu = findMenuByPath(activePath, visibleMenus);
     const nextTab: AdminTab = {
       key: activePath,
-      label: menu?.label ?? fallbackLabel(activePath),
+      label: menu ? tData(menu.label) : fallbackLabel(activePath),
       closable: activePath !== homePath,
     };
     setTabs((current) => {

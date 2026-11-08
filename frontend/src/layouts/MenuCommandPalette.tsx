@@ -12,7 +12,7 @@ import {
   defaultAdminMenus,
   mergeMenuItems,
 } from "../app/menu";
-import { t } from "../i18n";
+import { t, tData } from "../i18n";
 import { useAuthStore } from "../stores/auth";
 import { renderMenuIcon } from "./icons";
 
@@ -39,17 +39,19 @@ function collectMenuDestinations(
       return [];
     }
 
-    const nextParents = [...parents, item.label];
+    const translatedLabel = tData(item.label);
+    const translatedTitle = tData(item.title);
+    const nextParents = [...parents, translatedLabel];
     const destination = item.path
       ? [
           {
             key: item.path,
-            label: item.label,
+            label: translatedLabel,
             path: item.path,
             icon: item.icon,
             parents,
             searchText: normalizeSearchText(
-              [item.label, item.title, item.path, ...nextParents]
+              [translatedLabel, translatedTitle, item.path, ...nextParents]
                 .filter(Boolean)
                 .join(" "),
             ),

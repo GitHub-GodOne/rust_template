@@ -187,6 +187,20 @@ export const defaultAdminMenus: AdminMenuItem[] = [
         permission: "system:scheduled_task:list",
       },
       {
+        key: "system-startup-commands",
+        label: t("开机自启命令"),
+        path: "/admin/system/startup-commands",
+        icon: "schedule",
+        permission: "system:scheduled_task:list",
+      },
+      {
+        key: "system-rathole",
+        label: t("内网穿透（Rathole）"),
+        path: "/admin/system/rathole",
+        icon: "global",
+        permission: "system:rathole:list",
+      },
+      {
         key: "system-backups",
         label: t("数据库备份"),
         path: "/admin/system/backups",

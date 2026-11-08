@@ -77,7 +77,9 @@ import { t } from "../../../i18n";
 type MappingFormValues = Required<
   Pick<SaveDomainMappingParams, "domain" | "mode" | "upstream_port">
 > &
-  Omit<SaveDomainMappingParams, "domain" | "mode" | "upstream_port">;
+  Omit<SaveDomainMappingParams, "domain" | "mode" | "upstream_port"> & {
+    allowed_ips_text: string;
+  };
 
 type CertificateFormValues = {
   domain: string;
@@ -125,6 +127,7 @@ const defaultMapping: MappingFormValues = {
   ipv4_address: "",
   ipv6_mode: "off",
   ipv6_address: "",
+  allowed_ips_text: "",
   enabled: true,
   issue_certificate: true,
 };
@@ -165,6 +168,7 @@ function MappingDialog({
             ...editing,
             ipv4_address: editing.ipv4_address ?? "",
             ipv6_address: editing.ipv6_address ?? "",
+            allowed_ips_text: editing.allowed_ips.join("\n"),
             issue_certificate: true,
           }
         : defaultMapping,
@@ -173,8 +177,13 @@ function MappingDialog({
 
   const saveMutation = useMutation({
     mutationFn: (values: MappingFormValues) => {
+      const { allowed_ips_text, ...rest } = values;
       const payload: SaveDomainMappingParams = {
-        ...values,
+        ...rest,
+        allowed_ips: allowed_ips_text
+          .split(/[\s,;]+/)
+          .map((value) => value.trim())
+          .filter(Boolean),
         ipv4_address: values.ipv4_address?.trim() || undefined,
         ipv6_address: values.ipv6_address?.trim() || undefined,
       };
@@ -264,6 +273,19 @@ function MappingDialog({
             <InputNumber min={1} max={65535} className="full-width" />
           </Form.Item>
         </div>
+        <Form.Item
+          name="allowed_ips_text"
+          label={t("允许访问 IP")}
+          extra={t(
+            "每行填写一个 IP 或 CIDR，留空表示所有 IP；内置 HTTPS 直连会在转发前校验客户端地址",
+          )}
+        >
+          <Input.TextArea
+            rows={3}
+            placeholder="203.0.113.10\n192.168.1.0/24\n2001:db8::/32"
+            autoComplete="off"
+          />
+        </Form.Item>
         {mode === "direct" ? (
           <>
             <Form.Item
@@ -811,6 +833,26 @@ export function CertificatesPage() {
           {upstreamLabel(mapping.upstream_host, mapping.upstream_port)}
         </code>
       ),
+    },
+    {
+      title: t("允许访问 IP"),
+      key: "allowed_ips",
+      width: 220,
+      render: (_, mapping) =>
+        mapping.allowed_ips.length ? (
+          <Space size={4} wrap>
+            {mapping.allowed_ips.slice(0, 3).map((value) => (
+              <Tag key={value}>{value}</Tag>
+            ))}
+            {mapping.allowed_ips.length > 3 ? (
+              <Tooltip title={mapping.allowed_ips.slice(3).join(", ")}>
+                <Tag>+{mapping.allowed_ips.length - 3}</Tag>
+              </Tooltip>
+            ) : null}
+          </Space>
+        ) : (
+          <Typography.Text type="secondary">{t("全部 IP")}</Typography.Text>
+        ),
     },
     {
       title: "DNS",

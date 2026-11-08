@@ -23,7 +23,7 @@ import {
 } from "../stores/ui";
 import { renderMenuIcon } from "./icons";
 import "./sidebar.css";
-import { t } from "../i18n";
+import { t, tData } from "../i18n";
 
 const { Sider } = Layout;
 
@@ -41,7 +41,7 @@ function buildMenuItems(
       return {
         key: item.path ?? item.key,
         icon: renderMenuIcon(item.icon ?? "menu"),
-        label: item.label,
+        label: tData(item.label),
         children,
       };
     });

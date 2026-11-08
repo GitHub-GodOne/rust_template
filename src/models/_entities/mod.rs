@@ -45,6 +45,7 @@ pub mod project_cli_run_logs;
 pub mod project_cli_runs;
 pub mod rate_limit_events;
 pub mod rate_limit_rules;
+pub mod rathole_profiles;
 pub mod rdp_credentials;
 pub mod recycle_bin;
 pub mod refresh_tokens;

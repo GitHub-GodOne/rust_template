@@ -42,6 +42,7 @@ pub use super::project_cli_run_logs::Entity as ProjectCliRunLogs;
 pub use super::project_cli_runs::Entity as ProjectCliRuns;
 pub use super::rate_limit_events::Entity as RateLimitEvents;
 pub use super::rate_limit_rules::Entity as RateLimitRules;
+pub use super::rathole_profiles::Entity as RatholeProfiles;
 pub use super::rdp_credentials::Entity as RdpCredentials;
 pub use super::recycle_bin::Entity as RecycleBin;
 pub use super::refresh_tokens::Entity as RefreshTokens;

@@ -34,6 +34,7 @@ pub mod permissions;
 pub mod primary_database;
 pub mod project_cli;
 pub mod rate_limits;
+pub mod rathole;
 pub mod rdp;
 pub mod recycle_bin;
 pub mod remote_audio;
@@ -270,6 +271,23 @@ fn operations_infrastructure_routes(routes: Routes) -> Routes {
             "/api/admin/scheduled-task-runs",
             get(scheduled_tasks::list_runs),
         )
+        .add(
+            "/api/admin/rathole/profiles",
+            get(rathole::list).post(rathole::create),
+        )
+        .add(
+            "/api/admin/rathole/profiles/{id}",
+            get(rathole::get)
+                .put(rathole::update)
+                .delete(rathole::delete),
+        )
+        .add(
+            "/api/admin/rathole/profiles/{id}/start",
+            post(rathole::start),
+        )
+        .add("/api/admin/rathole/profiles/{id}/stop", post(rathole::stop))
+        .add("/api/admin/rathole/validate", post(rathole::validate))
+        .add("/api/admin/rathole/genkey", post(rathole::genkey))
         .add(
             "/api/admin/backups",
             get(backups::list).post(backups::create),

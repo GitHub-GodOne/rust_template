@@ -37,6 +37,7 @@ use crate::{
     services::{
         cloudflare_ddns,
         http_client::{build_http_client_with_overrides, HttpClientRuntimeOverrides},
+        ip_rules::IpRule,
     },
 };
 
@@ -1004,6 +1005,11 @@ async fn apply_proxy(
                 host: mapping.domain.clone(),
                 upstream_host: mapping.upstream_host.clone(),
                 upstream_port: u16::try_from(mapping.upstream_port).ok()?,
+                allowed_ips: serde_json::from_str::<Vec<String>>(&mapping.allowed_ips)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|value| IpRule::parse(&value))
+                    .collect(),
             })
         })
         .collect();
@@ -1181,6 +1187,7 @@ mod tests {
             ipv4_address: None,
             ipv6_mode: "off".to_string(),
             ipv6_address: None,
+            allowed_ips: "[]".to_string(),
             enabled: true,
             status: "pending".to_string(),
             last_error: None,

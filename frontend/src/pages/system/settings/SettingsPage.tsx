@@ -6,6 +6,8 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
+  Card,
   Form,
   Input,
   InputNumber,
@@ -19,7 +21,7 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type DictItemRecord,
   type DictTypeRecord,
@@ -48,6 +50,127 @@ import { DataTable } from "../../../components/admin/DataTable";
 import { PermissionButton } from "../../../components/admin/PermissionButton";
 import { t } from "../../../i18n";
 import { PrimaryDatabasePanel } from "./PrimaryDatabasePanel";
+
+type IpAccessForm = {
+  allowlist: string;
+  blocklist: string;
+};
+
+const SECURITY_ALLOWLIST_KEY = "security.admin_ip_allowlist";
+const SECURITY_BLOCKLIST_KEY = "security.admin_ip_blocklist";
+
+function SecurityIpAccessPanel() {
+  const [form] = Form.useForm<IpAccessForm>();
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({
+    queryKey: ["admin-security-ip-settings"],
+    queryFn: () =>
+      fetchSettings({ group_key: "security", page: 1, page_size: 100 }),
+  });
+  const items = settingsQuery.data?.items ?? [];
+  const allowlistSetting = items.find(
+    (item) => item.key === SECURITY_ALLOWLIST_KEY,
+  );
+  const blocklistSetting = items.find(
+    (item) => item.key === SECURITY_BLOCKLIST_KEY,
+  );
+
+  useEffect(() => {
+    if (allowlistSetting || blocklistSetting) {
+      form.setFieldsValue({
+        allowlist: allowlistSetting?.value ?? "",
+        blocklist: blocklistSetting?.value ?? "",
+      });
+    }
+  }, [allowlistSetting, blocklistSetting, form]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (values: IpAccessForm) => {
+      if (!allowlistSetting || !blocklistSetting) {
+        throw new Error(t("黑白名单配置尚未完成数据库升级"));
+      }
+      const payload = (
+        setting: SettingRecord,
+        value: string,
+      ): SaveSettingParams => ({
+        key: setting.key,
+        name: setting.name,
+        group_key: setting.group_key,
+        value: value.trim(),
+        value_type: setting.value_type,
+        default_value: setting.default_value,
+        description: setting.description,
+        is_public: setting.is_public,
+        is_builtin: setting.is_builtin,
+        is_encrypted: setting.is_encrypted,
+        sort_order: setting.sort_order,
+      });
+      await updateSetting(
+        allowlistSetting.id,
+        payload(allowlistSetting, values.allowlist),
+      );
+      return updateSetting(
+        blocklistSetting.id,
+        payload(blocklistSetting, values.blocklist),
+      );
+    },
+    onSuccess: () => {
+      message.success(t("黑白名单已保存"));
+      queryClient.invalidateQueries({
+        queryKey: ["admin-security-ip-settings"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+    },
+  });
+
+  return (
+    <Card
+      className="admin-card"
+      title={t("后台访问黑白名单")}
+      loading={settingsQuery.isLoading}
+    >
+      <Alert
+        showIcon
+        type="warning"
+        message={t("黑名单优先于白名单")}
+        description={t(
+          "白名单填写后只允许白名单中的 IP 或 CIDR 访问后台；黑名单命中后始终拒绝访问。留空表示该列表不限制。本机地址仍可用于修复白名单配置，但如果本机地址加入黑名单也会被拒绝。",
+        )}
+        style={{ marginBottom: 16 }}
+      />
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values) => saveMutation.mutate(values)}
+      >
+        <Form.Item
+          name="allowlist"
+          label={t("后台访问白名单")}
+          extra={t(
+            "每行填写一个 IP 或 CIDR，例如 203.0.113.8 或 192.168.1.0/24",
+          )}
+        >
+          <Input.TextArea rows={5} placeholder={t("留空表示允许所有 IP")} />
+        </Form.Item>
+        <Form.Item
+          name="blocklist"
+          label={t("后台访问黑名单")}
+          extra={t("每行填写一个要拒绝的 IP 或 CIDR，黑名单优先级更高")}
+        >
+          <Input.TextArea rows={5} placeholder={t("留空表示不拒绝任何 IP")} />
+        </Form.Item>
+        <PermissionButton
+          type="primary"
+          htmlType="submit"
+          loading={saveMutation.isPending}
+          permission="system:setting:update"
+        >
+          {t("保存黑白名单")}
+        </PermissionButton>
+      </Form>
+    </Card>
+  );
+}
 
 const valueTypeOptions = [
   { value: "string", label: t("字符串") },
@@ -348,6 +471,7 @@ export function SettingsPage() {
             children: (
               <Space direction="vertical" size="middle" className="full-width">
                 <PrimaryDatabasePanel />
+                <SecurityIpAccessPanel />
                 <Space wrap>
                   <Input.Search
                     allowClear

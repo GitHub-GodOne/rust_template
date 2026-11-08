@@ -5,7 +5,7 @@ import { findMenuByPath } from "../../app/menu";
 import { renderMenuIcon } from "../icons";
 import { DOCK_SIZES, type DockConfig, type DockItemConfig } from "./dockConfig";
 import "./dock.css";
-import { t } from "../../i18n";
+import { t, tData } from "../../i18n";
 
 export type ResolvedDockItem = DockItemConfig & {
   label: string;
@@ -28,7 +28,7 @@ export function resolveDockItems(
     const permission = menu.permission ?? menu.permission_code;
     return {
       ...item,
-      label: menu.label ?? menu.title ?? item.path,
+      label: tData(menu.label ?? menu.title ?? item.path),
       icon: menu.icon,
       unavailable: hasPermission(permission) ? undefined : "forbidden",
     };

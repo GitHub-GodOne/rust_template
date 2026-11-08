@@ -209,11 +209,12 @@ export function ContactPicker({
     const needle = keyword.trim().toLowerCase();
     return (contacts.data ?? []).filter(
       (contact) =>
-        !needle ||
-        contact.name.toLowerCase().includes(needle) ||
-        contact.email.toLowerCase().includes(needle),
+        (!multiple || !contact.is_self) &&
+        (!needle ||
+          contact.name.toLowerCase().includes(needle) ||
+          contact.email.toLowerCase().includes(needle)),
     );
-  }, [contacts.data, keyword]);
+  }, [contacts.data, keyword, multiple]);
   const byId = useMemo(
     () => new Map((contacts.data ?? []).map((item) => [item.id, item])),
     [contacts.data],
@@ -306,7 +307,11 @@ export function ContactPicker({
                     {contact.name}
                   </Typography.Text>
                   <Typography.Text type="secondary" ellipsis>
-                    {joined ? t("已在群里") : contact.email}
+                    {joined
+                      ? t("已在群里")
+                      : contact.is_self
+                        ? t("自己")
+                        : contact.email}
                   </Typography.Text>
                 </span>
               </button>

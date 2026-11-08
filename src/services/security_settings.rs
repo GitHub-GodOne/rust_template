@@ -23,6 +23,7 @@ pub const REAUTH_ENABLED: &str = "security.reauth_enabled";
 pub const REMOTE_REAUTH_ENABLED: &str = "security.remote_reauth_enabled";
 pub const REAUTH_MINUTES: &str = "security.reauth_minutes";
 pub const ADMIN_IP_ALLOWLIST: &str = "security.admin_ip_allowlist";
+pub const ADMIN_IP_BLOCKLIST: &str = "security.admin_ip_blocklist";
 pub const API_DOCS_ACCESS: &str = "security.api_docs_access";
 pub const LOGIN_CAPTCHA: &str = "security.login_captcha";
 
@@ -49,6 +50,7 @@ pub struct SecuritySettings {
     pub remote_reauth_enabled: bool,
     pub reauth_minutes: i64,
     pub admin_ip_allowlist: Vec<IpRule>,
+    pub admin_ip_blocklist: Vec<IpRule>,
     pub docs_access: DocsAccess,
     pub login_captcha: CaptchaMode,
 }
@@ -60,6 +62,7 @@ impl Default for SecuritySettings {
             remote_reauth_enabled: false,
             reauth_minutes: 10,
             admin_ip_allowlist: Vec::new(),
+            admin_ip_blocklist: Vec::new(),
             docs_access: DocsAccess::Login,
             login_captcha: CaptchaMode::AfterFailures,
         }
@@ -70,12 +73,20 @@ impl SecuritySettings {
     /// True when the list is empty, the caller is this machine, or matches.
     #[must_use]
     pub fn ip_allowed(&self, ip: Option<IpAddr>) -> bool {
+        if self.ip_blocked(ip) {
+            return false;
+        }
         if self.admin_ip_allowlist.is_empty() {
             return true;
         }
         ip.is_some_and(|ip| {
             is_local(ip) || self.admin_ip_allowlist.iter().any(|rule| rule.contains(ip))
         })
+    }
+
+    #[must_use]
+    pub fn ip_blocked(&self, ip: Option<IpAddr>) -> bool {
+        ip.is_some_and(|ip| self.admin_ip_blocklist.iter().any(|rule| rule.contains(ip)))
     }
 }
 
@@ -115,6 +126,9 @@ pub async fn load(db: &DatabaseConnection) -> Result<SecuritySettings, DbErr> {
             .and_then(|v| v.parse::<i64>().ok())
             .map_or(defaults.reauth_minutes, |minutes| minutes.clamp(1, 24 * 60)),
         admin_ip_allowlist: value(ADMIN_IP_ALLOWLIST)
+            .map(|v| parse_rules(&v).0)
+            .unwrap_or_default(),
+        admin_ip_blocklist: value(ADMIN_IP_BLOCKLIST)
             .map(|v| parse_rules(&v).0)
             .unwrap_or_default(),
         docs_access: value(API_DOCS_ACCESS)
@@ -175,6 +189,25 @@ pub fn validate_setting(key: &str, value: &str, editor_ip: Option<IpAddr>) -> Ap
             }
             Ok(())
         }
+        ADMIN_IP_BLOCKLIST => {
+            let (rules, invalid) = parse_rules(value);
+            if !invalid.is_empty() {
+                return Err(ApiError::bad_request(format!(
+                    "IP 黑名单中有无法识别的地址：{}",
+                    invalid.join(", ")
+                )));
+            }
+            if rules
+                .iter()
+                .any(|rule| editor_ip.is_some_and(|ip| rule.contains(ip)))
+            {
+                return Err(ApiError::bad_request(format!(
+                    "当前 IP {} 在黑名单中，保存后你会被挡在后台之外",
+                    editor_ip.map_or_else(|| "未知".to_string(), |ip| ip.to_string())
+                )));
+            }
+            Ok(())
+        }
         API_DOCS_ACCESS if parse_docs_access(value).is_none() => Err(ApiError::bad_request(
             "接口文档访问只能是 public、login 或 disabled",
         )),
@@ -210,7 +243,9 @@ pub fn validate_setting(key: &str, value: &str, editor_ip: Option<IpAddr>) -> Ap
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_setting, ADMIN_IP_ALLOWLIST, API_DOCS_ACCESS, REAUTH_MINUTES};
+    use super::{
+        validate_setting, ADMIN_IP_ALLOWLIST, ADMIN_IP_BLOCKLIST, API_DOCS_ACCESS, REAUTH_MINUTES,
+    };
 
     #[test]
     fn ssh_scrollback_accepts_zero_up_to_the_browser_ceiling() {
@@ -240,5 +275,13 @@ mod tests {
         assert!(validate_setting(API_DOCS_ACCESS, "everyone", None).is_err());
         assert!(validate_setting(REAUTH_MINUTES, "0", None).is_err());
         assert!(validate_setting(REAUTH_MINUTES, "15", None).is_ok());
+    }
+
+    #[test]
+    fn blocklist_rejects_the_editor_ip() {
+        let editor = Some("203.0.113.8".parse().unwrap());
+        assert!(validate_setting(ADMIN_IP_BLOCKLIST, "198.51.100.1", editor).is_ok());
+        assert!(validate_setting(ADMIN_IP_BLOCKLIST, "203.0.113.8", editor).is_err());
+        assert!(validate_setting(ADMIN_IP_BLOCKLIST, "nope", editor).is_err());
     }
 }

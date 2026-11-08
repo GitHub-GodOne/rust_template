@@ -671,6 +671,22 @@
   updated_by:
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 50
+  key: security.admin_ip_blocklist
+  name: 后台访问 IP 黑名单
+  group_key: security
+  value: ""
+  value_type: string
+  default_value: ""
+  description: 命中后拒绝登录和后台接口访问，多个用逗号或换行分隔，黑名单优先于白名单；留空表示不限制
+  is_public: false
+  is_builtin: true
+  is_encrypted: false
+  sort_order: 61
+  created_by:
+  updated_by:
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 41
   key: security.api_docs_access
   name: 接口文档访问

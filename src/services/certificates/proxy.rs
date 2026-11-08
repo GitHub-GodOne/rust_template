@@ -4,11 +4,13 @@
 //! certificate is picked by SNI and the request is forwarded to the mapped
 //! local service over plain HTTP, including WebSocket/HTTP upgrades.
 
+use crate::services::ip_rules::IpRule;
+
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
     fmt,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::PathBuf,
     sync::{Arc, OnceLock, RwLock},
     time::Duration,
@@ -45,6 +47,8 @@ pub struct ProxyRoute {
     pub host: String,
     pub upstream_host: String,
     pub upstream_port: u16,
+    /// Empty means every client IP is allowed.
+    pub allowed_ips: Vec<IpRule>,
 }
 
 /// PEM files for the names a certificate covers.
@@ -67,6 +71,7 @@ pub struct ListenerStatus {
 struct Upstream {
     host: String,
     port: u16,
+    allowed_ips: Vec<IpRule>,
 }
 
 #[derive(Default)]
@@ -170,6 +175,7 @@ pub async fn apply(routes: Vec<ProxyRoute>, certificates: &[ProxyCertificate]) -
             Upstream {
                 host: route.upstream_host,
                 port: route.upstream_port,
+                allowed_ips: route.allowed_ips,
             },
         );
     }
@@ -369,6 +375,10 @@ fn request_host<B>(request: &Request<B>) -> Option<String> {
         .map(|host| host.trim_end_matches('.').to_ascii_lowercase())
 }
 
+fn client_ip_allowed(rules: &[IpRule], ip: IpAddr) -> bool {
+    rules.is_empty() || rules.iter().any(|rule| rule.contains(ip))
+}
+
 const HOP_BY_HOP: [&str; 8] = [
     "connection",
     "keep-alive",
@@ -421,6 +431,20 @@ async fn proxy_request(
             "该域名未配置到此端口的映射",
         ));
     };
+    if !client_ip_allowed(&upstream.allowed_ips, peer.ip()) {
+        tracing::info!(
+            host,
+            client_ip = %peer.ip(),
+            "HTTPS domain mapping rejected client IP"
+        );
+        return Ok(text_response(
+            StatusCode::FORBIDDEN,
+            &format!(
+                "当前访问 IP 为 {}，不在该域名的允许访问列表中",
+                peer.ip().to_canonical()
+            ),
+        ));
+    }
 
     let upgrade = is_upgrade(&request);
     let upgrade_protocol = request.headers().get(header::UPGRADE).cloned();
@@ -540,6 +564,7 @@ mod tests {
             Upstream {
                 host: "127.0.0.1".to_string(),
                 port: upstream_port,
+                allowed_ips: Vec::new(),
             },
         );
     }
@@ -553,6 +578,15 @@ mod tests {
         assert!(certificate_for(&certificates, "APP.Wild.Test.").is_some());
         assert!(certificate_for(&certificates, "wild.test").is_none());
         assert!(certificate_for(&certificates, "a.b.wild.test").is_none());
+    }
+
+    #[test]
+    fn client_ip_rules_default_to_allow_all_and_support_cidr() {
+        let ip = |value: &str| value.parse().unwrap();
+        assert!(client_ip_allowed(&[], ip("203.0.113.9")));
+        let rules = vec![IpRule::parse("192.168.1.0/24").unwrap()];
+        assert!(client_ip_allowed(&rules, ip("192.168.1.42")));
+        assert!(!client_ip_allowed(&rules, ip("192.168.2.42")));
     }
 
     #[test]

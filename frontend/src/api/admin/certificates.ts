@@ -37,6 +37,8 @@ export type DomainMappingRecord = {
   ipv4_address?: string | null;
   ipv6_mode: IpMode;
   ipv6_address?: string | null;
+  /** Empty means every client IP is allowed. */
+  allowed_ips: string[];
   enabled: boolean;
   status: MappingStatus;
   last_error?: string | null;
@@ -59,6 +61,8 @@ export type SaveDomainMappingParams = {
   ipv4_address?: string;
   ipv6_mode?: IpMode;
   ipv6_address?: string;
+  /** Empty means every client IP is allowed. Values may be IPs or CIDRs. */
+  allowed_ips?: string[];
   enabled?: boolean;
   issue_certificate?: boolean;
 };

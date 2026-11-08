@@ -53,6 +53,11 @@ mod m20261025_000044_database_manager;
 mod m20261025_000045_ssh_scrollback_setting;
 mod m20261102_000046_flexible_database_backups;
 mod m20261102_000047_backup_telegram_destinations;
+mod m20261105_000048_domain_mapping_ip_allowlist;
+mod m20261106_000049_startup_commands;
+mod m20261107_000050_security_ip_blocklist;
+mod m20261107_000051_rathole_profiles;
+mod m20261107_000052_rathole_permissions;
 
 pub struct Migrator;
 
@@ -108,6 +113,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20261025_000045_ssh_scrollback_setting::Migration),
             Box::new(m20261102_000046_flexible_database_backups::Migration),
             Box::new(m20261102_000047_backup_telegram_destinations::Migration),
+            Box::new(m20261105_000048_domain_mapping_ip_allowlist::Migration),
+            Box::new(m20261106_000049_startup_commands::Migration),
+            Box::new(m20261107_000050_security_ip_blocklist::Migration),
+            Box::new(m20261107_000051_rathole_profiles::Migration),
+            Box::new(m20261107_000052_rathole_permissions::Migration),
             // inject-above (do not remove this comment)
         ]
     }

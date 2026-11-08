@@ -7,6 +7,8 @@ use sea_orm::{
     Set,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tokio::process::Command;
 
 use crate::{
     controllers::admin::authorize,
@@ -112,6 +114,12 @@ pub struct SaveScheduledTaskParams {
 struct BackupTaskPayload {
     connection_id: Option<i32>,
     delivery_targets: Option<Vec<String>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StartupCommandPayload {
+    command: String,
+    working_directory: Option<String>,
 }
 
 #[utoipa::path(
@@ -309,6 +317,33 @@ pub async fn run(
     Ok(responses::ok(TaskRunRecord::from(run)))
 }
 
+/// Runs enabled startup commands once when the application service starts.
+///
+/// The operating-system service manager starts this application at boot or
+/// login; commands therefore inherit the same account, environment and
+/// working-directory permissions as the configured application service.
+pub async fn run_startup_tasks(ctx: &AppContext) {
+    let tasks = match scheduled_tasks::Entity::find()
+        .filter(scheduled_tasks::Column::TaskType.eq("startup_command"))
+        .filter(scheduled_tasks::Column::Enabled.eq(true))
+        .order_by_asc(scheduled_tasks::Column::Id)
+        .all(&ctx.db)
+        .await
+    {
+        Ok(tasks) => tasks,
+        Err(error) => {
+            tracing::error!(error = ?error, "failed to load startup commands");
+            return;
+        }
+    };
+
+    for task in tasks {
+        if let Err(error) = run_task(ctx, &task, None, "startup").await {
+            tracing::error!(task_id = task.id, error = ?error, "startup command failed");
+        }
+    }
+}
+
 #[utoipa::path(
     get,
     path = "/api/admin/scheduled-task-runs",
@@ -450,8 +485,81 @@ async fn execute_task(
                 backup.delivery_status.as_deref().unwrap_or("-")
             ))
         }
+        "startup_command" => execute_startup_command(task).await,
         _ => Err("unsupported task type".to_string()),
     }
+}
+
+async fn execute_startup_command(task: &scheduled_tasks::Model) -> Result<String, String> {
+    let payload = task
+        .payload
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "startup command payload is required".to_string())
+        .and_then(|value| {
+            serde_json::from_str::<StartupCommandPayload>(value)
+                .map_err(|error| format!("invalid startup command payload: {error}"))
+        })?;
+    let command_text = payload.command.trim();
+    if command_text.is_empty() {
+        return Err("startup command cannot be empty".to_string());
+    }
+
+    let mut command = if cfg!(target_os = "windows") {
+        let mut command = Command::new("cmd.exe");
+        command.args(["/D", "/S", "/C", command_text]);
+        command
+    } else {
+        let mut command = Command::new("sh");
+        command.args(["-lc", command_text]);
+        command
+    };
+    if let Some(directory) = payload
+        .working_directory
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        command.current_dir(directory);
+    }
+
+    let output = tokio::time::timeout(Duration::from_secs(300), command.output())
+        .await
+        .map_err(|_| "startup command timed out after 300 seconds".to_string())?
+        .map_err(|error| format!("failed to start startup command: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = [stdout.trim(), stderr.trim()]
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let combined = truncate_command_output(&combined);
+    if output.status.success() {
+        Ok(if combined.is_empty() {
+            format!("startup command exited with {}", output.status)
+        } else {
+            combined
+        })
+    } else {
+        Err(if combined.is_empty() {
+            format!("startup command exited with {}", output.status)
+        } else {
+            format!("{}\n(exit {})", combined, output.status)
+        })
+    }
+}
+
+fn truncate_command_output(value: &str) -> String {
+    const MAX_OUTPUT_BYTES: usize = 64 * 1024;
+    if value.len() <= MAX_OUTPUT_BYTES {
+        return value.to_string();
+    }
+    let mut end = MAX_OUTPUT_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n… (output truncated)", &value[..end])
 }
 
 async fn find_task(ctx: &AppContext, id: i32) -> ApiResult<scheduled_tasks::Model> {
@@ -472,6 +580,24 @@ fn validate_task(params: &SaveScheduledTaskParams) -> ApiResult<()> {
     }
     match params.task_type.as_str() {
         "database_backup" | "webhook_notify" | "cleanup_logs" => Ok(()),
+        "startup_command" => {
+            let payload = params
+                .payload
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| ApiError::bad_request("startup command is required"))?;
+            let payload = serde_json::from_str::<StartupCommandPayload>(payload)
+                .map_err(|_| ApiError::bad_request("startup command payload is invalid"))?;
+            if payload.command.trim().is_empty() {
+                return Err(ApiError::bad_request("startup command is required"));
+            }
+            if params.cron_expr.trim() != "@startup" {
+                return Err(ApiError::bad_request(
+                    "startup command cron must be @startup",
+                ));
+            }
+            Ok(())
+        }
         _ => Err(ApiError::bad_request("unsupported task type")),
     }
 }

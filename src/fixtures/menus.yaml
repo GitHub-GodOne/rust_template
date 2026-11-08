@@ -186,6 +186,17 @@
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+- id: 50
+  parent_id: 2
+  title: 开机自启命令
+  path: /admin/system/startup-commands
+  icon: schedule
+  permission_code: system:scheduled_task:list
+  sort_order: 95
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
 - id: 13
   parent_id: 2
   title: 数据库备份
@@ -490,6 +501,17 @@
   icon: database
   permission_code: system:database:list
   sort_order: 15
+  visible: true
+  enabled: true
+  created_at: "2023-11-12T12:34:56.789Z"
+  updated_at: "2023-11-12T12:34:56.789Z"
+- id: 51
+  parent_id: 2
+  title: 内网穿透（Rathole）
+  path: /admin/system/rathole
+  icon: global
+  permission_code: system:rathole:list
+  sort_order: 96
   visible: true
   enabled: true
   created_at: "2023-11-12T12:34:56.789Z"

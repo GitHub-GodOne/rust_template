@@ -25,11 +25,11 @@ use crate::{
         dict_items, dict_types, email_templates, http_request_presets, http_request_runs,
         managed_file_access_rules, menus, operation_logs, payment_callbacks, payment_channels,
         payment_orders, payment_refunds, permissions, rate_limit_events, rate_limit_rules,
-        rdp_credentials, refresh_tokens, role_data_scopes, role_menus, role_permissions, roles,
-        scheduled_task_runs, scheduled_tasks, storage_buckets, storage_profiles,
-        system_notifications, system_settings, tenants, upload_files, upload_tasks,
-        user_departments, user_roles, users, work_order_assignments, work_order_attachments,
-        work_order_comments, work_orders,
+        rathole_profiles, rdp_credentials, refresh_tokens, role_data_scopes, role_menus,
+        role_permissions, roles, scheduled_task_runs, scheduled_tasks, storage_buckets,
+        storage_profiles, system_notifications, system_settings, tenants, upload_files,
+        upload_tasks, user_departments, user_roles, users, work_order_assignments,
+        work_order_attachments, work_order_comments, work_orders,
     },
     tasks,
     workers::downloader::DownloadWorker,
@@ -115,11 +115,16 @@ impl Hooks for App {
             crate::services::certificates::start(ctx.db.clone());
             crate::services::network_watch::start();
             crate::services::rdp_gateway::start();
+            crate::services::rathole_manager::start_enabled(ctx.db.clone()).await;
             crate::services::log_retention::start_cleaner(ctx.db.clone());
             crate::services::recycle_bin::start_cleaner(ctx.db.clone());
             crate::controllers::admin::ssh::restore_sessions(&ctx.db).await;
             crate::controllers::admin::remote_audio::finish_stale_sessions(&ctx.db).await;
             crate::controllers::admin::ssh::start_session_reaper(ctx.db.clone());
+            let startup_ctx = ctx.clone();
+            tokio::spawn(async move {
+                crate::controllers::admin::scheduled_tasks::run_startup_tasks(&startup_ctx).await;
+            });
         }
         Ok(router)
     }
@@ -254,6 +259,7 @@ impl Hooks for App {
         // Settings are cached for a few seconds; tests start from the table.
         crate::services::security_settings::invalidate();
         truncate_table(&ctx.db, rdp_credentials::Entity).await?;
+        truncate_table(&ctx.db, rathole_profiles::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;
         truncate_table(&ctx.db, departments::Entity).await?;
         truncate_table(&ctx.db, tenants::Entity).await?;

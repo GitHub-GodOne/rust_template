@@ -18,6 +18,7 @@ pub mod listener;
 pub mod log_retention;
 pub mod network_watch;
 pub mod project_cli;
+pub mod rathole_manager;
 pub mod rdp_gateway;
 pub mod realtime;
 pub mod recycle_bin;

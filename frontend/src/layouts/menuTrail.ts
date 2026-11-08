@@ -1,3 +1,5 @@
+import { tData } from "../i18n";
+
 /** Menu entries needed to describe a page's place in the navigation. */
 export type TrailMenu = {
   key: string;
@@ -26,5 +28,5 @@ export function findMenuTrail<T extends TrailMenu>(
 }
 
 export function menuLabel(item: TrailMenu) {
-  return item.label || item.title || item.key;
+  return tData(item.label || item.title || item.key);
 }

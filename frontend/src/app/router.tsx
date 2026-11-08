@@ -35,10 +35,12 @@ import { PermissionsPage } from "../pages/system/permissions/PermissionsPage";
 import { ProjectCliPage } from "../pages/system/project-cli/ProjectCliPage";
 import { RecycleBinPage } from "../pages/system/recycle-bin/RecycleBinPage";
 import { RemoteAudioPage } from "../pages/system/remote-audio/RemoteAudioPage";
+import { RatholePage } from "../pages/system/rathole/RatholePage";
 import { RolesPage } from "../pages/system/roles/RolesPage";
 import { ScheduledTasksPage } from "../pages/system/scheduled-tasks/ScheduledTasksPage";
 import { SessionsPage } from "../pages/system/sessions/SessionsPage";
 import { SettingsPage } from "../pages/system/settings/SettingsPage";
+import { StartupCommandsPage } from "../pages/system/startup-commands/StartupCommandsPage";
 import { StaticHostingPage } from "../pages/system/static-hosting/StaticHostingPage";
 import { StorageProfilesPage } from "../pages/system/storage/StorageProfilesPage";
 import { TenantsPage } from "../pages/system/tenants/TenantsPage";
@@ -412,6 +414,14 @@ export function AppRouter() {
             }
           />
           <Route
+            path="system/startup-commands"
+            element={
+              <RequirePermission permission="system:scheduled_task:list">
+                <StartupCommandsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="system/backups"
             element={
               <RequirePermission permission="system:backup:list">
@@ -491,6 +501,7 @@ export function AppRouter() {
               </RequirePermission>
             }
           />
+          <Route path="system/rathole" element={<RequirePermission permission="system:rathole:list"><RatholePage /></RequirePermission>} />
           <Route
             path="system/ai-images"
             element={

@@ -582,6 +582,9 @@ function ConversationSettings({
   if (!detail) return null;
   const isGroup = detail.kind === "group";
   const isOwner = detail.owner_id === detail.viewer_id;
+  const hasOtherMember = detail.members.some(
+    (member) => member.user_id !== detail.viewer_id,
+  );
 
   const run = async (action: () => Promise<unknown>, done?: () => void) => {
     setBusy(true);
@@ -632,26 +635,28 @@ function ConversationSettings({
             ) : null}
           </div>
         ))}
-        <button
-          type="button"
-          className="im-member im-member-add"
-          onClick={() => {
-            if (isGroup) onInvite();
-            else
-              onStartGroup(
-                detail.members
-                  .map((member) => member.user_id)
-                  .filter((id) => id !== detail.viewer_id),
-              );
-          }}
-        >
-          <span className="im-member-add-icon">
-            <PlusOutlined />
-          </span>
-          <span className="im-member-name">
-            {isGroup ? t("邀请") : t("发起群聊")}
-          </span>
-        </button>
+        {isGroup || hasOtherMember ? (
+          <button
+            type="button"
+            className="im-member im-member-add"
+            onClick={() => {
+              if (isGroup) onInvite();
+              else
+                onStartGroup(
+                  detail.members
+                    .map((member) => member.user_id)
+                    .filter((id) => id !== detail.viewer_id),
+                );
+            }}
+          >
+            <span className="im-member-add-icon">
+              <PlusOutlined />
+            </span>
+            <span className="im-member-name">
+              {isGroup ? t("邀请") : t("发起群聊")}
+            </span>
+          </button>
+        ) : null}
       </div>
       {isGroup ? (
         <Space direction="vertical" size={16} className="full-width">
